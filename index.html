@@ -1597,7 +1597,13 @@ td.r{text-align:right}
       <select class="filter-sel" id="ind-broker-f" onchange="filterTable('ind')"><option value="">All Brokers</option></select>
       <select class="filter-sel" id="ind-sector-f" onchange="filterTable('ind')"><option value="">All Sectors</option></select>
       <button class="btn btn-ghost btn-sm" onclick="dlSampleCSV('indEQ')">⬇ Sample CSV</button>
-      <label class="btn btn-sec btn-sm" style="cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="importCSV('indEQ',this)"></label>
+      <label class="btn btn-sec btn-sm" style="cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="importCSV('indEQ',this)" id="indEQ-csv-inp">
+</label>
+<label class="btn btn-sec btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Import directly from Trendlyne portfolio export CSV">
+  <img src="https://trendlyne.com/favicon.ico" style="width:12px;height:12px;" onerror="this.style.display='none'">
+  📥 Trendlyne Import
+  <input type="file" accept=".csv" style="display:none" onchange="importTrendlyne(this)">
+</label>
       <button class="btn btn-pri btn-sm" onclick="openModal('add','INDEQ')">+ Add Position</button>
     </div>
   </div>
@@ -2195,7 +2201,13 @@ td.r{text-align:right}
         <p style="font-size:11.5px;color:var(--T3);margin-bottom:10px">Columns: Name, Ticker, Sector, Qty, AvgCost_INR, LTP_INR, BuyDate, Broker</p>
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" onclick="dlSampleCSV('indEQ')">⬇ Sample</button>
-          <label class="btn btn-sec btn-sm" style="cursor:pointer">📥 Import<input type="file" accept=".csv" style="display:none" onchange="importCSV('indEQ',this)"></label>
+          <label class="btn btn-sec btn-sm" style="cursor:pointer">📥 Import<input type="file" accept=".csv" style="display:none" onchange="importCSV('indEQ',this)">
+</label>
+<label class="btn btn-sec btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Import directly from Trendlyne portfolio export CSV">
+  <img src="https://trendlyne.com/favicon.ico" style="width:12px;height:12px;" onerror="this.style.display='none'">
+  📥 Trendlyne Import
+  <input type="file" accept=".csv" style="display:none" onchange="importTrendlyne(this)">
+</label>
         </div>
         <div id="csv-msg-indEQ" style="margin-top:8px"></div>
       </div>
@@ -3095,30 +3107,36 @@ function searchStocks(query) {
 }
 
 let ddSelectedIdx = -1;
+let _symDebTimer = null;
 function onSymbolInput(val) {
+  clearTimeout(_symDebTimer);
+  _symDebTimer = setTimeout(function() {
+    _doSymbolSearch(val);
+  }, 120);
+}
+function _doSymbolSearch(val) {
   const results = searchStocks(val);
   const dd = document.getElementById('symbolDropdown');
   ddSelectedIdx = -1;
-  // For crypto: always show list even on empty input
   if (marketMode !== 'crypto' && (!results.length || !val.trim())) { dd.style.display = 'none'; return; }
   if (!results.length) { dd.style.display = 'none'; return; }
-  dd.innerHTML = results.map((s, i) => {
-    let sub;
-    if (marketMode === 'crypto') sub = `🪙 ${s[1]} · ${s[3]}`;
-    else if (marketMode === 'us') sub = `${s[1]} · ${s[3]}`;
-    else sub = `${s[1]} · NSE / ${s[2]} · BSE · ${s[3]}`;
-    return `
-    <div class="dd-item" data-idx="${i}" onmousedown="selectStock(${i})" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-weight:600;font-size:13px;color:var(--text);">${s[0]}</div>
-        <div style="font-size:11px;color:var(--text3);">${sub}</div>
-      </div>
-      <div style="font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;">${s[1]}</div>
-    </div>`;
-  }).join('');
-  dd.style.display = 'block';
-  // Store results for keyboard nav
-  dd._results = results;
+  requestAnimationFrame(function() {
+    dd.innerHTML = results.map((s, i) => {
+      let sub;
+      if (marketMode === 'crypto') sub = `🪙 ${s[1]} · ${s[3]}`;
+      else if (marketMode === 'us') sub = `${s[1]} · ${s[3]}`;
+      else sub = `${s[1]} · NSE / ${s[2]} · BSE · ${s[3]}`;
+      return `<div class="dd-item" data-idx="${i}" onmousedown="selectStock(${i})" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;transition:background .12s;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <div>
+          <div style="font-weight:600;font-size:13px;color:var(--text);">${s[0]}</div>
+          <div style="font-size:11px;color:var(--text3);">${sub}</div>
+        </div>
+        <div style="font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;">${s[1]}</div>
+      </div>`;
+    }).join('');
+    dd.style.display = 'block';
+    dd._results = results;
+  });
 }
 
 function onSymbolKey(e) {
@@ -4705,18 +4723,26 @@ function saveLocal(){
 }
 
 /* ══ COMPUTED ══ */
+function _safeCAGR(cur, inv, buyDateStr) {
+  if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
+  const ms = new Date() - new Date(buyDateStr);
+  if (!ms || isNaN(ms) || ms < 0) return 0;           // invalid / future date → 0
+  const yrs = ms / (365.25 * 864e5);
+  if (yrs < 0.08) return null;                         // < ~1 month → show N/A
+  const raw = (Math.pow(Math.max(cur / inv, 1e-9), 1 / yrs) - 1) * 100;
+  if (!isFinite(raw) || isNaN(raw)) return 0;
+  return Math.max(-99.9, Math.min(raw, 999.9));        // clamp −99.9% to 999.9%
+}
 function cIND(h){
   const inv=h.avgCost*h.qty, cur=h.ltp*h.qty, pl=cur-inv, r=inv>0?pl/inv*100:0;
-  const yrs=Math.max(0.01,(new Date()-new Date(h.buyDate))/(365.25*864e5));
-  const cagr=inv>0?(Math.pow(cur/inv,1/yrs)-1)*100:0;
+  const cagr=_safeCAGR(cur,inv,h.buyDate);
   return{inv,cur,pl,r,cagr};
 }
 function cUS(h){
   const inv=h.investedINR||h.avgCost*h.qty*S.usdInr;
   const cur=h.ltp*h.qty*S.usdInr;
   const pl=cur-inv, r=inv>0?pl/inv*100:0;
-  const yrs=Math.max(0.01,(new Date()-new Date(h.buyDate))/(365.25*864e5));
-  const cagr=inv>0?(Math.pow(cur/inv,1/yrs)-1)*100:0;
+  const cagr=_safeCAGR(cur,inv,h.buyDate);
   return{inv,cur,pl,r,cagr};
 }
 function cCRY(c){
@@ -4746,8 +4772,8 @@ const F={
   inr: v=>'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:0}),
   lac: v=>{const a=Math.abs(v);return a>=1e7?'₹'+(a/1e7).toFixed(2)+'Cr':'₹'+(a/1e5).toFixed(2)+'L';},
   usd: v=>'$'+Math.abs(v).toFixed(2),
-  pct: v=>(v>=0?'+':'')+v.toFixed(2)+'%',
-  pct1: v=>(v>=0?'+':'')+v.toFixed(1)+'%',
+  pct: v=>v==null||!isFinite(v)?'N/A':(v>=0?'+':'')+v.toFixed(2)+'%',
+  pct1: v=>v==null||!isFinite(v)?'—':(v>=0?'+':'')+v.toFixed(1)+'%',
 };
 const uid=()=>'x'+Math.random().toString(36).substr(2,9);
 const today=()=>new Date().toISOString().split('T')[0];
@@ -4925,7 +4951,7 @@ function filterTable(prefix){
         <td class="r tm">${F.inr(c.cur)}</td>
         <td class="r tm" style="color:${clr(c.pl)};font-weight:700">${c.pl>=0?'+':'-'}${F.inr(Math.abs(c.pl))}</td>
         <td class="r">${pill(c.r)}</td>
-        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${F.pct1(c.cagr)} p.a.</td>
+        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"—"}</td>
         <td style="font-size:11px;color:var(--T3)">${h.broker}</td>
         <td class="r"><div class="acts">
           <button class="ab ab-edit" onclick="openModal('edit','INDEQ','${h.id}')">✏</button>
@@ -4976,7 +5002,7 @@ function filterTable(prefix){
         <td class="r tm">${F.inr(c.cur)}</td>
         <td class="r tm" style="color:${clr(c.pl)};font-weight:700">${c.pl>=0?'+':'-'}${F.inr(Math.abs(c.pl))}</td>
         <td class="r">${pill(c.r)}</td>
-        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${F.pct1(c.cagr)} p.a.</td>
+        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"—"}</td>
         <td class="r"><div class="acts">
           <a class="ab" href="${yfHistUrl}" target="_blank" title="Download Yahoo Finance CSV for ${yfTicker}" style="background:#EFF6FF;color:#1A73E8;border-color:#BFDBFE;text-decoration:none">⬇ YF</a>
           <button class="ab ab-edit" onclick="openModal('edit','USEQ','${h.id}')">✏</button>
@@ -5111,7 +5137,7 @@ function filterTable(prefix){
         <td class="r tm">${F.inr(c.cur)}</td>
         <td class="r tm" style="color:${clr(c.pl)};font-weight:700">${c.pl>=0?'+':'-'}${F.inr(Math.abs(c.pl))}</td>
         <td class="r">${pill(c.r)}</td>
-        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${F.pct1(c.cagr)} p.a.</td>
+        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"—"}</td>
         <td style="font-size:11px;color:var(--T3)">${f.folio||'—'}</td>
         <td class="r"><div class="acts">
           <button class="ab ab-edit" onclick="openModal('edit','MF','${f.id}')">✏</button>
@@ -5135,7 +5161,7 @@ function filterTable(prefix){
           <td class="r tm" style="color:var(--P);font-weight:700">${F.inr(f.sipAmt)}/mo</td>
           <td class="r tm">${F.inr(cv.inv)}</td><td class="r tm">${F.inr(cv.cur)}</td>
           <td class="r tm" style="color:${clr(cv.pl)}">${cv.pl>=0?'+':'-'}${F.inr(Math.abs(cv.pl))}</td>
-          <td class="r" style="font-size:11px;color:${clr(cv.cagr)};font-weight:600">${F.pct1(cv.cagr)} p.a.</td>
+          <td class="r" style="font-size:11px;color:${clr(cv.cagr)};font-weight:600">${cv.cagr!=null?F.pct1(cv.cagr)+" p.a.":"—"}</td>
           <td style="font-size:11.5px">${f.startDate||'—'}</td>
           <td style="font-size:11px;color:var(--T3)">${f.folio||'—'}</td>
         </tr>`;
@@ -5218,19 +5244,184 @@ function renderFD(){
 }
 
 /* ══════════ LTP ══════════ */
-function renderLTP(){
-  const rows=[];
-  S.indEQ.forEach(h=>rows.push({cls:'🇮🇳 India EQ',name:h.name,ticker:h.ticker,ltp:F.inr(h.ltp),cur:'INR',mkt:h.ltp}));
-  S.usEQ.forEach(h=>rows.push({cls:'🇺🇸 US EQ',name:h.name,ticker:h.ticker,ltp:F.usd(h.ltp),cur:'USD',mkt:h.ltp}));
-  S.crypto.forEach(c=>rows.push({cls:'₿ Crypto',name:c.coin,ticker:c.coinId,ltp:F.inr(c.price),cur:'INR',mkt:c.price}));
-  document.getElementById('ltp-body').innerHTML=rows.map(r=>`<tr>
-    <td style="font-size:11.5px">${r.cls}</td>
-    <td class="tn">${r.name}</td>
-    <td style="font-size:10.5px;color:var(--P);font-weight:600">${r.ticker}</td>
-    <td class="r tm" style="font-weight:700">${r.ltp}</td>
-    <td><span class="chip c-hold">${r.cur}</span></td>
-    <td class="r" style="font-size:11px;color:var(--T3)">${new Date().toLocaleDateString('en-IN')}</td>
-  </tr>`).join('');
+function renderLTP() {
+  const rows = [];
+  S.indEQ.forEach(h => {
+    const pl = (h.ltp - h.avgCost) * h.qty;
+    const plPct = ((h.ltp - h.avgCost) / h.avgCost * 100);
+    rows.push({cls:'🇮🇳',type:'India EQ',name:h.name,ticker:h.ticker,qty:h.qty,avgCost:F.inr(h.avgCost),invested:F.inr(h.qty*h.avgCost),ltp:F.inr(h.ltp),curVal:F.inr(h.qty*h.ltp),pl:pl,plPct:plPct});
+  });
+  S.usEQ.forEach(h => {
+    const pl = (h.ltp - h.avgCost) * h.qty * S.usdInr;
+    const plPct = ((h.ltp - h.avgCost) / h.avgCost * 100);
+    rows.push({cls:'🇺🇸',type:'US EQ',name:h.name,ticker:h.ticker,qty:h.qty,avgCost:F.usd(h.avgCost),invested:F.inr(h.investedINR||h.qty*h.avgCost*S.usdInr),ltp:F.usd(h.ltp),curVal:F.inr(h.qty*h.ltp*S.usdInr),pl:pl,plPct:plPct});
+  });
+  S.crypto.forEach(c => {
+    const pl = (c.price - c.buyPrice) * c.qty;
+    const plPct = ((c.price - c.buyPrice) / c.buyPrice * 100);
+    rows.push({cls:'₿',type:'Crypto',name:c.coin,ticker:c.coinId,qty:c.qty,avgCost:F.inr(c.buyPrice),invested:F.inr(c.qty*c.buyPrice),ltp:F.inr(c.price),curVal:F.inr(c.qty*c.price),pl:pl,plPct:plPct});
+  });
+
+  const tableHTML = rows.length === 0
+    ? `<div style="text-align:center;padding:40px;color:var(--T3)">No holdings to display. Add holdings first.</div>`
+    : `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;">
+    <thead>
+      <tr style="background:#F8FAFC;border-bottom:2px solid var(--bd);">
+        <th style="padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Stock</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">QTY</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Avg Buy Price</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Invested</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">LTP</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Current Value</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Unrealized P&amp;L</th>
+        <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">P&amp;L %</th>
+        <th style="padding:10px 8px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--T3);">Action</th>
+      </tr>
+    </thead>
+    <tbody id="ltp-body">
+      ${rows.map((r,i) => `<tr style="border-bottom:1px solid #F1F5F9;" id="ltp-row-${i}">
+        <td style="padding:10px 12px;">
+          <div style="font-weight:700;font-size:12.5px;color:var(--T1);">${r.cls} ${r.name}</div>
+          <div style="font-size:10px;color:var(--P);font-weight:600;">${r.ticker}</div>
+        </td>
+        <td style="padding:10px 12px;text-align:right;font-weight:600;">${r.qty}</td>
+        <td style="padding:10px 12px;text-align:right;">${r.avgCost}</td>
+        <td style="padding:10px 12px;text-align:right;">${r.invested}</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:monospace;" id="ltp-val-${i}">${r.ltp}</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:600;">${r.curVal}</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:700;color:${r.pl>=0?'var(--G)':'var(--R)'};">${r.pl>=0?'+':''}${F.inr(r.pl)}</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:700;color:${r.plPct>=0?'var(--G)':'var(--R)'};">${r.plPct>=0?'+':''}${r.plPct.toFixed(2)}%</td>
+        <td style="padding:10px 8px;text-align:center;">
+          <button onclick="refreshSinglePrice(${i},'${r.type}','${r.ticker}')" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid var(--bd);background:#fff;cursor:pointer;color:var(--P);" title="Refresh price">🔄</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>`;
+
+  const ltpPage = document.getElementById('page-ltp');
+  if (!ltpPage) return;
+  ltpPage.innerHTML = `
+  <div class="card" style="margin-bottom:18px;">
+    <div class="ch" style="flex-wrap:wrap;gap:8px;">
+      <span class="ct">🔄 Live Price Tracker</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span id="ltp-last-updated" style="font-size:10.5px;color:var(--T3);">Last updated: —</span>
+        <button onclick="refreshAllPrices()" id="refresh-all-btn" style="padding:7px 16px;border-radius:7px;background:var(--P);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+          🔄 Refresh All Prices
+        </button>
+      </div>
+    </div>
+    <div id="refresh-progress" class="cb" style="display:none;padding:12px 16px;background:#F0FDF4;border-bottom:1px solid #BBF7D0;">
+      <div style="font-size:12.5px;font-weight:600;color:var(--G);margin-bottom:6px;" id="refresh-status">Fetching prices...</div>
+      <div style="background:#D1FAE5;border-radius:20px;height:6px;overflow:hidden;">
+        <div id="refresh-bar" style="height:100%;background:var(--G);border-radius:20px;transition:width .3s;width:0%"></div>
+      </div>
+    </div>
+    <div id="ltp-msg" class="cb" style="padding:0;"></div>
+    ${tableHTML}
+  </div>
+  <div class="card" style="margin-bottom:18px;">
+    <div class="ch"><span class="ct">📥 Manual LTP Upload (CSV)</span></div>
+    <div class="cb" style="padding:14px 16px;">
+      <p style="font-size:12px;color:var(--T2);margin-bottom:10px;">Upload a CSV with columns: <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;">AssetClass,Name,Ticker,LTP</code></p>
+      <label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;background:var(--P);color:#fff;border:none;font-size:12px;font-weight:600;">
+        📁 Upload LTP CSV
+        <input type="file" accept=".csv" style="display:none" onchange="ltpUpload(event)">
+      </label>
+    </div>
+  </div>`;
+}
+
+// Map of holding index to asset type/ticker for live refresh
+var _ltpRows = [];
+
+async function refreshAllPrices() {
+  const btn = document.getElementById('refresh-all-btn');
+  const progress = document.getElementById('refresh-progress');
+  const status = document.getElementById('refresh-status');
+  const bar = document.getElementById('refresh-bar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
+  if (progress) progress.style.display = 'block';
+
+  // Build list of all holdings to refresh
+  const tasks = [];
+  S.indEQ.forEach((h,i) => tasks.push({type:'India EQ', ticker:h.ticker+'.NS', idx:i, asset:'indEQ'}));
+  S.usEQ.forEach((h,i)  => tasks.push({type:'US EQ',    ticker:h.ticker,        idx:i, asset:'usEQ'}));
+  S.crypto.forEach((h,i)=> tasks.push({type:'Crypto',   ticker:h.coinId.toUpperCase()+'-INR', idx:i, asset:'crypto'}));
+
+  let done = 0, updated = 0;
+  const total = tasks.length;
+  if (total === 0) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Refresh All Prices'; }
+    if (progress) progress.style.display = 'none';
+    toast('No holdings to refresh', 'err'); return;
+  }
+
+  for (const task of tasks) {
+    if (status) status.textContent = `Fetching ${task.ticker}… (${done+1}/${total})`;
+    if (bar) bar.style.width = ((done/total)*100)+'%';
+    const price = await _fetchLivePrice(task.ticker, task.type);
+    if (price && price > 0) {
+      if (task.asset === 'indEQ' && S.indEQ[task.idx]) { S.indEQ[task.idx].ltp = price; updated++; }
+      else if (task.asset === 'usEQ' && S.usEQ[task.idx]) { S.usEQ[task.idx].ltp = price; updated++; }
+      else if (task.asset === 'crypto' && S.crypto[task.idx]) { S.crypto[task.idx].price = price; updated++; }
+    }
+    done++;
+  }
+
+  if (bar) bar.style.width = '100%';
+  if (status) status.textContent = `✅ Updated ${updated}/${total} prices successfully!`;
+  setTimeout(() => { if (progress) progress.style.display = 'none'; }, 3000);
+  if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Refresh All Prices'; }
+
+  const el = document.getElementById('ltp-last-updated');
+  if (el) el.textContent = 'Last updated: ' + new Date().toLocaleTimeString('en-IN');
+
+  save(); renderLTP();
+  toast(`Updated ${updated} live prices!`, updated > 0 ? 'ok' : 'err');
+}
+
+async function refreshSinglePrice(rowIdx, type, ticker) {
+  const btn = document.querySelector(`#ltp-row-${rowIdx} button`);
+  if (btn) btn.textContent = '⏳';
+  const yfTicker = type === 'India EQ' ? ticker+'.NS' : type === 'Crypto' ? ticker.toUpperCase()+'-INR' : ticker;
+  const price = await _fetchLivePrice(yfTicker, type);
+  if (price && price > 0) {
+    if (type === 'India EQ') { const h = S.indEQ.find(x => x.ticker === ticker); if (h) { h.ltp = price; } }
+    else if (type === 'US EQ') { const h = S.usEQ.find(x => x.ticker === ticker); if (h) { h.ltp = price; } }
+    else if (type === 'Crypto') { const c = S.crypto.find(x => x.coinId === ticker); if (c) { c.price = price; } }
+    save(); renderLTP();
+    toast(`${ticker} updated: ${price}`, 'ok');
+  } else {
+    if (btn) btn.textContent = '❌';
+    setTimeout(() => { if (btn) btn.textContent = '🔄'; }, 2000);
+    toast(`Could not fetch price for ${ticker}`, 'err');
+  }
+}
+
+async function _fetchLivePrice(ticker, type) {
+  // Try Yahoo Finance v8 via multiple CORS proxies
+  const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
+  ];
+  for (const proxyUrl of proxies) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 8000);
+      const resp = await fetch(proxyUrl, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const result = data?.chart?.result?.[0];
+      const price = result?.meta?.regularMarketPrice || result?.meta?.previousClose;
+      if (price && price > 0) return price;
+    } catch(e) { /* try next proxy */ }
+  }
+  return null;
 }
 
 /* ══════════ MODAL ══════════ */
@@ -5830,8 +6021,7 @@ function showGDrivePanel(){
 
 function cMF(f){
   const inv=f.units*f.avgNAV, cur=f.units*f.currentNAV, pl=cur-inv, r=inv>0?pl/inv*100:0;
-  const yrs=Math.max(0.01,(new Date()-new Date(f.startDate||'2020-01-01'))/(365.25*864e5));
-  const cagr=inv>0?(Math.pow(Math.max(cur/inv,0.0001),1/yrs)-1)*100:0;
+  const cagr=_safeCAGR(cur,inv,f.startDate||'2020-01-01');
   return{inv,cur,pl,r,cagr};
 }
 
@@ -6373,8 +6563,8 @@ function renderAnalysis(){
   // ── KPI cards ──
   const avgCAGR=(()=>{
     let sum=0,n=0;
-    [...S.indEQ.map(h=>cIND(h).cagr),...S.usEQ.map(h=>cUS(h).cagr),...S.mf.map(f=>cMF(f).cagr)].forEach(v=>{if(!isNaN(v)&&isFinite(v)){sum+=v;n++;}});
-    return n>0?sum/n:0;
+    [...S.indEQ.map(h=>cIND(h).cagr),...S.usEQ.map(h=>cUS(h).cagr),...S.mf.map(f=>cMF(f).cagr)].forEach(v=>{if(v!=null&&!isNaN(v)&&isFinite(v)){sum+=v;n++;}});
+    return n>0?sum/n:null;
   })();
   const bestAsset=(()=>{
     const cls=[
@@ -6388,7 +6578,7 @@ function renderAnalysis(){
   document.getElementById('ana-kpis').innerHTML=[
     {lbl:'Total Portfolio',val:F.lac(totC),c:'#1A73E8',ico:'💼',sub:F.pct(totR)+' overall return'},
     {lbl:'Total P&L',val:(totPL>=0?'+':'-')+F.lac(Math.abs(totPL)),c:totPL>=0?'var(--G)':'var(--R)',ico:totPL>=0?'📈':'📉',sub:F.pct(totR)},
-    {lbl:'Avg CAGR',val:F.pct1(avgCAGR)+' p.a.',c:avgCAGR>=0?'var(--G)':'var(--R)',ico:'📊',sub:'Across equity & MF'},
+    {lbl:'Avg CAGR',val:(avgCAGR!=null?F.pct1(avgCAGR)+' p.a.':'N/A'),c:avgCAGR!=null&&avgCAGR>=0?'var(--G)':'var(--R)',ico:'📊',sub:'Across equity & MF'},
     {lbl:'Best Performer',val:bestAsset,c:'var(--AU)',ico:'🏆',sub:'By return %'},
     {lbl:'Total Holdings',val:holdCount,c:'var(--T2)',ico:'📋',sub:'All asset classes'},
   ].map(k=>`<div class="kpi" style="--kc:${k.c}">
@@ -6555,8 +6745,9 @@ function renderAnalysis(){
 ══════════════════════════════════════════ */
 const CSV_SAMPLES = {
   indEQ: `Name,Ticker,Sector,Qty,AvgCost_INR,LTP_INR,BuyDate,Broker
-Infosys,NSE:INFY,IT,100,1200,1800,2022-01-15,Zerodha
-HDFC Bank,NSE:HDFCBANK,Banking,50,1400,1600,2021-06-10,AngelOne`,
+Infosys,INFY,IT,100,1200,1800,2022-01-15,Zerodha
+HDFC Bank,HDFCBANK,Banking,50,1400,1600,2021-06-10,AngelOne
+TCS,TCS,IT,25,3200,3800,2023-03-10,Groww`,
   usEQ: `Name,Ticker,Sector,Qty,AvgCost_USD,LTP_USD,BuyDate,InvestedINR
 Apple Inc,NASDAQ:AAPL,Technology,5,150.00,220.00,2022-03-01,85000
 Microsoft,NASDAQ:MSFT,Technology,3,280.00,420.00,2021-09-15,70000`,
@@ -6597,9 +6788,15 @@ function importCSV(cls, inp) {
       const getN = (...keys) => parseFloat(get(...keys)) || 0;
       try {
         if (cls === 'indEQ') {
-          const name=get('name'), ticker=get('ticker'), qty=getN('qty'), cost=getN('avgcost_inr','avgcost','cost');
-          if (!name||!qty||!cost) { errors.push(`Row ${i+2}: missing Name/Qty/AvgCost`); return; }
-          S.indEQ.push({id:uid(),name,ticker:ticker||name,sector:get('sector')||'Other',qty,avgCost:cost,ltp:getN('ltp_inr','ltp')||cost,buyDate:get('buydate','date')||today(),broker:get('broker')||''});
+          // Support both standard format AND Trendlyne export format
+          const name = get('name','stock','scrip','symbol') || get('stock');
+          const ticker = get('ticker','stock','scrip','symbol');
+          const qty = getN('qty','quantity');
+          const cost = getN('avgcost_inr','avgcost','cost','avg buy price','average price','avg_buy_price','avgbuyprice');
+          const ltp = getN('ltp_inr','ltp','last price','current price') || cost;
+          if (!name || !qty || !cost) { errors.push(`Row ${i+2}: missing Name/Qty/AvgCost`); return; }
+          const cleanTicker = (ticker || name).replace(/\.NS$|\.BO$/i,'').replace(/^NSE:|^BSE:/i,'').trim();
+          S.indEQ.push({id:uid(),name:name,ticker:cleanTicker,sector:get('sector','industry')||'Other',qty,avgCost:cost,ltp:ltp||cost,buyDate:get('buydate','date','purchase date')||today(),broker:get('broker','exchange')||''});
           added++;
         } else if (cls === 'usEQ') {
           const name=get('name'), ticker=get('ticker'), qty=getN('qty'), cost=getN('avgcost_usd','avgcost','cost');
@@ -6634,6 +6831,48 @@ function importCSV(cls, inp) {
   };
   r.readAsText(file); inp.value = '';
 }
+
+function importTrendlyne(inp) {
+  const file = inp.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    const lines = e.target.result.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) { toast('Empty CSV','err'); return; }
+    const raw = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9%()]/g,''));
+    // Detect Trendlyne format: has "avgbuyprice" or "stock"
+    const isTrendlyne = raw.some(h => h.includes('avgbuyprice') || h.includes('avginvestprice'));
+    const headers = raw;
+    const get = (line, ...keys) => {
+      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+      for (const k of keys) {
+        const idx = headers.findIndex(h => h.includes(k));
+        if (idx >= 0 && vals[idx] !== undefined && vals[idx] !== '') return vals[idx];
+      }
+      return '';
+    };
+    const getN = (line, ...keys) => parseFloat(get(line, ...keys)) || 0;
+    let added = 0, errors = [];
+    lines.slice(1).forEach((line, i) => {
+      try {
+        const name   = get(line, 'stock','scrip','companyname','name');
+        const qty    = getN(line, 'qty','quantity');
+        const cost   = getN(line, 'avgbuyprice','avginvestprice','averageprice','avgbuy');
+        const ltp    = getN(line, 'ltp','currentprice','lastprice') || cost;
+        const sector = get(line, 'sector','industry') || 'Other';
+        if (!name || !qty || !cost) { errors.push(`Row ${i+2}: missing data`); return; }
+        // Clean ticker: remove .NS/.BO suffix
+        const rawTicker = get(line,'ticker','symbol','stock').replace(/\.NS$|\.BO$/i,'').trim() || name;
+        S.indEQ.push({ id:uid(), name, ticker:rawTicker, sector, qty, avgCost:cost, ltp, buyDate:today(), broker:'Trendlyne Import' });
+        added++;
+      } catch(ex) { errors.push(`Row ${i+2}: ${ex.message}`); }
+    });
+    save(); renderAll();
+    toast(`Trendlyne: Imported ${added} holdings${errors.length?' ('+errors.length+' skipped)':''}`, added>0?'ok':'err');
+    inp.value = '';
+  };
+  r.readAsText(file);
+}
+
 function csvMsg(type, html) {
   const bg=type==='ok'?'var(--GL)':'var(--RL)', c=type==='ok'?'var(--G)':'var(--R)';
   return `<div style="padding:8px 12px;background:${bg};border-radius:var(--r3);font-size:12px;color:${c}">${html}</div>`;
