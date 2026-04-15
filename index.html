@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vipin's StockAIPro Analyser</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -1356,8 +1357,48 @@ td.r{text-align:right}
           <button class="chart-tab"        id="ct-volume"  onclick="switchChart('volume',this)">Volume</button>
           <button class="chart-tab"        id="ct-bb"      onclick="switchChart('bb',this)">Bollinger</button>
         </div>
-        <div style="position:relative;height:440px;">
-          <canvas id="mainChart"></canvas>
+        <div style="position:relative;">
+          <!-- LightweightCharts (Candlestick mode) -->
+          <div id="lw-container" style="display:none;width:100%;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;position:relative;">
+            <!-- Floating OHLC tooltip -->
+            <div id="lw-tooltip" style="position:absolute;top:10px;left:12px;z-index:100;pointer-events:none;background:rgba(19,23,34,0.88);border:1px solid #363c4e;border-radius:5px;padding:8px 12px;font-size:11.5px;color:#d1d4dc;font-family:'JetBrains Mono',monospace;min-width:160px;display:none;">
+              <div style="font-weight:700;color:#fff;margin-bottom:5px;font-family:'Space Grotesk',sans-serif;" id="lw-tt-date"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
+                <span style="color:#94a3b8;">O</span><span id="lw-tt-o" style="color:#fff;font-weight:600;"></span>
+                <span style="color:#94a3b8;">H</span><span id="lw-tt-h" style="color:#26a69a;font-weight:600;"></span>
+                <span style="color:#94a3b8;">L</span><span id="lw-tt-l" style="color:#ef5350;font-weight:600;"></span>
+                <span style="color:#94a3b8;">C</span><span id="lw-tt-c" style="color:#fff;font-weight:700;"></span>
+              </div>
+              <div style="border-top:1px solid #363c4e;margin-top:6px;padding-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
+                <span style="color:#f59e0b;font-size:10.5px;">SMA20</span><span id="lw-tt-s20" style="color:#f59e0b;font-weight:600;font-size:10.5px;"></span>
+                <span style="color:#3b82f6;font-size:10.5px;">SMA50</span><span id="lw-tt-s50" style="color:#3b82f6;font-weight:600;font-size:10.5px;"></span>
+              </div>
+              <div style="border-top:1px solid #363c4e;margin-top:5px;padding-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
+                <span style="color:#f59e0b;font-size:10.5px;">MACD</span><span id="lw-tt-macd" style="color:#f59e0b;font-weight:600;font-size:10.5px;"></span>
+                <span style="color:#ef4444;font-size:10.5px;">Signal</span><span id="lw-tt-sig" style="color:#ef4444;font-weight:600;font-size:10.5px;"></span>
+              </div>
+            </div>
+            <!-- Legend bar -->
+            <div style="display:flex;gap:14px;align-items:center;padding:6px 12px;background:rgba(19,23,34,0.6);font-size:11px;border-bottom:1px solid #363c4e;flex-wrap:wrap;">
+              <span style="color:#26a69a;font-weight:700;">■ Bull</span>
+              <span style="color:#ef5350;font-weight:700;">■ Bear</span>
+              <span style="color:#f59e0b;">── SMA 20</span>
+              <span style="color:#3b82f6;">── SMA 50</span>
+              <span style="color:rgba(255,255,255,.3);font-size:10px;margin-left:auto;">Scroll to zoom · Drag to pan</span>
+            </div>
+            <div id="lw-chart-main" style="height:295px;"></div>
+            <div style="padding:4px 12px;background:rgba(19,23,34,0.8);font-size:10px;color:#64748b;border-top:1px solid #363c4e;display:flex;gap:14px;align-items:center;">
+              <span style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">MACD (12,26,9)</span>
+              <span style="color:#f59e0b;">── MACD</span>
+              <span style="color:#ef4444;">── Signal</span>
+              <span style="color:rgba(38,166,154,0.7);">■ Histogram</span>
+            </div>
+            <div id="lw-chart-macd" style="height:110px;"></div>
+          </div>
+          <!-- Chart.js canvas (all other chart modes) -->
+          <div style="position:relative;height:440px;">
+            <canvas id="mainChart"></canvas>
+          </div>
         </div>
         <!-- Chart plain-English interpretation -->
         <div id="chartInterpretation" style="margin-top:14px;padding:14px 16px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent);font-size:13px;line-height:1.7;color:var(--text2);"></div>
@@ -3235,19 +3276,20 @@ async function fetchSymbolData() {
   const btn = document.getElementById('fetchBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Fetching...';
+  st.innerHTML = `<div class="alert alert-warning" style="align-items:center;gap:8px;">
+    <div class="loading-spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
+    Trying <strong>${strategies.length} sources simultaneously</strong> for <strong>${yahooSym}</strong> — using fastest response...
+  </div>`;
 
-  for (let i = 0; i < strategies.length; i++) {
-    const strat = strategies[i];
-    st.innerHTML = `<div class="alert alert-warning" style="align-items:center;gap:8px;">
-      <div class="loading-spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
-      Attempt ${i+1}/${strategies.length} — ${strat.label} · <strong>${strat.src==='av'?sym+avSuffix:yahooSym}</strong>...
-    </div>`;
-
-    try {
+  // ── Helper: attempt one strategy, resolve with {rows, strat} or reject ──
+  async function _tryOne(strat) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(strat.url, { signal: controller.signal });
-      clearTimeout(timer);
+      const timer = setTimeout(() => controller.abort(), 6000); // 6s per source
+      let res;
+      try {
+        res = await fetch(strat.url, { signal: controller.signal });
+      } finally { clearTimeout(timer); }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       let rows;
@@ -3334,40 +3376,42 @@ async function fetchSymbolData() {
       }
 
       if (!rows || rows.length < 10) throw new Error(`Too few rows: ${rows?.length || 0}`);
+      return { rows, strat };
+  } // end _tryOne
 
-      parsedData = rows;
-      const latestClose = parseFloat(parsedData[parsedData.length-1]['Close Price']);
-      const companyName = selectedStockEntry ? selectedStockEntry[0] : sym;
-      const srcShort    = strat.label.split(' (')[0];
-      const srcIcon     = strat.src === 'av' ? '🔑' : strat.src === 'stooq' ? '📊' : '📡';
-      document.getElementById('companyName').value  = companyName;
-      document.getElementById('stockSymbol').value  = sym;
-      document.getElementById('currentPrice').value = latestClose.toFixed(2);
-      document.getElementById('marketSelect').value = exch;
-      uploadedFiles = [{ name:`${yahooSym}_live.csv`, size:parsedData.length*50 }];
-      document.getElementById('fileList').innerHTML = `<div class="file-item"><div class="file-item-info">${srcIcon} <span>${companyName} (${yahooSym}) — <strong>${parsedData.length} days</strong> via ${srcShort}</span> <span style="color:var(--green)">✓ Live</span></div></div>`;
-      st.innerHTML = `<div class="alert alert-success">✅ <strong>${srcShort}</strong>: fetched <strong>${parsedData.length} trading days</strong> for <strong>${companyName}</strong>. Latest close: ₹${latestClose.toFixed(2)}. Click Run Analysis!</div>`;
-      checkReady();
-      btn.disabled = false; btn.textContent = '📡 Fetch';
-      return;
+  // ── Race ALL strategies in parallel — use whichever wins ─────────────────
+  try {
+    const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s)));
 
-    } catch(err) {
-      console.warn(`[Fetch] Strategy ${i+1}/${strategies.length} (${strat.label}) failed:`, err.message);
-      if (i === strategies.length - 1) {
-        const avHint = (avApiKey || isCryptoMode) ? '' : `<br><small>• 🔑 <b>Best fix:</b> <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Get a free Alpha Vantage API key →</a> and paste it above — bypasses all proxy issues</small>`;
-        const modeHints = {
-          india:  `<br><small>• Symbol: NSE code only — e.g., <b>SUZLON</b>, <b>TATAMOTORS</b>, <b>INFY</b> (no suffix)</small><br><small>• Try switching exchange (NSE ↔ BSE)</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download CSV from NSE →</a> and use Upload tab</small>`,
-          us:     `<br><small>• Symbol: US ticker only — e.g., <b>AAPL</b>, <b>TSLA</b>, <b>MSFT</b>, <b>NVDA</b> (no suffix, no exchange)</small><br><small>• Manual fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Download CSV from Yahoo Finance →</a> then upload via CSV tab</small>`,
-          crypto: `<br><small>• Use exact symbols: <b>BTC-USD</b>, <b>ETH-USD</b>, <b>SOL-USD</b>, <b>BNB-USD</b>, <b>XRP-USD</b></small><br><small>• Manual fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Download CSV from Yahoo Finance →</a> then upload via CSV tab</small>`,
-        };
-        st.innerHTML = `<div class="alert alert-error">❌ All ${strategies.length} fetch attempts failed for <strong>${yahooSym}</strong>.
-          ${avHint}
-          ${modeHints[marketMode] || modeHints.india}
-          <br><small>• Running as <code>file://</code>? Try: <code>python -m http.server 8080</code> → open <code>http://localhost:8080</code></small>
-        </div>`;
-      }
-    }
+    parsedData = rows;
+    const latestClose = parseFloat(parsedData[parsedData.length-1]['Close Price']);
+    const companyName = selectedStockEntry ? selectedStockEntry[0] : sym;
+    const srcShort    = strat.label.split(' (')[0];
+    const srcIcon     = strat.src === 'av' ? '🔑' : strat.src === 'stooq' ? '📊' : '📡';
+    document.getElementById('companyName').value  = companyName;
+    document.getElementById('stockSymbol').value  = sym;
+    document.getElementById('currentPrice').value = latestClose.toFixed(2);
+    document.getElementById('marketSelect').value = exch;
+    uploadedFiles = [{ name:`${yahooSym}_live.csv`, size:parsedData.length*50 }];
+    document.getElementById('fileList').innerHTML = `<div class="file-item"><div class="file-item-info">${srcIcon} <span>${companyName} (${yahooSym}) — <strong>${parsedData.length} days</strong> via ${srcShort}</span> <span style="color:var(--green)">✓ Live</span></div></div>`;
+    st.innerHTML = `<div class="alert alert-success">✅ <strong>${srcShort}</strong>: fetched <strong>${parsedData.length} trading days</strong> for <strong>${companyName}</strong>. Latest close: ${CUR()}${latestClose.toFixed(2)}. Click Run Analysis!</div>`;
+    checkReady();
+
+  } catch(aggErr) {
+    // All strategies failed
+    const avHint = (avApiKey || isCryptoMode) ? '' : `<br><small>• 🔑 <b>Best fix:</b> <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Get a free Alpha Vantage API key →</a> — bypasses all proxy issues</small>`;
+    const modeHints = {
+      india:  `<br><small>• Symbol: NSE code — e.g., <b>RELIANCE</b>, <b>INFY</b>, <b>TCS</b> (no suffix)</small><br><small>• Try switching NSE ↔ BSE</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download CSV from NSE →</a></small>`,
+      us:     `<br><small>• Symbol: US ticker — e.g., <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Download from Yahoo Finance →</a> then use CSV Upload tab</small>`,
+      crypto: `<br><small>• Use: <b>BTC-USD</b>, <b>ETH-USD</b>, <b>SOL-USD</b></small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Download from Yahoo Finance →</a></small>`,
+    };
+    st.innerHTML = `<div class="alert alert-error">❌ All ${strategies.length} sources failed for <strong>${yahooSym}</strong> (tried in parallel, 6s limit each).
+      ${avHint}
+      ${modeHints[marketMode] || modeHints.india}
+      <br><small>• Check your internet connection · If using <code>file://</code>, open via <code>http://localhost:8080</code> instead</small>
+    </div>`;
   }
+
   btn.disabled = false; btn.textContent = '📡 Fetch';
 }
 
@@ -4250,9 +4294,146 @@ function switchChart(type, el) {
 
 function buildChart(type) {
   if (mainChartInstance) { mainChartInstance.destroy(); mainChartInstance = null; }
+
+  const { data, closes, sma20, sma50, sma200, rsi, macd, bb } = analysisResult;
+
+  // ── LightweightCharts Candlestick Mode ──────────────────────────────────────
+  if (type === 'candle') {
+    document.getElementById('lw-container').style.display = 'block';
+    document.getElementById('mainChart').parentElement.style.display = 'none';
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const bg     = isDark ? '#131722' : '#f8fafc';
+    const txtC   = isDark ? '#d1d4dc' : '#334155';
+    const gridC  = isDark ? 'rgba(42,46,57,0.3)' : 'rgba(0,0,0,0.05)';
+    const bdC    = isDark ? '#363c4e' : '#e2e8f0';
+
+    const mainEl = document.getElementById('lw-chart-main');
+    const macdEl = document.getElementById('lw-chart-macd');
+
+    const commonOpts = (showTime) => ({
+      layout: { background:{color:bg}, textColor:txtC },
+      grid:   { vertLines:{color:gridC}, horzLines:{color:gridC} },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      rightPriceScale: { borderColor:bdC, scaleMargins:{top:0.08, bottom:0.02} },
+      timeScale: { borderColor:bdC, timeVisible:showTime, secondsVisible:false, fixLeftEdge:true, fixRightEdge:true },
+      handleScroll: true, handleScale: true,
+    });
+
+    const lwMain = LightweightCharts.createChart(mainEl, { ...commonOpts(false), width:mainEl.clientWidth, height:mainEl.clientHeight });
+    const lwMacd = LightweightCharts.createChart(macdEl, { ...commonOpts(true),  width:macdEl.clientWidth, height:macdEl.clientHeight });
+
+    // ── Candlestick series ────────────────────────────────────────────────────
+    const candleSeries = lwMain.addCandlestickSeries({
+      upColor:'#26a69a', downColor:'#ef5350', borderVisible:false,
+      wickUpColor:'#26a69a', wickDownColor:'#ef5350',
+    });
+
+    // Use last 120 candles
+    const sl = Math.max(0, data.length - 120);
+    const sd = data.slice(sl);
+
+    const toTs = d => Math.floor(d.date.getTime() / 1000);
+
+    candleSeries.setData(sd.map(d => ({ time:toTs(d), open:d.open, high:d.high, low:d.low, close:d.close })));
+
+    // ── SMA overlays ─────────────────────────────────────────────────────────
+    const mkLine = (color, width=1.5) => lwMain.addLineSeries({ color, lineWidth:width, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+
+    const s20s = mkLine('#f59e0b', 1.5);
+    const s50s = mkLine('#3b82f6', 1.5);
+
+    s20s.setData(sd.map((d,i) => { const v=sma20[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    s50s.setData(sd.map((d,i) => { const v=sma50[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+
+    // ── MACD histogram ────────────────────────────────────────────────────────
+    const histSeries = lwMacd.addHistogramSeries({
+      color:'#26a69a', priceScaleId:'right',
+      priceFormat:{type:'price',precision:4,minMove:0.0001},
+      scaleMargins:{top:0.1, bottom:0.1},
+    });
+    histSeries.setData(sd.map((d,i) => {
+      const v = macd.histogram[sl+i];
+      if (v == null) return null;
+      return { time:toTs(d), value:v, color: v>=0 ? 'rgba(38,166,154,0.65)' : 'rgba(239,83,80,0.65)' };
+    }).filter(Boolean));
+
+    // ── MACD line ─────────────────────────────────────────────────────────────
+    const macdLineSeries = lwMacd.addLineSeries({ color:'#f59e0b', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+    macdLineSeries.setData(sd.map((d,i) => { const v=macd.macdLine[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+
+    // ── Signal line ───────────────────────────────────────────────────────────
+    const signalSeries = lwMacd.addLineSeries({ color:'#ef4444', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+    signalSeries.setData(sd.map((d,i) => { const v=macd.signalLine[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+
+    // ── Sync scroll/zoom between panes ────────────────────────────────────────
+    let _sync = false;
+    lwMain.timeScale().subscribeVisibleLogicalRangeChange(r => { if(_sync||!r)return;_sync=true;lwMacd.timeScale().setVisibleLogicalRange(r);_sync=false; });
+    lwMacd.timeScale().subscribeVisibleLogicalRangeChange(r => { if(_sync||!r)return;_sync=true;lwMain.timeScale().setVisibleLogicalRange(r);_sync=false; });
+
+    // ── Crosshair tooltip ─────────────────────────────────────────────────────
+    const tt = document.getElementById('lw-tooltip');
+    const _id = id => document.getElementById(id);
+
+    function _fmtPrice(v) { return v != null ? CUR() + v.toFixed(2) : '—'; }
+
+    lwMain.subscribeCrosshairMove(p => {
+      if (!p.time || !p.point || p.point.x < 0 || p.point.y < 0) { tt.style.display='none'; return; }
+      const c = p.seriesData.get(candleSeries);
+      const s20v = p.seriesData.get(s20s);
+      const s50v = p.seriesData.get(s50s);
+      if (!c) { tt.style.display='none'; return; }
+      tt.style.display = 'block';
+      const dt = new Date(p.time * 1000);
+      _id('lw-tt-date').textContent = dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      _id('lw-tt-o').textContent = _fmtPrice(c.open);
+      _id('lw-tt-h').textContent = _fmtPrice(c.high);
+      _id('lw-tt-l').textContent = _fmtPrice(c.low);
+      _id('lw-tt-c').textContent = _fmtPrice(c.close);
+      _id('lw-tt-s20').textContent = s20v ? _fmtPrice(s20v.value) : '—';
+      _id('lw-tt-s50').textContent = s50v ? _fmtPrice(s50v.value) : '—';
+    });
+
+    lwMacd.subscribeCrosshairMove(p => {
+      const ml = p.seriesData.get(macdLineSeries);
+      const sl2 = p.seriesData.get(signalSeries);
+      _id('lw-tt-macd').textContent = ml ? ml.value.toFixed(4) : '—';
+      _id('lw-tt-sig').textContent  = sl2 ? sl2.value.toFixed(4) : '—';
+    });
+
+    // ── Responsive resize ─────────────────────────────────────────────────────
+    const _lwResizeObs = new ResizeObserver(() => {
+      lwMain.applyOptions({ width: mainEl.clientWidth });
+      lwMacd.applyOptions({ width: macdEl.clientWidth });
+    });
+    _lwResizeObs.observe(mainEl);
+
+    lwMain.timeScale().fitContent();
+
+    mainChartInstance = {
+      _lwMain: lwMain, _lwMacd: lwMacd, _obs: _lwResizeObs,
+      destroy() {
+        try { _lwResizeObs.disconnect(); } catch(e) {}
+        try { lwMain.remove(); } catch(e) {}
+        try { lwMacd.remove(); } catch(e) {}
+        document.getElementById('lw-container').style.display = 'none';
+        document.getElementById('mainChart').parentElement.style.display = 'block';
+        document.getElementById('lw-tooltip').style.display = 'none';
+      },
+      resetZoom() { lwMain.timeScale().fitContent(); lwMacd.timeScale().fitContent(); }
+    };
+
+    const interp = CHART_INTERPRET['candle'];
+    document.getElementById('chartInterpretation').innerHTML = interp ? interp(analysisResult) : '';
+    return; // ← don't fall through to Chart.js
+  }
+
+  // ── All other chart types — Chart.js ────────────────────────────────────────
+  document.getElementById('lw-container').style.display = 'none';
+  document.getElementById('mainChart').parentElement.style.display = 'block';
+
   const canvas = document.getElementById('mainChart');
   const ctx = canvas.getContext('2d');
-  const { data, closes, sma20, sma50, sma200, rsi, macd, bb } = analysisResult;
 
   // Show last 60 candles by default (zoom in to see more detail)
   const defaultView = 60;
