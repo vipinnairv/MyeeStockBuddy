@@ -243,6 +243,34 @@ canvas{max-width:100%;}
 .ai-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1.5s infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
 .ai-response{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;font-size:14px;line-height:1.7;color:var(--text2);min-height:80px;}
+/* AI MODE TOGGLE */
+.ai-mode-toggle{display:flex;gap:0;border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-bottom:12px;}
+.ai-mode-btn{flex:1;padding:8px 12px;background:transparent;border:none;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;letter-spacing:.3px;}
+.ai-mode-btn.active{background:var(--accent);color:#0a0e1a;}
+.ai-mode-btn:not(.active):hover{background:var(--surface2);}
+/* AI JSON CARD OUTPUT */
+.ai-json-card{border-radius:10px;overflow:hidden;border:1px solid var(--border2);}
+.ai-verdict-banner{padding:16px 20px;display:flex;align-items:center;gap:14px;font-size:15px;font-weight:700;}
+.ai-verdict-buy{background:linear-gradient(135deg,rgba(16,185,129,.18),rgba(16,185,129,.06));border-bottom:1px solid rgba(16,185,129,.25);color:var(--green);}
+.ai-verdict-sell{background:linear-gradient(135deg,rgba(239,68,68,.18),rgba(239,68,68,.06));border-bottom:1px solid rgba(239,68,68,.25);color:var(--red);}
+.ai-verdict-hold{background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border-bottom:1px solid rgba(245,158,11,.25);color:var(--accent);}
+.ai-body{padding:16px 18px;background:var(--surface2);display:grid;gap:14px;}
+.ai-field{display:flex;flex-direction:column;gap:4px;}
+.ai-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);}
+.ai-field-value{font-size:13px;color:var(--text);line-height:1.6;}
+.ai-trade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:14px 18px;background:var(--surface);}
+.ai-trade-cell{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.ai-trade-cell-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;}
+.ai-trade-cell-val{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.ai-detail-section{padding:14px 18px;background:var(--surface2);border-top:1px solid var(--border);}
+.ai-detail-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.ai-detail-text{font-size:13px;color:var(--text2);line-height:1.65;}
+.ai-caution{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--accent);display:flex;gap:8px;align-items:flex-start;margin:0 18px 16px;}
+/* STICKY DISCLAIMER BANNER */
+.sticky-disclaimer{position:sticky;top:46px;z-index:98;background:rgba(30,41,59,0.97);border-bottom:1px solid rgba(245,158,11,.2);border-top:1px solid rgba(245,158,11,.15);padding:5px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;backdrop-filter:blur(8px);font-size:11px;color:rgba(148,163,184,.9);}
+[data-theme="light"] .sticky-disclaimer{background:rgba(255,255,255,.97);border-color:rgba(245,158,11,.25);}
+.sticky-disclaimer strong{color:var(--accent);}
+.sticky-disclaimer-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;flex-shrink:0;}
 .ai-response.loading{display:flex;align-items:center;justify-content:center;gap:8px;}
 .ai-advanced{margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .api-key-input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;width:280px;}
@@ -1349,7 +1377,12 @@ td.r{text-align:right}
 
     <!-- RESULTS SECTION -->
     <div id="resultsSection" style="display:none;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <!-- Sticky Educational Disclaimer Banner -->
+      <div class="sticky-disclaimer" id="stickyDisclaimer">
+        <span>⚠️ <strong>Educational Tool Only</strong> — Not financial advice. This AI & rule-based analysis does not account for macro-economic events, news, or fundamentals. <strong>Past performance ≠ future results.</strong> Consult a SEBI/licensed advisor before investing.</span>
+        <button class="sticky-disclaimer-close" onclick="document.getElementById('stickyDisclaimer').style.display='none'" title="Dismiss">✕</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;margin-top:16px;">
         <div>
           <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
           <p style="font-size:13px;color:var(--text3);" id="resultsSubtitle">Technical analysis complete</p>
@@ -1448,23 +1481,38 @@ td.r{text-align:right}
       <div class="ai-section" style="margin-bottom:24px;">
         <div class="ai-header">
           <div class="ai-badge"><div class="dot"></div><span>AI Analyst</span><span id="aiEngine" style="font-size:11px;color:var(--text3);font-weight:400;margin-left:4px;"></span></div>
-          <button class="btn btn-outline btn-sm" onclick="openAIConfig()" style="font-size:12px;">⚙️ Configure API Keys</button>
+          <button class="btn btn-outline btn-sm" onclick="openAIConfig()" style="font-size:12px;">⚙️ API Keys</button>
         </div>
-        <!-- Engine selector (no key inputs here — keys are in the modal) -->
+
+        <!-- Engine + Mode selector -->
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">Choose AI Engine</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="ai-engine-btn active" onclick="selectEngine(this,'builtin')">🤖 Built-in (Free)</button>
-            <button class="ai-engine-btn" onclick="selectEngine(this,'groq')">⚡ Groq (Free)</button>
-            <button class="ai-engine-btn" onclick="selectEngine(this,'gemini')">🌟 Gemini (Free)</button>
-            <button class="ai-engine-btn" onclick="selectEngine(this,'openai')">🟢 OpenAI</button>
-            <button class="ai-engine-btn premium" onclick="selectEngine(this,'claude')">👑 Claude (Paid)</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;">AI Engine</div>
+            <!-- Analysis Mode Toggle -->
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:var(--text3);font-weight:600;">Mode:</span>
+              <div class="ai-mode-toggle">
+                <button class="ai-mode-btn active" id="modeSimpleBtn" onclick="selectAIMode('simple')">⚡ Simple</button>
+                <button class="ai-mode-btn" id="modeDetailedBtn" onclick="selectAIMode('detailed')">🔬 Detailed</button>
+              </div>
+            </div>
           </div>
-          <div id="engineHint" style="font-size:12px;color:var(--text3);margin-top:10px;">No API key needed — built-in rule-based engine. Click Generate Insights.</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="ai-engine-btn active" onclick="selectEngine(this,'builtin')">🤖 Built-in</button>
+            <button class="ai-engine-btn" onclick="selectEngine(this,'groq')">⚡ Groq</button>
+            <button class="ai-engine-btn" onclick="selectEngine(this,'gemini')">🌟 Gemini</button>
+            <button class="ai-engine-btn" onclick="selectEngine(this,'openai')">🟢 OpenAI</button>
+            <button class="ai-engine-btn premium" onclick="selectEngine(this,'claude')">👑 Claude</button>
+          </div>
+          <div id="engineHint" style="font-size:12px;color:var(--text3);margin-top:8px;">🤖 Built-in rule-based engine — no API key needed.</div>
+          <div id="modeHint" style="font-size:11.5px;color:var(--text3);margin-top:4px;opacity:.8;">⚡ <strong>Simple</strong> — Verdict, entry, stop-loss & risk:reward in plain English.</div>
         </div>
-        <button class="btn btn-primary" onclick="runAIAnalysis()" style="width:100%;margin-bottom:12px;padding:14px;font-size:15px;">🧠 Generate AI Insights</button>
-        <div class="ai-response" id="aiResponse">
-          <span style="color:var(--text3);">Select an AI engine and click Generate Insights for a plain-English analysis of your stock.</span>
+
+        <button class="btn btn-primary" onclick="runAIAnalysis()" style="width:100%;margin-bottom:12px;padding:13px;font-size:15px;" id="aiRunBtn">🧠 Generate AI Insights</button>
+        <div id="aiResponse">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;color:var(--text3);font-size:13px;">
+            Choose an engine and mode above, then click <strong>Generate AI Insights</strong>.
+          </div>
         </div>
       </div>
 
@@ -1511,7 +1559,7 @@ td.r{text-align:right}
         <div style="font-size:11px;color:var(--green);">Model: llama-3.3-70b-versatile · 100% Free</div></div>
         <a href="https://console.groq.com" target="_blank" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;border:1px solid rgba(245,158,11,0.3);padding:3px 8px;border-radius:4px;">Get Key →</a>
       </div>
-      <input class="form-input" id="groqKey" type="password" placeholder="gsk_..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveKeyToSession('groq',this.value)" />
+      <input class="form-input" id="groqKey" type="password" placeholder="gsk_..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveAIKey('groq',this.value)" />
       <div id="groqStatus" style="font-size:11px;margin-top:4px;color:var(--text3);"></div>
     </div>
 
@@ -1523,7 +1571,7 @@ td.r{text-align:right}
         <div style="font-size:11px;color:var(--green);">Model: gemini-1.5-flash · 15 req/min free</div></div>
         <a href="https://aistudio.google.com/app/apikey" target="_blank" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;border:1px solid rgba(245,158,11,0.3);padding:3px 8px;border-radius:4px;">Get Key →</a>
       </div>
-      <input class="form-input" id="geminiKey" type="password" placeholder="AIza..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveKeyToSession('gemini',this.value)" />
+      <input class="form-input" id="geminiKey" type="password" placeholder="AIza..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveAIKey('gemini',this.value)" />
     </div>
 
     <!-- OpenAI -->
@@ -1534,7 +1582,7 @@ td.r{text-align:right}
         <div style="font-size:11px;color:var(--text3);">~$0.001 per analysis · Excellent quality</div></div>
         <a href="https://platform.openai.com/api-keys" target="_blank" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;border:1px solid rgba(245,158,11,0.3);padding:3px 8px;border-radius:4px;">Get Key →</a>
       </div>
-      <input class="form-input" id="openaiKey" type="password" placeholder="sk-..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveKeyToSession('openai',this.value)" />
+      <input class="form-input" id="openaiKey" type="password" placeholder="sk-..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;" oninput="saveAIKey('openai',this.value)" />
     </div>
 
     <!-- Claude -->
@@ -1545,7 +1593,7 @@ td.r{text-align:right}
         <div style="font-size:11px;color:var(--purple);">Institutional-grade · Pay per use</div></div>
         <a href="https://console.anthropic.com" target="_blank" style="margin-left:auto;font-size:11px;color:var(--purple);text-decoration:none;border:1px solid rgba(139,92,246,0.3);padding:3px 8px;border-radius:4px;">Get Key →</a>
       </div>
-      <input class="form-input" id="claudeKey" type="password" placeholder="sk-ant-..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;border-color:rgba(139,92,246,0.3);" oninput="saveKeyToSession('claude',this.value)" />
+      <input class="form-input" id="claudeKey" type="password" placeholder="sk-ant-..." style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;border-color:rgba(139,92,246,0.3);" oninput="saveAIKey('claude',this.value)" />
     </div>
 
     <button class="btn btn-primary" onclick="closeAIConfig()" style="width:100%;">✅ Save & Close</button>
@@ -4759,68 +4807,379 @@ function buildChart(type) {
 function rebuildChart(t) { if (analysisResult) buildChart(t); }
 
 // ============================================================
+// AI KEY MANAGEMENT — localStorage (persists across sessions)
+// ============================================================
+function saveAIKey(engine, val) {
+  const trimmed = val.trim();
+  try {
+    if (trimmed) localStorage.setItem('aikey_' + engine, trimmed);
+    else         localStorage.removeItem('aikey_' + engine);
+  } catch(e) {}
+  _updateAIKeyStatus(engine);
+}
+
+function getKey(engine) {
+  const el = document.getElementById(engine + 'Key');
+  return (el?.value?.trim()) || localStorage.getItem('aikey_' + engine) || '';
+}
+
+function _updateAIKeyStatus(engine) {
+  const el = document.getElementById(engine + 'Status');
+  if (!el) return;
+  const k = getKey(engine);
+  el.textContent = k ? `✓ Key saved (${k.slice(0,6)}…${k.slice(-4)})` : '';
+  el.style.color  = k ? 'var(--green)' : 'var(--text3)';
+}
+
+// ── Restore all keys from localStorage on page load ──────────
+document.addEventListener('DOMContentLoaded', () => {
+  ['groq','gemini','openai','claude'].forEach(e => {
+    const k = localStorage.getItem('aikey_' + e);
+    const el = document.getElementById(e + 'Key');
+    if (k && el) el.value = k;
+    _updateAIKeyStatus(e);
+  });
+  // Restore last selected engine
+  const eng = localStorage.getItem('aiSelectedEngine') || 'builtin';
+  const btn = document.querySelector(`.ai-engine-btn[onclick*="'${eng}'"]`);
+  if (btn) selectEngine(btn, eng);
+  // Restore analysis mode
+  const mode = localStorage.getItem('aiAnalysisMode') || 'simple';
+  selectAIMode(mode);
+});
+
+// ============================================================
 // AI CONFIG MODAL
 // ============================================================
 function openAIConfig() {
-  const modal = document.getElementById('aiConfigModal');
-  modal.style.display = 'flex';
-  // Restore session keys into inputs
+  document.getElementById('aiConfigModal').style.display = 'flex';
   ['groq','gemini','openai','claude'].forEach(e => {
-    const k = sessionStorage.getItem('aikey_'+e);
-    const el = document.getElementById(e+'Key');
+    const k = localStorage.getItem('aikey_' + e);
+    const el = document.getElementById(e + 'Key');
     if (k && el && !el.value) el.value = k;
+    _updateAIKeyStatus(e);
   });
 }
 function closeAIConfig() { document.getElementById('aiConfigModal').style.display = 'none'; }
-document.getElementById('aiConfigModal').addEventListener('click', e => { if (e.target === document.getElementById('aiConfigModal')) closeAIConfig(); });
-
-function saveKeyToSession(engine, val) {
-  if (val) sessionStorage.setItem('aikey_'+engine, val);
-  else sessionStorage.removeItem('aikey_'+engine);
-}
-
-// Restore keys on page load
-['groq','gemini','openai','claude'].forEach(e => {
-  const k = sessionStorage.getItem('aikey_'+e);
-  if (k) { const el = document.getElementById(e+'Key'); if (el) el.value = k; }
+document.getElementById('aiConfigModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('aiConfigModal')) closeAIConfig();
 });
 
-const ENGINE_HINTS = {
-  builtin: 'No API key needed — built-in rule-based engine. Click Generate Insights.',
-  groq:    '⚡ Groq llama-3.3-70b — 100% free. Get key at console.groq.com. Click ⚙️ Configure to add key.',
-  gemini:  '🌟 Gemini 1.5 Flash — generous free tier. Get key at aistudio.google.com.',
-  openai:  '🟢 GPT-4o-mini — low cost ~$0.001/query. Get key at platform.openai.com.',
-  claude:  '👑 Claude Sonnet 4 — deepest analysis. Get key at console.anthropic.com.',
-};
+// ── Legacy stub — keeps any stray callers from crashing ──────
+function saveKeyToSession(engine, val) { saveAIKey(engine, val); }
 
 // ============================================================
-// AI ENGINE SELECTOR
+// AI ENGINE + MODE SELECTOR
 // ============================================================
+const ENGINE_HINTS = {
+  builtin: '🤖 Built-in rule-based engine — no API key needed.',
+  groq:    '⚡ Groq llama-3.3-70b — 100% free JSON output. Get key at console.groq.com.',
+  gemini:  '🌟 Gemini 2.0 Flash — generous free tier. Get key at aistudio.google.com.',
+  openai:  '🟢 GPT-4o-mini — ~$0.001/query, structured JSON output. Get key at platform.openai.com.',
+  claude:  '👑 Claude Sonnet 4 — deepest structured analysis. Get key at console.anthropic.com.',
+};
+const MODE_HINTS = {
+  simple:   '⚡ <strong>Simple</strong> — Verdict card, entry/stop-loss, risk:reward. Perfect for quick decisions.',
+  detailed: '🔬 <strong>Detailed</strong> — Full trade setup, momentum/volatility/institutional analysis breakdown.',
+};
+
+let _aiAnalysisMode = 'simple';
+
+function selectAIMode(mode) {
+  _aiAnalysisMode = mode;
+  try { localStorage.setItem('aiAnalysisMode', mode); } catch(e) {}
+  document.getElementById('modeSimpleBtn')?.classList.toggle('active',   mode === 'simple');
+  document.getElementById('modeDetailedBtn')?.classList.toggle('active', mode === 'detailed');
+  const mhEl = document.getElementById('modeHint');
+  if (mhEl) mhEl.innerHTML = MODE_HINTS[mode] || '';
+}
+
 function selectEngine(el, engine) {
   document.querySelectorAll('.ai-engine-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
   selectedEngine = engine;
+  try { localStorage.setItem('aiSelectedEngine', engine); } catch(e) {}
   const hint = document.getElementById('engineHint');
   if (hint) hint.textContent = ENGINE_HINTS[engine] || '';
 }
 
 // ============================================================
-// AI ANALYSIS
+// AI ANALYSIS — JSON-enforced structured output
 // ============================================================
-function getKey(engine) {
-  const el = document.getElementById(engine+'Key');
-  const val = el ? el.value.trim() : '';
-  if (val) return val;
-  return sessionStorage.getItem('aikey_'+engine) || '';
+
+// ── Build the technical data snapshot injected into every prompt ──────────
+function _buildTechSnapshot(ar) {
+  const { signals: s, company, symbol, currentPrice, market } = ar;
+  const cur = CUR();
+  const today = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  return `ANALYSIS DATE: ${today}
+STOCK: ${company} (${symbol}) | MARKET: ${market || marketMode.toUpperCase()} | PRICE: ${cur}${currentPrice.toFixed(2)}
+
+COMPOSITE SIGNAL SCORE: ${s.score?.toFixed(0)}/100 | ${s.bullCount} Bullish vs ${s.bearCount} Bearish (of 17 signals)
+OVERALL RECOMMENDATIONS: Swing→${s.swing?.signal} | Short→${s.short?.signal} | Long→${s.long?.signal} | Confidence: ${s.long?.confidence}%
+
+MOMENTUM (5 indicators):
+  RSI(14): ${s.rsiV?.toFixed(1)} [${s.rsiV<30?'OVERSOLD':s.rsiV>70?'OVERBOUGHT':'NEUTRAL'}]${s.rsiDiv?.bullDiv?' ⚡BULLISH_DIVERGENCE':s.rsiDiv?.bearDiv?' ⚠BEARISH_DIVERGENCE':''}
+  Stochastic %K:${s.stochK} %D:${s.stochD} [${s.stochCrossUp?'BULL_CROSS':s.stochCrossDown?'BEAR_CROSS':+s.stochK>80?'OVERBOUGHT':+s.stochK<20?'OVERSOLD':'NEUTRAL'}]
+  Williams %R: ${s.willRV} [${+s.willRV<=-80?'OVERSOLD':+s.willRV>=-20?'OVERBOUGHT':'NEUTRAL'}]
+  MFI(14): ${s.mfiV} [${+s.mfiV<=20?'OVERSOLD':+s.mfiV>=80?'OVERBOUGHT':'NEUTRAL'}]
+  CCI(20): ${s.cciV} [${+s.cciV<=-100?'OVERSOLD':+s.cciV>=100?'OVERBOUGHT':'NORMAL'}]
+
+TREND (5 indicators):
+  MACD: ${s.macdV?.toFixed(3)} vs Signal: ${s.sigV?.toFixed(3)} [${s.macdCrossUp?'FRESH_BULL_CROSS':s.macdCrossDown?'FRESH_BEAR_CROSS':s.macdV>s.sigV?'BULLISH':'BEARISH'}]
+  ADX(14): ${s.adxV} [${+s.adxV>40?'VERY_STRONG':+s.adxV>25?'TRENDING':'RANGING'}] +DI:${s.pDIV} -DI:${s.mDIV}
+  Supertrend(10,3): [${s.stV===1?'UPTREND':'DOWNTREND'}] dynamic_level:${cur}${s.sarV}
+  Parabolic SAR: ${cur}${s.sarV} [${s.sarTrend===1?'DOTS_BELOW_BULLISH':'DOTS_ABOVE_BEARISH'}]
+  EMA9/21: [${s.emaBull?'BULLISH':'BEARISH'}]${s.emaCrossUp?' ⚡FRESH_BULL_CROSS':s.emaCrossDown?' ⚡FRESH_BEAR_CROSS':''}
+
+STRUCTURE (4 indicators):
+  SMA20: ${cur}${s.sma20v?.toFixed(2)} [Price ${currentPrice>s.sma20v?'ABOVE':'BELOW'}]
+  SMA50: ${cur}${s.sma50v?.toFixed(2)} [Price ${currentPrice>s.sma50v?'ABOVE':'BELOW'}]
+  SMA200: ${cur}${s.sma200v?.toFixed(2)} [Price ${currentPrice>s.sma200v?'ABOVE_GOLDEN_ZONE':'BELOW_BEAR_TERRITORY'}]
+  50MA_vs_200MA: [${s.sma50v>s.sma200v?'GOLDEN_CROSS':'DEATH_CROSS'}]
+  Bollinger(20,2): Upper:${cur}${s.bbD?.upper?.toFixed(2)} Mid:${cur}${s.bbD?.mid?.toFixed(2)} Lower:${cur}${s.bbD?.lower?.toFixed(2)} [Price:${currentPrice>s.bbD?.upper?'AT_UPPER_OB':currentPrice<s.bbD?.lower?'AT_LOWER_OS':'WITHIN_BANDS'}]
+  ATR(14): ${cur}${s.atrV?.toFixed(2)} [${((s.atrV/currentPrice)*100).toFixed(2)}% daily_volatility]
+
+FIBONACCI RETRACEMENT (swing ${cur}${s.support}–${cur}${s.resist}):
+  23.6%:${cur}${s.fib?.f236} | 38.2%:${cur}${s.fib?.f382} | 50.0%:${cur}${s.fib?.f500} | 61.8%:${cur}${s.fib?.f618} | 78.6%:${cur}${s.fib?.f786}
+
+KEY LEVELS:
+  Support:${cur}${s.support} | Resistance:${cur}${s.resist}
+  Ideal_Entry:${cur}${s.entryIdeal} | Swing_Stop:${cur}${s.swing?.sl} | Swing_Target:${cur}${s.swing?.target}
+  Long_Target:${cur}${s.long?.target} | Short_Target:${cur}${s.short?.target}`;
+}
+
+// ── Build system + user prompts per mode ─────────────────────────────────
+function buildPrompt(ar, mode) {
+  const snapshot = _buildTechSnapshot(ar);
+  const adv = marketMode === 'us' ? 'a licensed financial advisor' : 'a SEBI-registered investment advisor';
+  const isDetailed = mode === 'detailed';
+
+  const systemPrompt = `You are an expert, SEBI-registered-style financial analyst powering "AdvanceStock Pro". Analyze the provided technical stock data and deliver findings STRICTLY as valid JSON. Do NOT output any text outside the JSON object. Do NOT wrap in markdown fences. The JSON must be parseable by JSON.parse().
+
+ANALYSIS DATE: ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} — anchor all commentary to this date.
+DISCLAIMER: Always reflect that this is an educational tool. Past performance does not guarantee future results. ${isDetailed ? '' : ''}`;
+
+  const userPrompt = isDetailed
+    ? `Analyze this stock data and return ONLY this exact JSON structure (no markdown, no extra text):
+{
+  "overall_trend": "string — macro/micro trend based on SMA 20/50/200, Golden/Death cross",
+  "momentum_analysis": "string — RSI, Stochastic, Williams %R, MFI, CCI, MACD crossovers and any divergences",
+  "volatility_and_levels": "string — Bollinger Bands squeeze/expansion, ATR daily range, key Fibonacci retracement levels",
+  "trade_setup": {
+    "aggressive_entry": "price string with currency",
+    "conservative_entry": "price string with currency",
+    "structural_stop_loss": "price string — hard stop based on support or 2×ATR",
+    "swing_target": "price string — short-term T1",
+    "long_term_target": "price string — Fibonacci extension T2"
+  },
+  "institutional_activity": "string — inferences from volume, OBV, MFI, Golden/Death crosses",
+  "cautionary_note": "string — one key risk that would invalidate this analysis",
+  "disclaimer": "This analysis is for educational purposes only — consult ${adv} before investing."
+}
+
+STOCK DATA:
+${snapshot}`
+    : `Analyze this stock data and return ONLY this exact JSON structure (no markdown, no extra text):
+{
+  "verdict": "Buy" or "Sell" or "Hold",
+  "layman_summary": "2-3 sentence plain-English explanation for a retail investor with no technical background",
+  "ideal_entry_point": "price string with currency symbol",
+  "stop_loss": "price string with currency symbol",
+  "risk_reward_ratio": "format like 1:2.5",
+  "cautionary_note": "one sentence on the single biggest risk",
+  "disclaimer": "This analysis is for educational purposes only — consult ${adv} before investing."
+}
+
+STOCK DATA:
+${snapshot}`;
+
+  return { systemPrompt, userPrompt };
+}
+
+// ── Call AI APIs with JSON mode enforced where supported ──────────────────
+async function _callAI(engine, key, systemPrompt, userPrompt) {
+  const labels = { groq:'Groq llama-3.3-70b', gemini:'Gemini 2.0 Flash', openai:'GPT-4o-mini', claude:'Claude Sonnet 4' };
+  document.getElementById('aiEngine').textContent = `— ${labels[engine] || engine}`;
+
+  if (engine === 'groq') {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+        max_tokens: 1200, temperature: 0.3,
+        response_format: { type: 'json_object' }, // enforce JSON
+      })
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+    return (await r.json()).choices?.[0]?.message?.content || '{}';
+
+  } else if (engine === 'gemini') {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: systemPrompt + '\n\n' + userPrompt }] }],
+        generationConfig: { maxOutputTokens: 1200, temperature: 0.3, responseMimeType: 'application/json' }, // enforce JSON
+      })
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+    return (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+
+  } else if (engine === 'openai') {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+        max_tokens: 1200, temperature: 0.3,
+        response_format: { type: 'json_object' }, // enforce JSON
+      })
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+    return (await r.json()).choices?.[0]?.message?.content || '{}';
+
+  } else if (engine === 'claude') {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1200,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      })
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+    return (await r.json()).content?.[0]?.text || '{}';
+  }
+  throw new Error(`Unknown engine: ${engine}`);
+}
+
+// ── Parse JSON from AI response (handles markdown fences) ─────────────────
+function _parseAIJson(raw) {
+  // Strip markdown code fences if present
+  let txt = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/,'').trim();
+  // Find first { ... last }
+  const start = txt.indexOf('{');
+  const end   = txt.lastIndexOf('}');
+  if (start !== -1 && end !== -1) txt = txt.slice(start, end + 1);
+  return JSON.parse(txt);
+}
+
+// ── Render structured JSON response as card UI ────────────────────────────
+function _renderAIJson(json, mode, engine) {
+  const isDetailed = mode === 'detailed';
+  const cur = CUR();
+
+  if (isDetailed) {
+    const ts = json.trade_setup || {};
+    const verdictColor = 'var(--blue)';
+    return `
+<div class="ai-json-card">
+  <div class="ai-verdict-banner ai-verdict-hold" style="background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(59,130,246,.05));border-bottom:1px solid rgba(59,130,246,.25);color:var(--blue);">
+    <span style="font-size:22px;">🔬</span>
+    <div>
+      <div style="font-size:16px;font-weight:800;">Detailed Technical Analysis</div>
+      <div style="font-size:11px;font-weight:400;opacity:.8;margin-top:2px;">${analysisResult.company} (${analysisResult.symbol}) · ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+    </div>
+    <div style="margin-left:auto;font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;background:var(--surface);padding:4px 8px;border-radius:4px;">${engine.toUpperCase()}</div>
+  </div>
+
+  <!-- Trade Setup Grid -->
+  <div style="padding:12px 16px 0;background:var(--surface);border-bottom:1px solid var(--border);">
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚡ Trade Setup</div>
+  </div>
+  <div class="ai-trade-grid">
+    ${[
+      ['🟢 Aggressive Entry', ts.aggressive_entry, 'var(--green)'],
+      ['🔵 Conservative Entry', ts.conservative_entry, 'var(--blue)'],
+      ['🔴 Structural Stop', ts.structural_stop_loss, 'var(--red)'],
+      ['🎯 Swing Target (T1)', ts.swing_target, 'var(--accent)'],
+      ['🚀 Long-term Target (T2)', ts.long_term_target, 'var(--purple)'],
+    ].map(([label, val, color]) => `
+      <div class="ai-trade-cell">
+        <div class="ai-trade-cell-label">${label}</div>
+        <div class="ai-trade-cell-val" style="color:${color};">${val || '—'}</div>
+      </div>`).join('')}
+  </div>
+
+  <div class="ai-body" style="gap:0;padding:0;">
+    ${[
+      ['📈 Overall Trend', json.overall_trend],
+      ['⚡ Momentum Analysis', json.momentum_analysis],
+      ['📊 Volatility & Key Levels', json.volatility_and_levels],
+      ['🏦 Institutional Activity', json.institutional_activity],
+    ].map(([label, text]) => text ? `
+      <div class="ai-detail-section">
+        <div class="ai-detail-label">${label}</div>
+        <div class="ai-detail-text">${text}</div>
+      </div>` : '').join('')}
+  </div>
+
+  ${json.cautionary_note ? `<div class="ai-caution">⚠️ <span><strong>Key Risk:</strong> ${json.cautionary_note}</span></div>` : ''}
+  <div style="padding:10px 16px 12px;background:var(--surface);border-top:1px solid var(--border);font-size:10.5px;color:var(--text3);">📋 ${json.disclaimer || 'Educational purposes only. Not financial advice.'}</div>
+</div>`;
+
+  } else {
+    // Simple mode
+    const v = (json.verdict || 'Hold').toUpperCase();
+    const verdictClass = v.includes('BUY') ? 'ai-verdict-buy' : v.includes('SELL') ? 'ai-verdict-sell' : 'ai-verdict-hold';
+    const verdictIcon  = v.includes('BUY') ? '🟢' : v.includes('SELL') ? '🔴' : '🟡';
+    const rr = json.risk_reward_ratio || '—';
+    return `
+<div class="ai-json-card">
+  <div class="ai-verdict-banner ${verdictClass}">
+    <span style="font-size:28px;">${verdictIcon}</span>
+    <div>
+      <div style="font-size:22px;font-weight:900;letter-spacing:.5px;">${v}</div>
+      <div style="font-size:11px;font-weight:400;opacity:.8;margin-top:1px;">${analysisResult.company} (${analysisResult.symbol}) · ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+    </div>
+    <div style="margin-left:auto;text-align:right;">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:2px;">Risk:Reward</div>
+      <div style="font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;">${rr}</div>
+    </div>
+  </div>
+
+  <div class="ai-trade-grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));">
+    <div class="ai-trade-cell">
+      <div class="ai-trade-cell-label">💰 Ideal Entry</div>
+      <div class="ai-trade-cell-val" style="color:var(--green);">${json.ideal_entry_point || '—'}</div>
+    </div>
+    <div class="ai-trade-cell">
+      <div class="ai-trade-cell-label">🛑 Stop Loss</div>
+      <div class="ai-trade-cell-val" style="color:var(--red);">${json.stop_loss || '—'}</div>
+    </div>
+    <div class="ai-trade-cell">
+      <div class="ai-trade-cell-label">⚖️ Risk:Reward</div>
+      <div class="ai-trade-cell-val" style="color:var(--accent);">${rr}</div>
+    </div>
+  </div>
+
+  <div class="ai-body">
+    <div class="ai-field">
+      <div class="ai-field-label">📝 Plain English Summary</div>
+      <div class="ai-field-value">${json.layman_summary || '—'}</div>
+    </div>
+  </div>
+
+  ${json.cautionary_note ? `<div class="ai-caution">⚠️ <span><strong>Watch Out:</strong> ${json.cautionary_note}</span></div>` : ''}
+  <div style="padding:10px 16px 12px;background:var(--surface);border-top:1px solid var(--border);font-size:10.5px;color:var(--text3);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+    <span>📋 ${json.disclaimer || 'Educational purposes only. Not financial advice.'}</span>
+    <span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;">${engine.toUpperCase()}</span>
+  </div>
+</div>`;
+  }
 }
 
 async function runAIAnalysis() {
   if (!analysisResult) return;
   const responseEl = document.getElementById('aiResponse');
-  const engLabel   = document.getElementById('aiEngine');
+  const btn        = document.getElementById('aiRunBtn');
 
   if (selectedEngine === 'builtin') {
-    engLabel.textContent = '— Built-in Engine';
+    document.getElementById('aiEngine').textContent = '— Built-in Engine';
     responseEl.innerHTML = generateBuiltinAnalysis(analysisResult);
     return;
   }
@@ -4828,115 +5187,37 @@ async function runAIAnalysis() {
   const key = getKey(selectedEngine);
   if (!key) {
     responseEl.innerHTML = `<div class="alert alert-error" style="margin:0;">
-      ❌ No API key found for <strong>${selectedEngine}</strong>. 
-      <button onclick="openAIConfig()" style="margin-left:8px;padding:4px 10px;background:var(--accent);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;">⚙️ Add Key Now</button>
+      ❌ No API key for <strong>${selectedEngine}</strong>.
+      <button onclick="openAIConfig()" style="margin-left:8px;padding:4px 10px;background:var(--accent);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;">⚙️ Add Key</button>
     </div>`;
     return;
   }
 
-  const prompt = buildPrompt(analysisResult);
-  responseEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--text3);padding:12px 0;">
-    <div class="loading-spinner" style="width:20px;height:20px;border-width:2px;"></div>
-    Consulting <strong>${selectedEngine}</strong> AI — analysing ${analysisResult.symbol}...
+  btn.disabled = true; btn.textContent = '⏳ Analysing…';
+  responseEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--text3);padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+    <div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div>
+    <div><strong>${selectedEngine}</strong> analysing <strong>${analysisResult.symbol}</strong> in <strong>${_aiAnalysisMode}</strong> mode…
+    <div style="font-size:11px;margin-top:3px;opacity:.6;">Structured JSON output — analysis anchored to ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+    </div>
   </div>`;
 
   try {
-    let text = '';
-    if (selectedEngine === 'groq') {
-      engLabel.textContent = '— Groq llama-3.3-70b';
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
-        body:JSON.stringify({ model:'llama-3.3-70b-versatile', messages:[{role:'user',content:prompt}], max_tokens:900, temperature:0.7 })
-      });
-      if (!r.ok) { const e=await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-      const d = await r.json();
-      text = d.choices?.[0]?.message?.content || 'No response';
-    } else if (selectedEngine === 'gemini') {
-      engLabel.textContent = '— Gemini 1.5 Flash';
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:900} })
-      });
-      if (!r.ok) { const e=await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-      const d = await r.json();
-      text = d.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
-    } else if (selectedEngine === 'openai') {
-      engLabel.textContent = '— GPT-4o-mini';
-      const r = await fetch('https://api.openai.com/v1/chat/completions', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
-        body:JSON.stringify({ model:'gpt-4o-mini', messages:[{role:'user',content:prompt}], max_tokens:900 })
-      });
-      if (!r.ok) { const e=await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-      const d = await r.json();
-      text = d.choices?.[0]?.message?.content || 'No response';
-    } else if (selectedEngine === 'claude') {
-      engLabel.textContent = '— Claude Sonnet 4';
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{role:'user',content:prompt}] })
-      });
-      if (!r.ok) { const e=await r.json(); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-      const d = await r.json();
-      text = d.content?.[0]?.text || 'No response';
-    }
-    responseEl.innerHTML = `<div style="line-height:1.8;">${text.replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/\*(.*?)\*/g,'<i>$1</i>').replace(/#{1,3} (.*)/g,'<b style="font-size:14px;">$1</b>')}</div>`;
+    const { systemPrompt, userPrompt } = buildPrompt(analysisResult, _aiAnalysisMode);
+    const raw  = await _callAI(selectedEngine, key, systemPrompt, userPrompt);
+    const json = _parseAIJson(raw);
+    responseEl.innerHTML = _renderAIJson(json, _aiAnalysisMode, selectedEngine);
   } catch(e) {
     console.error('AI error:', e);
-    responseEl.innerHTML = `<div class="alert alert-error" style="margin:0;">❌ <strong>${selectedEngine} Error:</strong> ${e.message}
-      <br><small>Check your API key is valid and has credits. <button onclick="openAIConfig()" style="margin-left:4px;padding:2px 8px;background:var(--accent);color:#000;border:none;border-radius:4px;cursor:pointer;font-size:11px;">⚙️ Update Key</button></small>
+    responseEl.innerHTML = `<div class="alert alert-error" style="margin:0;">
+      ❌ <strong>${selectedEngine} Error:</strong> ${e.message}
+      <button onclick="openAIConfig()" style="margin-left:8px;padding:3px 8px;background:var(--accent);color:#000;border:none;border-radius:4px;cursor:pointer;font-size:11px;">⚙️ Update Key</button>
+      <hr style="border-color:var(--border);margin:10px 0 8px;">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Falling back to built-in analysis:</div>
     </div>
-    <br>${generateBuiltinAnalysis(analysisResult)}`;
+    ${generateBuiltinAnalysis(analysisResult)}`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🧠 Generate AI Insights';
   }
-}
-
-function buildPrompt(ar) {
-  const { signals, company, symbol, currentPrice } = ar;
-  const s = signals;
-  return `You are an expert technical analyst for Indian stock markets. Provide a clear, plain-English analysis of ${company} (${symbol}) at ₹${currentPrice.toFixed(2)}.
-
-TECHNICAL SNAPSHOT (17 indicators):
-
-MOMENTUM:
-• RSI(14): ${s.rsiV?.toFixed(1)} — ${s.rsiV<30?'OVERSOLD':s.rsiV>70?'OVERBOUGHT':'NEUTRAL'}${s.rsiDiv?.bullDiv?' | ⚡ BULLISH RSI DIVERGENCE DETECTED':s.rsiDiv?.bearDiv?' | ⚠️ BEARISH RSI DIVERGENCE DETECTED':''}
-• Stochastic %K/${s.stochK} %D/${s.stochD} — ${s.stochCrossUp?'BULLISH CROSS':s.stochCrossDown?'BEARISH CROSS':parseFloat(s.stochK)>80?'OVERBOUGHT':parseFloat(s.stochK)<20?'OVERSOLD':'NEUTRAL'}
-• Williams %R: ${s.willRV} — ${parseFloat(s.willRV)<=-80?'OVERSOLD':parseFloat(s.willRV)>=-20?'OVERBOUGHT':'NEUTRAL'}
-• MFI(14): ${s.mfiV} — ${parseFloat(s.mfiV)<=20?'OVERSOLD (Smart money accumulating)':parseFloat(s.mfiV)>=80?'OVERBOUGHT (Watch for distribution)':'NEUTRAL'}
-• CCI(20): ${s.cciV} — ${parseFloat(s.cciV)<=-100?'OVERSOLD':parseFloat(s.cciV)>=100?'OVERBOUGHT':'NORMAL RANGE'}
-
-TREND:
-• MACD: ${s.macdV?.toFixed(2)} vs Signal ${s.sigV?.toFixed(2)} — ${s.macdCrossUp?'FRESH BULLISH CROSSOVER':s.macdCrossDown?'FRESH BEARISH CROSSOVER':s.macdV>s.sigV?'Bullish':'Bearish'}
-• ADX(14): ${s.adxV} (${parseFloat(s.adxV)>40?'VERY STRONG TREND':parseFloat(s.adxV)>25?'TRENDING':'RANGING'}) | +DI ${s.pDIV} / −DI ${s.mDIV} → ${parseFloat(s.pDIV)>parseFloat(s.mDIV)?'Bullish direction':'Bearish direction'}
-• Supertrend(10,3): ${s.stV===1?'UPTREND ▲':'DOWNTREND ▼'} — dynamic level at ₹${s.sarV}
-• Parabolic SAR: ₹${s.sarV} — ${s.sarTrend===1?'Dots below (bullish trailing stop)':'Dots above (bearish resistance)'}
-• EMA 9/21: ${s.emaBull?'EMA9 > EMA21 (bullish)':'EMA9 < EMA21 (bearish)'}${s.emaCrossUp?' | ⚡ FRESH BULL CROSS':s.emaCrossDown?' | ⚡ FRESH BEAR CROSS':''}
-
-STRUCTURE:
-• Price vs SMA20 ₹${s.sma20v?.toFixed(0)}: ${currentPrice>s.sma20v?'ABOVE':'BELOW'}
-• Price vs SMA50 ₹${s.sma50v?.toFixed(0)}: ${currentPrice>s.sma50v?'ABOVE':'BELOW'}
-• Price vs SMA200 ₹${s.sma200v?.toFixed(0)}: ${currentPrice>s.sma200v?'ABOVE — Golden Zone':'BELOW — Bear territory'}
-• 50MA vs 200MA: ${s.sma50v>s.sma200v?'Golden Cross (bullish)':'Death Cross (bearish)'}
-• Bollinger: Upper ₹${s.bbD?.upper?.toFixed(0)} | Mid ₹${s.bbD?.mid?.toFixed(0)} | Lower ₹${s.bbD?.lower?.toFixed(0)} | Price: ${currentPrice>s.bbD?.upper?'AT UPPER BAND (overbought)':currentPrice<s.bbD?.lower?'AT LOWER BAND (oversold)':'within bands'}
-• ATR(14): ₹${s.atrV?.toFixed(2)} (${((s.atrV/currentPrice)*100).toFixed(1)}% daily volatility)
-
-FIBONACCI LEVELS (swing ₹${s.support}–₹${s.resist}):
-• 23.6% = ₹${s.fib?.f236} | 38.2% = ₹${s.fib?.f382} | 50.0% = ₹${s.fib?.f500} | 61.8% = ₹${s.fib?.f618} (golden) | 78.6% = ₹${s.fib?.f786}
-
-COMPOSITE SCORE: ${s.score.toFixed(0)}/100 (${s.bullCount} bullish vs ${s.bearCount} bearish out of 17 signals)
-RECOMMENDATIONS: Swing ${s.swing.signal} | Short ${s.short.signal} | Long ${s.long.signal} | Confidence ${s.long.confidence}%
-KEY LEVELS: Support ₹${s.support} | Resistance ₹${s.resist} | Entry ₹${s.entryIdeal} | Stop ₹${s.swing.sl} | Target ₹${s.long.target}
-
-Write a 6-paragraph analysis:
-1. Verdict in simple words — what should a retail investor understand from this composite picture?
-2. Momentum analysis — RSI, Stochastic, Williams %R, MFI, CCI, and any divergence signals
-3. Trend analysis — MACD, ADX strength, Supertrend, EMA cross, and moving averages
-4. Fibonacci & structure — where are the key support/resistance zones based on Fib levels and Bollinger Bands?
-5. Risk factors — what would invalidate this analysis? What are the key levels to watch?
-6. Actionable advice: ideal entry range, stop loss level, swing/short/long targets
-
-Write clearly for a retail investor who is not an expert. Keep it honest and accurate. End with: "This is for educational purposes only — ${marketMode === 'us' ? 'consult a licensed financial advisor before investing.' : 'consult a SEBI-registered advisor before investing.'}"`.replace(marketMode === 'us' ? /₹/g : /SKIP_REPLACE_X/, '$');
 }
 
 function generateBuiltinAnalysis(ar) {
