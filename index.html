@@ -418,7 +418,7 @@ canvas{max-width:100%;}
 
 <style>
 /* ═══════════════════════════════════════════════
-   INVESTMANAGER PRO  ·  ClearTax Design Language
+   MyeeStockBuddy  ·  ClearTax Design Language
    Orange #FF6B35 · Green #00B386 · Navy #1A2340
    by Vipin Nair
 ═══════════════════════════════════════════════ */
@@ -2503,10 +2503,10 @@ td.r{text-align:right}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <button onclick="switchApp('analyser')" style="color:rgba(255,255,255,.65);font-size:12px;display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer" onmouseover="this.style.color='var(--P)'" onmouseout="this.style.color='rgba(255,255,255,.65)'">🔍 Stock Analyser</button>
       <span style="color:rgba(255,255,255,.2)">|</span>
-      <a href="mailto:?subject=InvestManager Pro — Feedback&body=Hi Vipin,%0A%0AHere is my feedback / suggestion for InvestManager Pro:%0A%0A[Your message here]%0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(255,107,53,.3)'" onmouseout="this.style.background='rgba(255,107,53,.15)'">
+      <a href="mailto:?subject=MyeeStockBuddy — Feedback&body=Hi Vipin,%0A%0AHere is my feedback / suggestion for MyeeStockBuddy:%0A%0A[Your message here]%0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(255,107,53,.3)'" onmouseout="this.style.background='rgba(255,107,53,.15)'">
         📧 Send Feedback / Suggestions
       </a>
-      <a href="mailto:?subject=InvestManager Pro — Bug Report&body=Hi Vipin,%0A%0AI found a bug in InvestManager Pro:%0A%0APage/Feature: %0ASteps to reproduce: %0AExpected: %0AActual: %0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(217,48,37,.15);border:1px solid rgba(217,48,37,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(217,48,37,.3)'" onmouseout="this.style.background='rgba(217,48,37,.15)'">
+      <a href="mailto:?subject=MyeeStockBuddy — Bug Report&body=Hi Vipin,%0A%0AI found a bug in MyeeStockBuddy:%0A%0APage/Feature: %0ASteps to reproduce: %0AExpected: %0AActual: %0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(217,48,37,.15);border:1px solid rgba(217,48,37,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(217,48,37,.3)'" onmouseout="this.style.background='rgba(217,48,37,.15)'">
         🐛 Report a Bug
       </a>
     </div>
@@ -7829,7 +7829,7 @@ const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 // FY indicator in banner
 const _fy=_now.getMonth()>=3?_now.getFullYear():_now.getFullYear()-1;
-document.title=`InvestManager Pro — FY ${_fy}-${String(_fy+1).slice(2)}`;
+document.title=`MyeeStockBuddy — FY ${_fy}-${String(_fy+1).slice(2)}`;
 document.getElementById('usd-hdr').textContent='₹'+S.usdInr;
 updateCounts();
 GD.updateUI();
