@@ -8193,6 +8193,71 @@ function switchApp(app) {
   'use strict';
   
   // ═══════════════════════════════════════════════════════════════════
+  // CSV HEADER NORMALIZER (v2.1) — fixes NSE bhavcopy + BOM issues
+  // ═══════════════════════════════════════════════════════════════════
+  // Your CSV upload uses Papa.parse with header:true. NSE's official bhavcopy
+  // CSVs have:
+  //   1. A UTF-8 BOM (\ufeff) prefixing the first header
+  //   2. Trailing whitespace inside quoted headers ("Symbol  ", "Close Price  ")
+  //   3. Indian comma-format numbers ("2,780.80", "5,96,821")
+  //
+  // Result: row keys become "\ufeffSymbol  " and "Close Price  " — they don't
+  // match what prepareData() looks for ('Close Price', 'Close', etc.), so every
+  // row is parsed with NaN values and silently dropped by .filter(r => r.close > 0).
+  // → "Need at least 20 data rows. Got: 0"
+  //
+  // We patch Papa.parse globally to normalize keys after parsing. Safe because:
+  //   - Only touches the result objects, not Papa's internals
+  //   - Whitespace-trimmed keys match what your code already expects
+  //   - Numeric parseNum() in your code already handles commas
+  
+  function patchPapaParse() {
+    if (typeof window.Papa === 'undefined' || !window.Papa.parse) {
+      return setTimeout(patchPapaParse, 200);
+    }
+    if (window._bbPapaPatched) return;
+    
+    var origParse = window.Papa.parse;
+    window.Papa.parse = function(input, config) {
+      config = config || {};
+      var userComplete = config.complete;
+      
+      // Wrap the complete callback to normalize headers
+      config.complete = function(results) {
+        if (results && Array.isArray(results.data) && results.data.length > 0 && typeof results.data[0] === 'object') {
+          results.data = results.data.map(function(row) {
+            if (!row || typeof row !== 'object') return row;
+            var clean = {};
+            for (var key in row) {
+              if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+              // Strip BOM (\ufeff), trim whitespace, collapse internal multi-spaces
+              var cleanKey = key.replace(/^\ufeff/, '').trim().replace(/\s+/g, ' ');
+              // Also trim string values (NSE CSV has padded values in some columns)
+              var val = row[key];
+              if (typeof val === 'string') val = val.trim();
+              clean[cleanKey] = val;
+            }
+            return clean;
+          });
+          // Also clean the meta.fields array if present
+          if (results.meta && Array.isArray(results.meta.fields)) {
+            results.meta.fields = results.meta.fields.map(function(k) {
+              return k.replace(/^\ufeff/, '').trim().replace(/\s+/g, ' ');
+            });
+          }
+        }
+        if (typeof userComplete === 'function') userComplete(results);
+      };
+      
+      return origParse(input, config);
+    };
+    
+    window._bbPapaPatched = true;
+    console.log('[BazaarBuddy] ✓ Papa.parse patched — CSV headers will be normalized (BOM + whitespace)');
+  }
+  patchPapaParse();
+  
+  // ═══════════════════════════════════════════════════════════════════
   // CRITICAL PATCHES — fix pre-existing global page-class conflicts
   // ═══════════════════════════════════════════════════════════════════
   // Your app has THREE distinct uses of class="page":
