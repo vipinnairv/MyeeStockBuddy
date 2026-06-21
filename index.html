@@ -234,6 +234,11 @@ body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-ser
 .chart-tabs{display:flex;gap:6px;}
 .chart-tab{padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;}
 .chart-tab.active{background:var(--accent);color:#0a0e1a;border-color:var(--accent);}
+/* RESULTS TABS */
+.res-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:0;}
+.res-tab{padding:10px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-size:13.5px;font-weight:600;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;margin-bottom:-1px;}
+.res-tab:hover{color:var(--text2);}
+.res-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 canvas{max-width:100%;}
 
 /* AI INSIGHTS */
@@ -626,6 +631,8 @@ td.r{text-align:right}
   transition:all .13s;white-space:nowrap;font-family:inherit;
   display:inline-flex;align-items:center;gap:3px;
 }
+.ab-anl{background:var(--PL);color:var(--P);border-color:var(--P)}
+.ab-anl:hover{background:var(--P);color:#fff}
 .ab-edit{background:var(--BL);color:var(--B);border-color:#C5D8FA}
 .ab-edit:hover{background:var(--B);color:#fff}
 .ab-sell{background:var(--RL);color:var(--R);border-color:#F8BCBA}
@@ -1417,19 +1424,41 @@ td.r{text-align:right}
           <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
           <p style="font-size:13px;color:var(--text3);" id="resultsSubtitle">Technical analysis complete</p>
         </div>
-        <button class="btn btn-outline btn-sm" onclick="resetApp()">🔄 New Analysis</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="addToPortfolioFromAnalysis()" title="Add this stock to your portfolio">➕ Add to Portfolio</button>
+          <button class="btn btn-outline btn-sm" onclick="resetApp()">🔄 New Analysis</button>
+        </div>
       </div>
 
       <!-- KPI Strip -->
       <div class="kpi-strip" id="kpiStrip"></div>
 
       <!-- OVERALL VERDICT BANNER -->
-      <div id="verdictBanner" style="margin-bottom:24px;"></div>
+      <div id="verdictBanner" style="margin-bottom:18px;"></div>
 
+      <!-- RESULTS TAB BAR -->
+      <div class="res-tabs" id="resTabs">
+        <button class="res-tab active" data-rtab="verdict"    onclick="switchResTab('verdict',this)">✅ Verdict</button>
+        <button class="res-tab"        data-rtab="levels"     onclick="switchResTab('levels',this)">🎯 Levels &amp; Chart</button>
+        <button class="res-tab"        data-rtab="indicators" onclick="switchResTab('indicators',this)">🔬 Indicators</button>
+        <button class="res-tab"        data-rtab="patterns"   onclick="switchResTab('patterns',this)">🕯️ Patterns</button>
+      </div>
+
+      <!-- ===== VERDICT TAB (part 1) ===== -->
+      <div class="res-tab-panel" data-rtab="verdict">
+      <!-- Fundamentals snapshot -->
+      <div class="section-header"><span class="section-title">🏢 Fundamentals &amp; Context</span><div class="section-line"></div></div>
+      <div id="fundamentalsPanel" style="margin-bottom:24px;"></div>
       <!-- Recommendations -->
       <div class="section-header"><span class="section-title">📊 Buy / Sell / Hold Signals by Timeframe</span><div class="section-line"></div></div>
       <div class="reco-grid" id="recoGrid"></div>
+      <!-- Signal backtest on this stock's own history -->
+      <div class="section-header" style="margin-top:24px;"><span class="section-title">🔁 Has This Signal Worked Before?</span><div class="section-line"></div></div>
+      <div id="backtestPanel" style="margin-bottom:8px;"></div>
+      </div>
 
+      <!-- ===== LEVELS TAB ===== -->
+      <div class="res-tab-panel" data-rtab="levels" style="display:none;">
       <!-- ENTRY / EXIT / SL PANEL -->
       <div class="section-header"><span class="section-title">🎯 Entry · Exit · Stop Loss Levels</span><div class="section-line"></div></div>
       <div id="entryExitPanel" style="margin-bottom:24px;"></div>
@@ -1498,15 +1527,24 @@ td.r{text-align:right}
         <!-- Chart plain-English interpretation -->
         <div id="chartInterpretation" style="margin-top:14px;padding:14px 16px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent);font-size:13px;line-height:1.7;color:var(--text2);"></div>
       </div>
+      </div><!-- /LEVELS TAB -->
 
+      <!-- ===== PATTERNS TAB ===== -->
+      <div class="res-tab-panel" data-rtab="patterns" style="display:none;">
       <!-- Candlestick Patterns -->
-      <div class="section-header" style="margin-top:24px;"><span class="section-title">🕯️ Candlestick Pattern Signals</span><div class="section-line"></div></div>
+      <div class="section-header" style="margin-top:6px;"><span class="section-title">🕯️ Candlestick Pattern Signals</span><div class="section-line"></div></div>
       <div id="candlePatterns" style="margin-bottom:24px;"></div>
+      </div>
 
+      <!-- ===== INDICATORS TAB ===== -->
+      <div class="res-tab-panel" data-rtab="indicators" style="display:none;">
       <!-- Technical Indicators with plain-English -->
-      <div class="section-header"><span class="section-title">🔬 Technical Indicators — What They Mean</span><div class="section-line"></div></div>
+      <div class="section-header" style="margin-top:6px;"><span class="section-title">🔬 Technical Indicators — What They Mean</span><div class="section-line"></div></div>
       <div class="indicators-grid" id="indicatorsGrid"></div>
+      </div>
 
+      <!-- ===== VERDICT TAB (part 2) ===== -->
+      <div class="res-tab-panel" data-rtab="verdict">
       <!-- AI INSIGHTS -->
       <div class="ai-section" style="margin-bottom:24px;">
         <div class="ai-header">
@@ -1558,6 +1596,7 @@ td.r{text-align:right}
         <div id="marketWisdom" style="font-style:italic;color:var(--text);font-size:16px;line-height:1.7;"></div>
         <div style="font-size:12px;color:var(--accent);margin-top:8px;font-weight:600;">— Market Proverb</div>
       </div>
+      </div><!-- /VERDICT TAB part 2 -->
     </div>
   </div>
 
@@ -2487,159 +2526,6 @@ td.r{text-align:right}
     </div>
   </div>
 </div>
-
-<!-- ════════ BAZAARBUDDY PAGES (injected into portfolio main) ════════ -->
-<div class="bb-pages-wrapper">
-<div class="page" id="page-goals">
-  <div class="bb-section">
-    <div style="display:flex;align-items:end;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
-      <div>
-        <h2 class="bb-h2">🎯 Goal-Based Planning</h2>
-        <p class="bb-sub">Tell me what you're investing for. I'll do the math — SIP needed, progress, and how your portfolio is funding each goal.</p>
-      </div>
-      <button class="bb-btn bb-btn-primary" onclick="BB.openGoalEditor()">+ New Goal</button>
-    </div>
-    <div class="bb-grid bb-grid-3" id="bb-goal-kpis"></div>
-    <div id="bb-goals-list" style="margin-top: 16px;"></div>
-  </div>
-</div>
-
-<div class="page" id="page-screener">
-  <div class="bb-section">
-    <h2 class="bb-h2">🔍 Intelligent Screener</h2>
-    <p class="bb-sub">Pre-built filters that find what matters — runs on your portfolio holdings + any custom symbols you add.</p>
-    
-    <div class="bb-card" style="margin-bottom:14px;">
-      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;">
-          <div class="bb-label">Custom Symbol List (comma-separated, optional)</div>
-          <input class="bb-input" id="bb-screen-syms" placeholder="e.g. RELIANCE.NS, INFY.NS, TCS.NS" />
-        </div>
-        <button class="bb-btn bb-btn-amber" onclick="BB.runScreener()">📡 Fetch & Scan</button>
-        <button class="bb-btn bb-btn-ghost bb-btn-sm" onclick="BB.useHoldingsAsScreenUniverse()">Use My Holdings</button>
-      </div>
-      <div style="font-size:11px;color:var(--T3,#64748b);margin-top:8px;">Each scan fetches live price + computes RSI/momentum/volume against the chosen screen. Uses your existing Yahoo proxy. Slow on the first run (1 fetch per symbol).</div>
-    </div>
-    
-    <div class="bb-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:14px;" id="bb-screen-buttons"></div>
-    
-    <div class="bb-card">
-      <div id="bb-screen-results">
-        <div style="text-align:center;padding:32px 12px;color:var(--T3,#64748b);font-size:13px;">
-          Pick a screen and tap "Fetch & Scan" to see matches.
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="page" id="page-strategy">
-  <div class="bb-section">
-    <h2 class="bb-h2">🧭 Strategy Builder</h2>
-    <p class="bb-sub">Pick your horizon, capital, and risk — get an allocation, pick list, and execution plan tailored to Indian markets.</p>
-    
-    <div class="bb-card" style="margin-bottom:14px;">
-      <div class="bb-grid bb-grid-3">
-        <div>
-          <div class="bb-label">Time Horizon</div>
-          <select class="bb-input" id="bb-strat-horizon">
-            <option value="short">Short-term (6-12 months)</option>
-            <option value="mid" selected>Mid-term (3-5 years)</option>
-            <option value="long">Long-term (10+ years)</option>
-          </select>
-        </div>
-        <div>
-          <div class="bb-label">Capital (₹)</div>
-          <input type="number" class="bb-input" id="bb-strat-capital" value="500000" />
-        </div>
-        <div>
-          <div class="bb-label">Risk Appetite</div>
-          <select class="bb-input" id="bb-strat-risk">
-            <option value="conservative">Conservative</option>
-            <option value="moderate" selected>Moderate</option>
-            <option value="aggressive">Aggressive</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
-        <button class="bb-btn bb-btn-primary" onclick="BB.generateStrategy()">Generate Plan →</button>
-        <button class="bb-btn bb-btn-ghost" onclick="BB.generateStrategyAI()">🤖 Use AI (uses your saved key)</button>
-      </div>
-    </div>
-    
-    <div id="bb-strat-output"></div>
-  </div>
-</div>
-
-<div class="page" id="page-insights">
-  <div class="bb-section">
-    <h2 class="bb-h2">🌊 Market Insights</h2>
-    <p class="bb-sub">Live ticker on your holdings, FII-DII context, IPO watch — your daily pulse.</p>
-    
-    <!-- Live polling control -->
-    <div class="bb-card" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span id="bb-live-indicator" class="bb-live-dot bb-live-off"></span>
-            <strong id="bb-live-status">Live polling: OFF</strong>
-          </div>
-          <div style="font-size:11px;color:var(--T3,#64748b);margin-top:3px;">When ON, prices for your holdings refresh every <strong id="bb-poll-secs-disp">60</strong>s and flash green/red on change.</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <select class="bb-input" id="bb-poll-secs" style="width:90px;" onchange="BB.setPollInterval(this.value)">
-            <option value="30">30s</option>
-            <option value="60" selected>60s</option>
-            <option value="120">2 min</option>
-            <option value="300">5 min</option>
-          </select>
-          <button class="bb-btn bb-btn-primary" id="bb-live-toggle" onclick="BB.toggleLive()">▶ Start Live</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Live watchlist -->
-    <div class="bb-card" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <h3 class="bb-h3" style="margin:0;">📡 Your Live Watchlist</h3>
-        <div style="font-size:11px;color:var(--T3,#64748b);" id="bb-last-update">—</div>
-      </div>
-      <div id="bb-watchlist">
-        <div style="text-align:center;padding:24px 12px;color:var(--T3,#64748b);font-size:13px;">
-          Add holdings in India Equity / US Equity / Crypto tabs to populate your watchlist.
-        </div>
-      </div>
-    </div>
-    
-    <!-- FII/DII + IPO + Brief -->
-    <div class="bb-grid bb-grid-2">
-      <div class="bb-card">
-        <h3 class="bb-h3">FII vs DII — Editor's Read</h3>
-        <p style="font-size:12px;color:var(--T2,#475569);line-height:1.6;">
-          For real-time FII/DII numbers, NSE publishes daily at 6 PM. As of latest data available, DIIs have been net buyers in Banking & FMCG (supported by ₹25K Cr/month SIP inflows); FIIs are mixed — adding in IT/Metals, trimming Banking.
-        </p>
-        <div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px 12px;border-radius:0 6px 6px 0;margin-top:10px;font-size:12px;color:var(--T1);">
-          <strong>Action read:</strong> Sector rotation is live. If you're overweight Banking, watch DII flows. IT/Metals seeing FII conviction.
-        </div>
-        <button class="bb-btn bb-btn-ghost bb-btn-sm" style="margin-top:10px;" onclick="BB.fetchFIIDIIviaAI()">🤖 Get AI Read (uses your saved key)</button>
-        <div id="bb-fiidi-ai" style="margin-top:10px;"></div>
-      </div>
-      <div class="bb-card">
-        <h3 class="bb-h3">📰 IPO & News Watchlist</h3>
-        <p style="font-size:12px;color:var(--T2,#475569);">Quick links to check active IPOs and market news.</p>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
-          <a href="https://www.chittorgarh.com/ipo/ipo_list.asp" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;text-align:left;">🔗 Chittorgarh — Live IPO List</a>
-          <a href="https://www.nseindia.com/market-data/new-stock-exchange-listings-recent" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;text-align:left;">🔗 NSE — Recent Listings</a>
-          <a href="https://www.moneycontrol.com/news/business/markets/" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;text-align:left;">🔗 Moneycontrol — Markets</a>
-          <a href="https://www.livemint.com/market" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;text-align:left;">🔗 Mint — Markets</a>
-          <a href="https://trendlyne.com/equity/sector-watch/" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;text-align:left;">🔗 Trendlyne — Sector Watch</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-</div>
-<!-- ════════ END BAZAARBUDDY PAGES ════════ -->
 
 </main>
 
@@ -3620,21 +3506,15 @@ async function fetchSymbolData() {
   if (fmpKey && isUS)       strategies.push({ label:'FMP',            url:fmpUrl, src:'fmp', wrap:false });
   // Proxy-based Yahoo fallbacks
   strategies.push(
-    { label:'Yahoo (allorigins-get)',  url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
-    { label:'Yahoo (allorigins-raw)',  url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
-    { label:'Yahoo (corsproxy.io)',    url:`https://corsproxy.io/?${enc(yfQ2)}`,                     src:'yf', wrap:false },
-    { label:'Yahoo (codetabs)',        url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,   src:'yf', wrap:false },
-    // ── BB v2.1: additional proxy fallbacks (May 2026) ──
-    { label:'Yahoo (corsfix)',         url:`https://proxy.corsfix.com/?${enc(yfQ1)}`,                src:'yf', wrap:false },
-    { label:'Yahoo (thingproxy)',      url:`https://thingproxy.freeboard.io/fetch/${enc(yfQ2)}`,     src:'yf', wrap:false }
+    { label:'Yahoo Finance',           url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
+    { label:'Yahoo Finance',           url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
+    { label:'Yahoo Finance',           url:`https://corsproxy.io/?${enc(yfQ2)}`,                     src:'yf', wrap:false },
+    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false }
   );
   if (!isCrypto) strategies.push(
-    { label:'Stooq (allorigins-get)',  url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
-    { label:'Stooq (allorigins-raw)',  url:`https://api.allorigins.win/raw?url=${enc(stooqUrl)}`,    src:'stooq', wrap:false },
-    { label:'Stooq (corsproxy.io)',    url:`https://corsproxy.io/?${enc(stooqUrl)}`,                 src:'stooq', wrap:false },
-    // ── BB v2.1: additional Stooq proxies ──
-    { label:'Stooq (corsfix)',         url:`https://proxy.corsfix.com/?${enc(stooqUrl)}`,            src:'stooq', wrap:false },
-    { label:'Stooq (codetabs)',        url:`https://api.codetabs.com/v1/proxy?quest=${enc(stooqUrl)}`, src:'stooq', wrap:false }
+    { label:'Stooq',                   url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
+    { label:'Stooq',                   url:`https://api.allorigins.win/raw?url=${enc(stooqUrl)}`,    src:'stooq', wrap:false },
+    { label:'Stooq',                   url:`https://corsproxy.io/?${enc(stooqUrl)}`,                 src:'stooq', wrap:false }
   );
 
   st.innerHTML = `<div class="alert alert-warning" style="align-items:center;gap:8px;">
@@ -3739,15 +3619,8 @@ async function fetchSymbolData() {
   }
 
   // ── 3. Race all strategies — cache winner ────────────────────────────────
-  // ── BB v2.1: track per-strategy errors for better diagnostics ──
-  window._bbLastFetchErrors = [];
   try {
-    const { rows, strat } = await Promise.any(strategies.map(s => 
-      _tryOne(s).catch(err => {
-        window._bbLastFetchErrors.push({ label: s.label, src: s.src, error: err.message || String(err) });
-        throw err;
-      })
-    ));
+    const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s)));
 
     parsedData = rows;
     _cachePut(cacheKey, rows); // fire-and-forget cache write
@@ -3772,30 +3645,9 @@ async function fetchSymbolData() {
       us:     `<br><small>• US tickers: <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
       crypto: `<br><small>• Format: <b>BTC-USD</b>, <b>ETH-USD</b>, <b>SOL-USD</b></small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
     };
-    // ── BB v2.1: build detailed per-strategy error breakdown ──
-    const errs = window._bbLastFetchErrors || [];
-    const errSummary = errs.length ? errs.slice(0, 6).map(e => 
-      `<div style="font-size:11px;color:var(--text3);margin-left:14px;">→ <strong>${e.label}</strong>: <code style="background:rgba(239,68,68,0.08);padding:1px 5px;border-radius:3px;color:#dc2626">${e.error}</code></div>`
-    ).join('') : '';
-    const errDetailHtml = errs.length ? `<details style="margin-top:8px;"><summary style="font-size:12px;cursor:pointer;color:var(--text2);">📋 Show all ${errs.length} error details</summary><div style="margin-top:6px;padding:8px;background:rgba(0,0,0,0.03);border-radius:6px;">${errSummary}</div></details>` : '';
-    // ── BB v2.1: diagnose common failure patterns ──
-    const allRateLim = errs.length > 0 && errs.every(e => /429|rate|limit|credit/i.test(e.error));
-    const allCors    = errs.length > 0 && errs.every(e => /failed to fetch|network|cors|aborted/i.test(e.error));
-    const all429     = errs.length > 0 && errs.filter(e => /429/i.test(e.error)).length >= errs.length * 0.5;
-    let diagnosis = '';
-    if (allRateLim || all429) diagnosis = `<div style="background:#fef3c7;border-left:3px solid #f59e0b;padding:10px;margin-top:8px;border-radius:0 6px 6px 0;font-size:12px;color:#92400e;">⚠️ <strong>Likely rate-limited.</strong> Multiple sources returned rate-limit errors. Either you've hit free-tier daily/minute caps, or public proxies are throttling your IP. Try: wait 5–10 minutes, or add a fresh TwelveData/Alpha Vantage key, or use Paste CSV mode below.</div>`;
-    else if (allCors) diagnosis = `<div style="background:#fef3c7;border-left:3px solid #f59e0b;padding:10px;margin-top:8px;border-radius:0 6px 6px 0;font-size:12px;color:#92400e;">⚠️ <strong>Network/CORS pattern.</strong> All sources failed network-side. Could be: offline, proxies are down today, or running from <code>file://</code> blocking some proxies. Try Paste CSV mode below.</div>`;
-    
     st.innerHTML = `<div class="alert alert-error">❌ All ${strategies.length} sources failed for <strong>${yahooSym}</strong>.
       ${keyHint}${modeHints[marketMode] || modeHints.india}
       <br><small>• Check internet · On <code>file://</code>? Serve via <code>http://localhost:8080</code></small>
-      ${diagnosis}
-      ${errDetailHtml}
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <strong style="font-size:12px;color:var(--text);">📋 Plan B:</strong>
-        <button onclick="window.BB && window.BB.openCsvPaste && window.BB.openCsvPaste('${yahooSym}','${sym}','${exch}')" style="padding:6px 14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Paste CSV Manually →</button>
-        <span style="font-size:11px;color:var(--text3);">Or download from <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">Yahoo Finance</a> / <a href="https://stooq.com/q/?s=${(sym+(exch==='BSE'?'.bo':'.in')).toLowerCase()}" target="_blank" style="color:var(--accent)">Stooq</a> and paste</span>
-      </div>
     </div>`;
   }
 
@@ -4312,6 +4164,186 @@ let mainChartInstance = null;
 let currentChartType = 'candle';
 let selectedEngine = 'builtin';
 
+// ============================================================
+// BREAKOUT SCREENER — tight consolidation → resistance break → range expansion
+// ============================================================
+function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10) {
+  if (!priceData || priceData.length < lookbackPeriod + 1) return { isBreakout:false, error:'Insufficient data' };
+  const historicalData = priceData.slice(-(lookbackPeriod + 1), -1);
+  const currentDay = priceData[priceData.length - 1];
+  const recentMax = Math.max(...historicalData.map(d => d.high));
+  const recentMin = Math.min(...historicalData.map(d => d.low));
+  const consolidationPct = recentMin > 0 ? (recentMax - recentMin) / recentMin : 1;
+  const isConsolidating = consolidationPct <= maxConsolidationPct;
+  const isBreakingOut = currentDay.close > recentMax;
+  // 14-day ATR up to yesterday
+  let trSum = 0, trCount = 0; const atrPeriod = 14;
+  for (let i = priceData.length - atrPeriod - 1; i < priceData.length - 1; i++) {
+    if (i <= 0) continue;
+    const tr = Math.max(priceData[i].high - priceData[i].low,
+      Math.abs(priceData[i].high - priceData[i-1].close),
+      Math.abs(priceData[i].low  - priceData[i-1].close));
+    trSum += tr; trCount++;
+  }
+  const atr = trCount > 0 ? trSum / trCount : 0;
+  const currentRange = currentDay.high - currentDay.low;
+  const isExpanding = currentRange > atr;
+  return {
+    isBreakout: isConsolidating && isBreakingOut && isExpanding,
+    isConsolidating, isBreakingOut, isExpanding,
+    consolidationPct, resistanceLevel: recentMax, supportLevel: recentMin,
+    currentClose: currentDay.close, currentRange, atr
+  };
+}
+
+// ============================================================
+// SIGNAL BACKTEST — how a verdict-aligned momentum trigger performed on THIS stock
+// ============================================================
+function backtestVerdict(data, verdict, horizon = 10) {
+  const closes = data.map(d => d.close);
+  const n = closes.length;
+  if (n < 80) return { error: 'Not enough history for a reliable backtest (need ~80+ trading days)' };
+  const sma50 = calcSMA(closes, 50);
+  const rsi   = calcRSI(closes, 14);
+  const dir = verdict === 'SELL' ? 'down' : 'up'; // HOLD probes up-momentum
+  const fwds = [];
+  for (let i = 51; i < n - horizon; i++) {
+    if (rsi[i] == null || rsi[i-1] == null || sma50[i] == null) continue;
+    const fire = dir === 'up'
+      ? (rsi[i-1] < 45 && rsi[i] >= 45 && closes[i] > sma50[i])   // momentum recovering in an uptrend
+      : (rsi[i-1] > 55 && rsi[i] <= 55 && closes[i] < sma50[i]);  // momentum rolling over in a downtrend
+    if (fire) fwds.push((closes[i+horizon] - closes[i]) / closes[i] * 100);
+  }
+  if (!fwds.length) return { error: 'No comparable past setups found on this stock', dir, horizon };
+  const wins = fwds.filter(r => dir === 'up' ? r > 0 : r < 0).length;
+  const sorted = [...fwds].sort((a,b) => a - b);
+  return {
+    dir, horizon, count: fwds.length,
+    winRate: wins / fwds.length * 100,
+    avgRet: fwds.reduce((s,r) => s+r, 0) / fwds.length,
+    medRet: sorted[Math.floor(sorted.length/2)],
+    best: Math.max(...fwds), worst: Math.min(...fwds)
+  };
+}
+
+// ============================================================
+// FUNDAMENTALS — best-effort via BYOK keys + always-on derived stats
+// ============================================================
+async function fetchFundamentals(sym, exch, isUS, isCrypto) {
+  if (isCrypto) return null;
+  const avKey = _loadKey('avApiKey'), fmpKey = _loadKey('fmpApiKey'), tdKey = _loadKey('tdApiKey');
+  // 1. Alpha Vantage OVERVIEW — richest, covers US + many India .BSE/.NSE
+  if (avKey) {
+    try {
+      const avSym = isUS ? sym : sym + (exch === 'BSE' ? '.BSE' : '.NSE');
+      const r = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(avSym)}&apikey=${avKey}`);
+      const j = await r.json();
+      if (j && j.Symbol) return { source:'Alpha Vantage', name:j.Name, sector:j.Sector, pe:+j.PERatio||null, eps:+j.EPS||null,
+        mktCap:+j.MarketCapitalization||null, divYield:(+j.DividendYield*100)||null, pb:+j.PriceToBookRatio||null,
+        roe:(+j.ReturnOnEquityTTM*100)||null, yrHi:+j['52WeekHigh']||null, yrLo:+j['52WeekLow']||null, beta:+j.Beta||null };
+    } catch(e) {}
+  }
+  // 2. FMP — strong for US
+  if (fmpKey && isUS) {
+    try {
+      const r = await fetch(`https://financialmodelingprep.com/api/v3/quote/${sym}?apikey=${fmpKey}`);
+      const j = await r.json(); const q = j && j[0];
+      if (q) return { source:'FMP', name:q.name, pe:q.pe, eps:q.eps, mktCap:q.marketCap, yrHi:q.yearHigh, yrLo:q.yearLow };
+    } catch(e) {}
+  }
+  // 3. TwelveData quote — 52-week range at minimum
+  if (tdKey) {
+    try {
+      const exParam = isUS ? '' : (exch === 'BSE' ? '&exchange=BSE' : '&exchange=NSE');
+      const r = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(sym)}${exParam}&apikey=${tdKey}`);
+      const j = await r.json();
+      if (j && !j.code && j.symbol) return { source:'TwelveData', name:j.name, yrHi:+j.fifty_two_week?.high||null, yrLo:+j.fifty_two_week?.low||null };
+    } catch(e) {}
+  }
+  return null;
+}
+
+function _fmtCap(v, isIndia) {
+  if (!v || v <= 0) return '--';
+  if (isIndia) return v >= 1e12 ? '₹'+(v/1e12).toFixed(2)+' L Cr' : v >= 1e7 ? '₹'+(v/1e7).toFixed(0)+' Cr' : '₹'+(v/1e5).toFixed(0)+' L';
+  return v >= 1e12 ? '$'+(v/1e12).toFixed(2)+'T' : v >= 1e9 ? '$'+(v/1e9).toFixed(2)+'B' : '$'+(v/1e6).toFixed(0)+'M';
+}
+
+function renderFundamentals(ar) {
+  const el = document.getElementById('fundamentalsPanel');
+  if (!el) return;
+  const { data, currentPrice } = ar;
+  const isIndia = marketMode === 'india';
+  // Derived-from-price stats (always available)
+  const win = data.slice(-252);
+  const hi52 = Math.max(...win.map(d => d.high)), lo52 = Math.min(...win.map(d => d.low));
+  const pos52 = hi52 > lo52 ? ((currentPrice - lo52) / (hi52 - lo52) * 100) : 50;
+  const rets = []; for (let i = 1; i < data.length; i++) rets.push(Math.log(data[i].close / data[i-1].close));
+  const mean = rets.reduce((s,r)=>s+r,0)/rets.length;
+  const vol = Math.sqrt(rets.reduce((s,r)=>s+(r-mean)**2,0)/rets.length) * Math.sqrt(252) * 100;
+  const avgVol = data.slice(-20).reduce((s,d)=>s+d.volume,0)/20;
+  const turnover = avgVol * currentPrice;
+
+  const cell = (label, val, color) => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${label}</div><div style="font-size:16px;font-weight:800;color:${color||'var(--text)'};margin-top:3px;">${val}</div></div>`;
+
+  const derivedCells = [
+    cell('52-Wk Range', `${CUR()}${fmtNum(lo52)} – ${CUR()}${fmtNum(hi52)}`),
+    cell('52-Wk Position', pos52.toFixed(0)+'%', pos52>85?'var(--red)':pos52<15?'var(--green)':'var(--text)'),
+    cell('Volatility (ann.)', vol.toFixed(0)+'%', vol>50?'var(--red)':vol>30?'var(--accent)':'var(--green)'),
+    cell('Avg Turnover/day', isIndia ? _fmtCap(turnover,true) : _fmtCap(turnover,false), turnover<(isIndia?1e7:2e6)?'var(--red)':'var(--text)'),
+  ];
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">${derivedCells.join('')}</div>
+    <div id="fundApiRow" style="margin-top:10px;"><div style="font-size:12px;color:var(--text3);padding:6px 2px;">⏳ Checking for valuation data (P/E, market cap)…</div></div>`;
+
+  // Async API fundamentals
+  const sym  = ar.symbol;
+  const exch = document.getElementById('marketSelect')?.value || 'NSE';
+  fetchFundamentals(sym, exch, marketMode==='us', marketMode==='crypto').then(f => {
+    const row = document.getElementById('fundApiRow');
+    if (!row) return;
+    if (!f) {
+      row.innerHTML = `<div style="background:var(--surface2);border:1px dashed var(--border2);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--text3);line-height:1.5;">
+        💡 Add an <b>Alpha Vantage</b> key (works for NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> to pull <b>P/E, market cap, EPS, dividend yield & sector</b> alongside the technicals.</div>`;
+      return;
+    }
+    const fc = [];
+    if (f.pe != null)      fc.push(cell('P/E Ratio', f.pe.toFixed(1), f.pe>40?'var(--red)':f.pe<15?'var(--green)':'var(--text)'));
+    if (f.eps != null)     fc.push(cell('EPS', CUR()+fmtNum(f.eps)));
+    if (f.mktCap != null)  fc.push(cell('Market Cap', _fmtCap(f.mktCap, isIndia)));
+    if (f.pb != null)      fc.push(cell('P/B', f.pb.toFixed(1)));
+    if (f.roe != null)     fc.push(cell('ROE', f.roe.toFixed(1)+'%', f.roe>15?'var(--green)':f.roe<5?'var(--red)':'var(--text)'));
+    if (f.divYield != null)fc.push(cell('Div Yield', f.divYield.toFixed(2)+'%'));
+    if (f.beta != null)    fc.push(cell('Beta', f.beta.toFixed(2), f.beta>1.3?'var(--red)':'var(--text)'));
+    row.innerHTML = `
+      ${f.sector ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">🏭 Sector: <b>${f.sector}</b></div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">${fc.join('') || '<div style="font-size:12px;color:var(--text3);">No valuation fields returned for this symbol.</div>'}</div>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:7px;">Valuation via ${f.source}. Fundamentals update slowly — verify against the latest filing.</div>`;
+  }).catch(()=>{});
+}
+
+function openByok() {
+  let m = document.getElementById('byokQuickModal');
+  if (m) { m.style.display = 'flex'; return; }
+  m = document.createElement('div');
+  m.id = 'byokQuickModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;';
+  const k = id => (localStorage.getItem(id) || '');
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:24px;max-width:460px;width:90%;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <b style="font-size:17px;">🔑 Data API Keys</b>
+      <button onclick="document.getElementById('byokQuickModal').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.5;">Stored only in your browser. Free keys: <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent);">Alpha Vantage</a> · <a href="https://twelvedata.com/" target="_blank" style="color:var(--accent);">TwelveData</a> · <a href="https://site.financialmodelingprep.com/developer" target="_blank" style="color:var(--accent);">FMP</a></div>
+    ${[['avApiKey','Alpha Vantage — NSE/BSE & US, incl. fundamentals'],['tdApiKey','TwelveData — OHLCV & 52-week'],['fmpApiKey','FMP — US only']].map(([id,lbl])=>`
+      <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;">${lbl}</label>
+      <input type="password" value="${k(id)}" oninput="_saveKey('${id}',this.value)" placeholder="Paste key…" style="width:100%;padding:9px 11px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;">`).join('')}
+    <button onclick="document.getElementById('byokQuickModal').remove()" class="btn btn-primary" style="width:100%;padding:11px;">Done</button>
+  </div>`;
+  document.body.appendChild(m);
+}
+
 async function runAnalysis() {
   if (!parsedData.length) return;
   const overlay = document.getElementById('loadingOverlay');
@@ -4359,6 +4391,8 @@ async function runAnalysis() {
     const extras  = { stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv };
     const signals  = generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, last, extras);
     const patterns = detectPatterns(data, last);
+    const breakout = analyzeBreakout(data, 20, 0.10);
+    const backtest = backtestVerdict(data, signals.long.signal, 10);
 
     const currentPrice = parseFloat(document.getElementById('currentPrice').value) || closes[last];
     const prevClose    = closes[last-1] || closes[last];
@@ -4367,7 +4401,7 @@ async function runAnalysis() {
 
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, currentPrice, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -4436,7 +4470,88 @@ function renderResults() {
         <div class="score-track"><div class="score-fill" style="width:${sc}%;background:${sc>=60?'var(--green)':sc<=40?'var(--red)':'var(--accent)'}"></div></div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px;">${sc.toFixed(0)} / 100</div>
       </div>
-    </div>`;
+    </div>
+    ${(() => {
+      const bo = analysisResult.breakout;
+      if (!bo || bo.error) return '';
+      const on = bo.isBreakout;
+      const chk = (label, ok, detail) => `<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:6px;background:${ok?'rgba(16,185,129,0.12)':'var(--surface2)'};border:1px solid ${ok?'var(--green)':'var(--border2)'};font-size:11.5px;color:var(--text2);">${ok?'✅':'⬜'} <b style="color:${ok?'var(--green)':'var(--text3)'}">${label}</b> · ${detail}</span>`;
+      return `<div style="margin-top:12px;border:1.5px solid ${on?'var(--green)':'var(--border2)'};border-radius:var(--radius-sm);background:${on?'rgba(16,185,129,0.10)':'var(--surface2)'};padding:13px 15px;">
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+          <span style="font-size:19px;">${on?'🚀':'🔍'}</span>
+          <b style="font-size:14.5px;color:${on?'var(--green)':'var(--text)'};">${on?'BREAKOUT CONFIRMED':'No Breakout — Watching'}</b>
+          <span style="font-size:11px;color:var(--text3);">20-day consolidation breakout screener</span>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;">
+          ${chk('Tight Range', bo.isConsolidating, `${(bo.consolidationPct*100).toFixed(1)}% (≤10%)`)}
+          ${chk('Resistance Break', bo.isBreakingOut, `${CUR()}${bo.currentClose.toFixed(2)} vs ${CUR()}${bo.resistanceLevel.toFixed(2)}`)}
+          ${chk('Range Expansion', bo.isExpanding, `${CUR()}${bo.currentRange.toFixed(2)} vs ATR ${CUR()}${bo.atr.toFixed(2)}`)}
+        </div>
+        ${on?`<div style="margin-top:9px;font-size:12px;color:var(--text2);line-height:1.6;">Price cleared <b>${CUR()}${bo.resistanceLevel.toFixed(2)}</b> resistance on an expanding-range day — a momentum entry trigger. Invalidation: a close back below <b>${CUR()}${bo.supportLevel.toFixed(2)}</b> (consolidation floor).</div>`:`<div style="margin-top:9px;font-size:11.5px;color:var(--text3);">All three conditions must turn green for a valid breakout. Currently waiting.</div>`}
+      </div>`;
+    })()}
+    ${(() => {
+      const conf = signals.long.confidence;
+      const bc = signals.bullCount, brc = signals.bearCount, tot = bc + brc;
+      const conflict = tot > 0 && Math.abs(bc - brc) <= Math.max(2, tot * 0.18);
+      const isIndia = marketMode === 'india';
+      const valTraded = avgVol * currentPrice;          // avg daily turnover
+      const inCr = valTraded / 1e7;
+      const illiquid = isIndia ? inCr < 1 : valTraded < 2e6;  // <₹1Cr/day or <$2M/day
+      const thinVol = avgVol < 50000;
+      const win = data.slice(-252);
+      const hi52 = Math.max(...win.map(d => d.high)), lo52 = Math.min(...win.map(d => d.low));
+      const pos52 = hi52 > lo52 ? ((currentPrice - lo52) / (hi52 - lo52) * 100) : 50;
+      const flags = [];
+      if (conflict)            flags.push(['⚖️','Signals conflict',`${bc} bullish vs ${brc} bearish — no clear edge. This is a low-confidence read; waiting is often the right call.`,'var(--accent)']);
+      if (illiquid || thinVol) flags.push(['💧','Thin liquidity',`~${isIndia ? ('₹'+inCr.toFixed(2)+' Cr') : ('$'+(valTraded/1e6).toFixed(1)+'M')}/day avg turnover. Technical signals are far less reliable on illiquid stocks — expect slippage, gaps and manipulation.`,'var(--red)']);
+      if (pos52 > 92)          flags.push(['🔺','Near 52-week high',`Trading at ${pos52.toFixed(0)}% of its 52-week range — limited overhead room; chasing here is risky.`,'var(--accent)']);
+      if (pos52 < 8)           flags.push(['🔻','Near 52-week low',`Trading at ${pos52.toFixed(0)}% of its 52-week range — falling-knife risk; wait for a base to form before a reversal.`,'var(--accent)']);
+      const confColor = conf >= 70 ? 'var(--green)' : conf >= 45 ? 'var(--accent)' : 'var(--red)';
+      const confWord  = conf >= 70 ? 'high' : conf >= 45 ? 'moderate' : 'low';
+      return `<div style="margin-top:12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);padding:13px 15px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:${flags.length?'10px':'8px'};flex-wrap:wrap;">
+          <span style="font-size:16px;">🧭</span><b style="font-size:13.5px;">Reality Check</b>
+          <span style="margin-left:auto;font-size:11.5px;color:var(--text3);">Confidence <b style="color:${confColor}">${conf}% (${confWord})</b> · ${bc}/${tot} signals agree</span>
+        </div>
+        ${flags.map(f => `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:7px;font-size:12px;line-height:1.5;"><span>${f[0]}</span><div><b style="color:${f[3]}">${f[1]}.</b> <span style="color:var(--text2)">${f[2]}</span></div></div>`).join('') || '<div style="font-size:12px;color:var(--text2);">No major liquidity or positioning red flags — but the verdict still reflects price action only.</div>'}
+        <div style="margin-top:9px;padding-top:9px;border-top:1px dashed var(--border2);font-size:11px;color:var(--text3);line-height:1.5;">⚠️ <b>Technicals only.</b> This reading ignores earnings, news, management quality, valuation and macro events — the factors that actually drive prices over time. Treat it as one input, never the whole decision.</div>
+      </div>`;
+    })()}`;
+
+  // FUNDAMENTALS PANEL
+  renderFundamentals(analysisResult);
+
+  // BACKTEST PANEL
+  (function(){
+    const bt = analysisResult.backtest, v = signals.long.signal;
+    const elBT = document.getElementById('backtestPanel');
+    if (!elBT) return;
+    if (!bt || bt.error) {
+      elBT.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--text3);font-size:12.5px;">📉 ${bt?.error || 'Backtest unavailable'}.</div>`;
+      return;
+    }
+    const up = bt.dir === 'up';
+    const good = bt.winRate >= 55, bad = bt.winRate < 45;
+    const col = good ? 'var(--green)' : bad ? 'var(--red)' : 'var(--accent)';
+    const trigTxt = up ? 'RSI recovering above 45 while price is above its 50-day average (a momentum-up setup)'
+                       : 'RSI rolling below 55 while price is below its 50-day average (a momentum-down setup)';
+    const correctTxt = up ? 'rose' : 'fell';
+    const stat = (label, val, sub) => `<div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 13px;"><div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${label}</div><div style="font-size:20px;font-weight:800;color:${sub?.col||'var(--text)'};margin-top:3px;">${val}</div>${sub?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${sub.txt}</div>`:''}</div>`;
+    elBT.innerHTML = `
+      <div style="background:${good?'rgba(16,185,129,0.06)':bad?'rgba(239,68,68,0.06)':'var(--surface2)'};border:1px solid ${col};border-radius:10px;padding:14px 16px;">
+        <div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px;">
+          Over the last <b>${(data.length/250).toFixed(1)} years</b> of <b>${analysisResult.company}</b>, today's <b style="color:${v==='BUY'?'var(--green)':v==='SELL'?'var(--red)':'var(--accent)'}">${v}</b>-aligned trigger (${trigTxt}) fired <b>${bt.count}</b> time${bt.count===1?'':'s'}. Here's what happened <b>${bt.horizon} trading days</b> later:
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          ${stat('Hit Rate', bt.winRate.toFixed(0)+'%', {col, txt:`price ${correctTxt} ${bt.winRate.toFixed(0)}% of the time`})}
+          ${stat('Avg Move', (bt.avgRet>=0?'+':'')+bt.avgRet.toFixed(1)+'%', {col:bt.avgRet>=0?'var(--green)':'var(--red)', txt:'mean '+bt.horizon+'-day return'})}
+          ${stat('Median', (bt.medRet>=0?'+':'')+bt.medRet.toFixed(1)+'%', {txt:'typical outcome'})}
+          ${stat('Range', `${bt.worst.toFixed(0)}% to +${bt.best.toFixed(0)}%`.replace('+-','-'), {txt:'worst → best'})}
+        </div>
+        <div style="margin-top:11px;font-size:11px;color:var(--text3);line-height:1.5;">⚠️ Simplified proxy of the verdict, on a small in-sample set — no trading costs, slippage or regime changes. Past behaviour is <b>not</b> a prediction. ${bt.count < 8 ? '<b style="color:var(--accent)">Sample is small ('+bt.count+') — treat as anecdotal.</b>' : ''}</div>
+      </div>`;
+  })();
 
   // RECO GRID
   const tfs = [
@@ -4623,6 +4738,7 @@ function renderResults() {
       if (el) el.innerHTML = el.innerHTML.replace(/₹/g, '$');
     });
   }
+  switchResTab('verdict'); // always land on the Verdict tab for a new analysis
 }
 
 // ============================================================
@@ -4677,6 +4793,18 @@ function switchChart(type, el) {
   el.classList.add('active');
   currentChartType = type;
   buildChart(type);
+}
+
+// Results tabs (Verdict / Levels / Indicators / Patterns)
+function switchResTab(name, el) {
+  document.querySelectorAll('.res-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-rtab') === name));
+  document.querySelectorAll('.res-tab-panel').forEach(p => {
+    p.style.display = (p.getAttribute('data-rtab') === name) ? '' : 'none';
+  });
+  // Chart is built while its tab is hidden → it sizes to 0. Rebuild on reveal.
+  if (name === 'levels' && analysisResult) {
+    setTimeout(() => { try { buildChart(currentChartType || 'candle'); } catch(e){} }, 40);
+  }
 }
 
 function buildChart(type) {
@@ -5783,6 +5911,7 @@ function filterTable(prefix){
         <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"—"}</td>
         <td style="font-size:11px;color:var(--T3)">${h.broker}</td>
         <td class="r"><div class="acts">
+          <button class="ab ab-anl" onclick="analyseHolding('INDEQ','${h.ticker}','${(h.name||'').replace(/'/g,'')}')" title="Run technical analysis">📊</button>
           <button class="ab ab-edit" onclick="openModal('edit','INDEQ','${h.id}')">✏</button>
           <button class="ab ab-buy" onclick="openModal('buymore','INDEQ','${h.id}')">+Buy</button>
           <button class="ab ab-sell" onclick="openModal('sell','INDEQ','${h.id}')">Sell</button>
@@ -5833,6 +5962,7 @@ function filterTable(prefix){
         <td class="r">${pill(c.r)}</td>
         <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"—"}</td>
         <td class="r"><div class="acts">
+          <button class="ab ab-anl" onclick="analyseHolding('USEQ','${h.ticker}','${(h.name||'').replace(/'/g,'')}')" title="Run technical analysis">📊</button>
           <a class="ab" href="${yfHistUrl}" target="_blank" title="Download Yahoo Finance CSV for ${yfTicker}" style="background:var(--BL);color:var(--B);border-color:var(--bd2);text-decoration:none">⬇ YF</a>
           <button class="ab ab-edit" onclick="openModal('edit','USEQ','${h.id}')">✏</button>
           <button class="ab ab-buy" onclick="openModal('buymore','USEQ','${h.id}')">+Buy</button>
@@ -5874,6 +6004,7 @@ function filterTable(prefix){
         <td class="r tm" style="color:${clr(v.pl)};font-weight:700">${v.pl>=0?'+':'-'}${F.inr(Math.abs(v.pl))}</td>
         <td class="r">${pill(v.r)}</td>
         <td class="r"><div class="acts">
+          <button class="ab ab-anl" onclick="analyseHolding('CRYPTO','${c.coinId||c.coin||''}','${(c.coin||'').replace(/'/g,'')}')" title="Run technical analysis">📊</button>
           <a class="ab" href="${yfHistUrl}" target="_blank" title="Download Yahoo Finance CSV for ${yfSym}" style="background:var(--AUL);color:var(--AU);border-color:var(--bd2);text-decoration:none">⬇ YF</a>
           <button class="ab ab-edit" onclick="openModal('edit','CRYPTO','${c.id}')">✏</button>
           <button class="ab ab-buy" onclick="openModal('buymore','CRYPTO','${c.id}')">+Buy</button>
@@ -8096,6 +8227,48 @@ function switchApp(app) {
   }
   try { localStorage.setItem('advStockApp', app); } catch(e) {}
 }
+
+// ── BRIDGE: Portfolio holding → Stock Analyser (analyse a holding) ──────────
+async function analyseHolding(type, ticker, name) {
+  const mode = type === 'USEQ' ? 'us' : type === 'CRYPTO' ? 'crypto' : 'india';
+  let sym = ticker || '', exch = mode === 'india' ? 'NSE' : mode === 'us' ? 'NASDAQ' : 'CRYPTO';
+  if (sym.includes(':')) { const p = sym.split(':'); exch = p[0]; sym = p[1]; }
+  if (mode === 'crypto') sym = (ticker || '').toLowerCase();
+  switchApp('analyser');
+  if (typeof selectMarket === 'function') selectMarket(mode);  // configures UI + reveals ingestion
+  const excEl = document.getElementById('exchangeInput');
+  const msel  = document.getElementById('marketSelect');
+  if (mode === 'india') { const e = exch === 'BSE' ? 'BSE' : 'NSE'; if (excEl) excEl.value = e; if (msel) msel.value = e; }
+  else if (mode === 'us' && excEl) { try { excEl.value = exch; } catch(_){} }
+  const symEl = document.getElementById('symbolInput'), resEl = document.getElementById('resolvedSymbol'), cnEl = document.getElementById('companyName');
+  if (symEl) symEl.value = sym;
+  if (resEl) resEl.value = sym;
+  if (cnEl && name) cnEl.value = name;
+  try {
+    await fetchSymbolData();
+    await runAnalysis();
+    document.getElementById('resultsSection')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  } catch(e) { /* fetchSymbolData surfaces its own error UI */ }
+}
+
+// ── BRIDGE: Stock Analyser result → Portfolio (add analysed stock) ──────────
+function addToPortfolioFromAnalysis() {
+  if (!analysisResult) return;
+  const cls  = marketMode === 'us' ? 'USEQ' : marketMode === 'crypto' ? 'CRYPTO' : 'INDEQ';
+  const exch = document.getElementById('marketSelect')?.value || (cls === 'USEQ' ? 'NASDAQ' : 'NSE');
+  switchApp('portfolio');
+  if (typeof openModal === 'function') openModal('add', cls);
+  setTimeout(() => {
+    const setV = (id, v) => { const e = document.getElementById(id); if (e && v != null && v !== '') e.value = v; };
+    setV('m-name', analysisResult.company);
+    let ticker = analysisResult.symbol;
+    if (cls === 'INDEQ' || cls === 'USEQ') ticker = exch + ':' + analysisResult.symbol;
+    else ticker = (analysisResult.symbol || '').toLowerCase();
+    setV('m-ticker', ticker);
+    setV('m-ltp', analysisResult.currentPrice != null ? (+analysisResult.currentPrice).toFixed(2) : '');
+  }, 40);
+}
+
 (function() {
   try {
     var last = localStorage.getItem('advStockApp');
@@ -8104,1275 +8277,5 @@ function switchApp(app) {
 })();
 
 </script>
-<!-- ════════════════════════════════════════════════════════════════════════
-   BAZAARBUDDY ADD-ON for MyeeStockBuddy
-   ────────────────────────────────────────────────────────────────────────
-   Paste this entire block JUST BEFORE </body> in MyeeStockBuddy.html.
-   No existing code is touched. The add-on hooks into:
-     • S (your global state) — adds S.goals, S.screenerPrefs, S.liveCfg
-     • save() — persists everything via your existing localStorage flow
-     • RENDERERS map — registers 4 new tabs
-     • goTab() — your existing tab switcher works as-is
-     • _fetchLivePrice() — reused for live polling
-     • API key store (aikey_* localStorage) — reused for AI features
-   ──────────────────────────────────────────────────────────────────────── -->
-<style>
-  /* BazaarBuddy add-on — namespaced under .bb- to avoid collisions */
-  /* Width constraint to match your existing .app-container (matches portfolio layout) */
-  .bb-pages-wrapper { max-width: 1400px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; width: 100%; }
-  .bb-pages-wrapper * { box-sizing: border-box; }
-  .bb-pages-wrapper .page { display: none; }
-  .bb-pages-wrapper .page.active { display: block; }
-  .bb-section { margin: 16px 0; max-width: 100%; overflow-x: hidden; }
-  .bb-grid { display: grid; gap: 16px; }
-  .bb-grid-2 { grid-template-columns: 1fr 1fr; }
-  .bb-grid-3 { grid-template-columns: repeat(3, 1fr); }
-  .bb-grid-4 { grid-template-columns: repeat(4, 1fr); }
-  @media (max-width: 900px) { .bb-grid-2, .bb-grid-3, .bb-grid-4 { grid-template-columns: 1fr; } }
-  .bb-card { background: var(--white, #fff); border: 1px solid var(--bd, #e5e7eb); border-radius: 12px; padding: 18px; box-shadow: var(--sh, 0 1px 3px rgba(0,0,0,.04)); max-width: 100%; overflow: hidden; }
-  .bb-h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 900; color: var(--T1, #0f172a); margin-bottom: 4px; }
-  .bb-sub { font-size: 13px; color: var(--T2, #475569); margin-bottom: 16px; }
-  .bb-h3 { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--T1, #0f172a); margin-bottom: 8px; }
-  .bb-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--T3, #64748b); font-weight: 600; }
-  .bb-num { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
-  .bb-num-lg { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 900; color: var(--T1, #0f172a); }
-  .bb-input { width: 100%; padding: 8px 10px; border: 1px solid var(--bd, #d1d5db); border-radius: 6px; background: var(--white, #fff); color: var(--T1, #0f172a); font-size: 13px; }
-  .bb-input:focus { outline: none; border-color: var(--P, #f59e0b); }
-  .bb-btn { padding: 9px 16px; border-radius: 6px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; transition: all .15s; }
-  .bb-btn-primary { background: linear-gradient(135deg, #0F172A, #1E293B); color: #fff; }
-  .bb-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
-  .bb-btn-amber { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
-  .bb-btn-ghost { background: var(--white, #fff); color: var(--T2, #475569); border: 1px solid var(--bd, #d1d5db); }
-  .bb-btn-ghost:hover { border-color: var(--P, #f59e0b); color: var(--P, #f59e0b); }
-  .bb-btn-sm { padding: 5px 10px; font-size: 11px; border-radius: 5px; }
-  .bb-pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; }
-  .bb-pill-buy { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-  .bb-pill-wait { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-  .bb-pill-sell { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-  .bb-progress { height: 8px; background: var(--surface2, #f3f4f6); border-radius: 4px; overflow: hidden; }
-  .bb-progress-fill { height: 100%; background: linear-gradient(90deg, #10b981, #f59e0b); transition: width .4s; }
-  .bb-goal-row { padding: 14px; border: 1px solid var(--bd, #e5e7eb); border-radius: 10px; margin-bottom: 10px; background: var(--white, #fff); }
-  .bb-table { width: 100%; border-collapse: collapse; }
-  .bb-table th { text-align: left; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--T3, #64748b); padding: 9px 8px; border-bottom: 1px solid var(--bd, #e5e7eb); }
-  .bb-table td { padding: 10px 8px; font-size: 13px; border-bottom: 1px solid var(--bd, #f1f5f9); color: var(--T1, #0f172a); }
-  .bb-table tr:hover { background: var(--surface2, #f8fafc); }
-  .bb-screen-btn { padding: 12px; border: 1px solid var(--bd, #e5e7eb); border-radius: 8px; background: var(--white, #fff); cursor: pointer; text-align: left; transition: all .15s; }
-  .bb-screen-btn:hover { border-color: var(--P, #f59e0b); }
-  .bb-screen-btn.bb-active { border-color: var(--P, #f59e0b); background: rgba(245,158,11,.05); box-shadow: 0 0 0 2px rgba(245,158,11,.1); }
-  .bb-screen-btn .bb-st { font-weight: 800; font-size: 13px; color: var(--T1, #0f172a); }
-  .bb-screen-btn .bb-sd { font-size: 11px; color: var(--T3, #64748b); margin-top: 3px; }
-  .bb-vibe-ring { transition: stroke-dashoffset 1s cubic-bezier(.4,0,.2,1); }
-  .bb-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.7); animation: bb-pulse 2s infinite; vertical-align: middle; margin-right: 6px; }
-  @keyframes bb-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.7); } 70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
-  .bb-live-off { background: #94a3b8; animation: none; box-shadow: none; }
-  .bb-flash-up { animation: bb-flash-up .8s ease-out; }
-  .bb-flash-down { animation: bb-flash-down .8s ease-out; }
-  @keyframes bb-flash-up { 0% { background: rgba(16,185,129,.3); } 100% { background: transparent; } }
-  @keyframes bb-flash-down { 0% { background: rgba(239,68,68,.3); } 100% { background: transparent; } }
-  .bb-strat-result { animation: bb-fadeIn .4s; }
-  @keyframes bb-fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .bb-kpi { background: var(--white, #fff); border: 1px solid var(--bd, #e5e7eb); border-left: 3px solid #f59e0b; padding: 14px 16px; border-radius: 8px; }
-  .bb-kpi .bb-kl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--T3, #64748b); font-weight: 600; }
-  .bb-kpi .bb-kv { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 900; color: var(--T1, #0f172a); margin-top: 3px; }
-  .bb-kpi .bb-ks { font-size: 11px; color: var(--T2, #475569); margin-top: 2px; }
-  .bb-toggle-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface2, #f8fafc); border: 1px solid var(--bd, #e5e7eb); border-radius: 8px; font-size: 12px; }
-  .bb-toggle-row label { cursor: pointer; }
-  .bb-stat-vibe { padding: 14px; border-radius: 10px; background: var(--surface2, #f8fafc); }
-  .bb-modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .bb-modal { background: var(--white, #fff); border-radius: 14px; padding: 24px; max-width: 480px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-</style>
-
-<!-- ════════ NEW NAV TABS (appended to your existing #nav) ════════ -->
-<!-- ════════ NEW PAGES (appended to <main>) ════════ -->
-
-<!-- ════════════════════════════════════════════════════════════════════════
-   BAZAARBUDDY ADD-ON LOGIC
-   ──────────────────────────────────────────────────────────────────────── -->
-<script>
-(function() {
-  'use strict';
-  
-  // ═══════════════════════════════════════════════════════════════════
-  // CSV HEADER NORMALIZER (v2.1) — fixes NSE bhavcopy + BOM issues
-  // ═══════════════════════════════════════════════════════════════════
-  // Your CSV upload uses Papa.parse with header:true. NSE's official bhavcopy
-  // CSVs have:
-  //   1. A UTF-8 BOM (\ufeff) prefixing the first header
-  //   2. Trailing whitespace inside quoted headers ("Symbol  ", "Close Price  ")
-  //   3. Indian comma-format numbers ("2,780.80", "5,96,821")
-  //
-  // Result: row keys become "\ufeffSymbol  " and "Close Price  " — they don't
-  // match what prepareData() looks for ('Close Price', 'Close', etc.), so every
-  // row is parsed with NaN values and silently dropped by .filter(r => r.close > 0).
-  // → "Need at least 20 data rows. Got: 0"
-  //
-  // We patch Papa.parse globally to normalize keys after parsing. Safe because:
-  //   - Only touches the result objects, not Papa's internals
-  //   - Whitespace-trimmed keys match what your code already expects
-  //   - Numeric parseNum() in your code already handles commas
-  
-  function patchPapaParse() {
-    if (typeof window.Papa === 'undefined' || !window.Papa.parse) {
-      return setTimeout(patchPapaParse, 200);
-    }
-    if (window._bbPapaPatched) return;
-    
-    var origParse = window.Papa.parse;
-    window.Papa.parse = function(input, config) {
-      config = config || {};
-      var userComplete = config.complete;
-      
-      // Wrap the complete callback to normalize headers
-      config.complete = function(results) {
-        if (results && Array.isArray(results.data) && results.data.length > 0 && typeof results.data[0] === 'object') {
-          results.data = results.data.map(function(row) {
-            if (!row || typeof row !== 'object') return row;
-            var clean = {};
-            for (var key in row) {
-              if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
-              // Strip BOM (\ufeff), trim whitespace, collapse internal multi-spaces
-              var cleanKey = key.replace(/^\ufeff/, '').trim().replace(/\s+/g, ' ');
-              // Also trim string values (NSE CSV has padded values in some columns)
-              var val = row[key];
-              if (typeof val === 'string') val = val.trim();
-              clean[cleanKey] = val;
-            }
-            return clean;
-          });
-          // Also clean the meta.fields array if present
-          if (results.meta && Array.isArray(results.meta.fields)) {
-            results.meta.fields = results.meta.fields.map(function(k) {
-              return k.replace(/^\ufeff/, '').trim().replace(/\s+/g, ' ');
-            });
-          }
-        }
-        if (typeof userComplete === 'function') userComplete(results);
-      };
-      
-      return origParse(input, config);
-    };
-    
-    window._bbPapaPatched = true;
-    console.log('[BazaarBuddy] ✓ Papa.parse patched — CSV headers will be normalized (BOM + whitespace)');
-  }
-  patchPapaParse();
-  
-  // ═══════════════════════════════════════════════════════════════════
-  // CRITICAL PATCHES — fix pre-existing global page-class conflicts
-  // ═══════════════════════════════════════════════════════════════════
-  // Your app has THREE distinct uses of class="page":
-  //   1. Analyser wizard:  disclaimerPage, marketSelectorPage, mainPage, declinePage
-  //   2. Portfolio tabs:   page-dashboard, page-india, page-us, etc.
-  //   3. BB tabs:          page-bb-goals, page-bb-screener, etc.
-  //
-  // showPage() does querySelectorAll('.page') globally → it nukes the .active
-  // state of groups 2 and 3 when called from group 1. This is a pre-existing
-  // bug that becomes user-visible with our additions. We patch showPage to
-  // only operate on the analyser wizard pages.
-  
-  function patchShowPage() {
-    if (typeof window.showPage !== 'function') {
-      return setTimeout(patchShowPage, 200);
-    }
-    if (window._bbShowPagePatched) return;
-    var ANALYSER_PAGES = ['disclaimerPage', 'declinePage', 'marketSelectorPage', 'mainPage'];
-    var origShowPage = window.showPage;
-    window.showPage = function(id) {
-      // Only deactivate the analyser wizard pages; leave portfolio + BB pages alone
-      ANALYSER_PAGES.forEach(function(pid) {
-        var el = document.getElementById(pid);
-        if (el) el.classList.remove('active');
-      });
-      var target = document.getElementById(id);
-      if (target) target.classList.add('active');
-    };
-    window._bbShowPagePatched = true;
-    console.log('[BazaarBuddy] ✓ showPage scoped to analyser wizard');
-  }
-  patchShowPage();
-  
-  // Patch switchApp to re-render the active portfolio tab on return
-  function patchSwitchApp() {
-    if (typeof window.switchApp !== 'function') {
-      return setTimeout(patchSwitchApp, 200);
-    }
-    if (window._bbSwitchAppPatched) return;
-    var origSwitchApp = window.switchApp;
-    window.switchApp = function(app) {
-      origSwitchApp(app);
-      if (app === 'portfolio') {
-        // Re-render whatever portfolio tab is currently active — prevents blank screen
-        setTimeout(function() {
-          try {
-            var activeTab = document.querySelector('#nav .tab.active');
-            if (activeTab) {
-              var tabId = activeTab.dataset.tab;
-              // Make sure the right page div is active
-              document.querySelectorAll('#section-portfolio .page').forEach(function(p) {
-                p.classList.remove('active');
-              });
-              var pageEl = document.getElementById('page-' + tabId);
-              if (pageEl) pageEl.classList.add('active');
-              // Fire the renderer
-              if (typeof RENDERERS !== 'undefined' && RENDERERS[tabId]) RENDERERS[tabId]();
-            } else {
-              // No active tab — default to dashboard
-              var dashTab = document.querySelector('#nav .tab[data-tab="dashboard"]');
-              if (dashTab) dashTab.click();
-            }
-          } catch(e) { console.warn('[BazaarBuddy] switchApp post-fix:', e); }
-        }, 50);
-      } else if (app === 'analyser') {
-        // CRITICAL: the portfolio tab click handler runs querySelectorAll('.page')
-        // globally and strips .active from analyser's #mainPage too. We must
-        // re-activate mainPage when returning to analyser.
-        setTimeout(function() {
-          try {
-            var analyserPages = ['disclaimerPage', 'declinePage', 'marketSelectorPage', 'mainPage'];
-            var hasActive = analyserPages.some(function(pid) {
-              var el = document.getElementById(pid);
-              return el && el.classList.contains('active');
-            });
-            if (!hasActive) {
-              // Restore based on flow stage: if disclaimer accepted → mainPage
-              var disclaimerAccepted = localStorage.getItem('advStockDisclaimer_v1') === 'accepted';
-              var targetPage = disclaimerAccepted ? 'mainPage' : 'disclaimerPage';
-              var el = document.getElementById(targetPage);
-              if (el) el.classList.add('active');
-              console.log('[BazaarBuddy] Restored analyser to:', targetPage);
-            }
-          } catch(e) { console.warn('[BazaarBuddy] switchApp analyser-restore:', e); }
-        }, 50);
-      }
-    };
-    window._bbSwitchAppPatched = true;
-    console.log('[BazaarBuddy] ✓ switchApp will restore active tab on return');
-  }
-  patchSwitchApp();
-  
-  // ═══════════════════════════════════════════════════════════════════
-  // Inject a theme toggle button into the Portfolio Manager header
-  // (your original only had one on the analyser side)
-  // ═══════════════════════════════════════════════════════════════════
-  function injectPortfolioThemeToggle() {
-    var hdr = document.querySelector('#section-portfolio #hdr .hdr-right');
-    if (!hdr) return setTimeout(injectPortfolioThemeToggle, 300);
-    if (hdr.querySelector('#bb-theme-toggle')) return; // already injected
-    
-    var btn = document.createElement('button');
-    btn.id = 'bb-theme-toggle';
-    btn.style.cssText = 'display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;color:rgba(255,255,255,.85);cursor:pointer;transition:all .15s;';
-    
-    function updateLabel() {
-      var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-      btn.innerHTML = isLight ? '🌙 Dark' : '☀️ Light';
-    }
-    updateLabel();
-    
-    btn.onclick = function() {
-      if (typeof window.toggleTheme === 'function') {
-        window.toggleTheme();
-      } else {
-        // Fallback
-        var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-      }
-      updateLabel();
-      // Also sync the analyser-side button label if visible
-      var analyserBtn = document.querySelector('#section-analyser .theme-toggle');
-      if (analyserBtn) {
-        var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        analyserBtn.textContent = isLight ? '🌙 Dark' : '☀️ Light';
-      }
-    };
-    
-    // Insert before the Stock Analyser button
-    var analyserBtnInPortfolio = hdr.querySelector('button[onclick*="switchApp(\'analyser\')"]');
-    if (analyserBtnInPortfolio) hdr.insertBefore(btn, analyserBtnInPortfolio);
-    else hdr.appendChild(btn);
-    
-    console.log('[BazaarBuddy] ✓ Portfolio theme toggle injected');
-  }
-  injectPortfolioThemeToggle();
-  
-  // ─────────── Inject nav tabs into existing #nav (additive, after load) ───────────
-  function injectNavTabs() {
-    var nav = document.getElementById('nav');
-    if (!nav) { console.warn('[BB] #nav not found, retrying...'); return setTimeout(injectNavTabs, 500); }
-    if (nav.querySelector('[data-tab="bb-goals"]')) return; // already injected
-    
-    // ───── First, fix the EXISTING portfolio tab handlers ─────
-    // The original handlers do querySelectorAll('.page') globally which strips
-    // .active from the analyser's #mainPage. We replace them with scoped versions.
-    var existingTabs = nav.querySelectorAll('.tab');
-    existingTabs.forEach(function(t) {
-      var clone = t.cloneNode(true); // clones the element WITHOUT its event listeners
-      t.parentNode.replaceChild(clone, t);
-      clone.addEventListener('click', function() {
-        document.querySelectorAll('#nav .tab').forEach(function(x){ x.classList.remove('active'); });
-        clone.classList.add('active');
-        var tabId = clone.dataset.tab;
-        // SCOPED to portfolio section only — leaves analyser pages untouched
-        document.querySelectorAll('#section-portfolio .page').forEach(function(p){ p.classList.remove('active'); });
-        var pageEl = document.getElementById('page-' + tabId);
-        if (pageEl) pageEl.classList.add('active');
-        if (typeof RENDERERS !== 'undefined' && RENDERERS[tabId]) RENDERERS[tabId]();
-      });
-    });
-    console.log('[BazaarBuddy] ✓ Rebound', existingTabs.length, 'existing portfolio tab handlers (scoped)');
-    var tabs = [
-      { id: 'bb-goals',     icon: '🎯', label: 'Goals' },
-      { id: 'bb-insights',  icon: '🌊', label: 'Live & Insights' },
-      { id: 'bb-screener',  icon: '🔍', label: 'Screener' },
-      { id: 'bb-strategy',  icon: '🧭', label: 'Strategy' },
-    ];
-    tabs.forEach(function(t) {
-      var el = document.createElement('div');
-      el.className = 'tab';
-      el.setAttribute('data-tab', t.id);
-      el.innerHTML = '<span class="tab-ic">' + t.icon + '</span> ' + t.label;
-      // Insert before 'datamgmt' so the user-facing tabs come first
-      var dm = nav.querySelector('[data-tab="datamgmt"]');
-      if (dm) nav.insertBefore(el, dm);
-      else nav.appendChild(el);
-      
-      // CRITICAL: replicate the existing tab click behavior since the main app's
-      // querySelectorAll('.tab').forEach loop has already run by the time we inject.
-      // SCOPED: only touch tabs/pages within the portfolio section to avoid the
-      // global .page conflict with the analyser's wizard pages.
-      el.addEventListener('click', function() {
-        document.querySelectorAll('#nav .tab').forEach(function(x){ x.classList.remove('active'); });
-        el.classList.add('active');
-        var tabId = el.dataset.tab;
-        document.querySelectorAll('#section-portfolio .page').forEach(function(p){ p.classList.remove('active'); });
-        var pageEl = document.getElementById('page-' + tabId);
-        if (pageEl) pageEl.classList.add('active');
-        if (typeof RENDERERS !== 'undefined' && RENDERERS[tabId]) RENDERERS[tabId]();
-      });
-    });
-    
-    // Map page id correctly — the existing nav switcher reads data-tab and toggles #page-{tab}
-    // So we need our pages named exactly that: page-bb-goals, etc.
-    // Our HTML above already uses page-goals/page-screener/page-strategy/page-insights.
-    // Quick fix: rename the page divs via JS so they match the data-tab convention.
-    var renames = {
-      'page-goals': 'page-bb-goals',
-      'page-screener': 'page-bb-screener',
-      'page-strategy': 'page-bb-strategy',
-      'page-insights': 'page-bb-insights',
-    };
-    Object.keys(renames).forEach(function(oldId) {
-      var el = document.getElementById(oldId);
-      if (el) el.id = renames[oldId];
-    });
-  }
-  
-  // ─────────── Ensure S has BB-specific fields, persisted via existing save() ───────────
-  function initState() {
-    if (typeof S === 'undefined') { console.warn('[BB] global S not ready, retrying...'); return setTimeout(initState, 500); }
-    if (!S.goals) {
-      S.goals = [
-        { id: Date.now(),    name: 'Emergency Fund',      target: 600000,   current: 50000,   years: 1,  priority: 'high',   risk: 'conservative' },
-        { id: Date.now()+1,  name: 'Dream Trip',          target: 500000,   current: 80000,   years: 2,  priority: 'medium', risk: 'moderate' },
-        { id: Date.now()+2,  name: 'Financial Freedom',   target: 30000000, current: 0,       years: 18, priority: 'high',   risk: 'aggressive' },
-      ];
-    }
-    if (!S.bbLive) S.bbLive = { enabled: false, intervalSec: 60 };
-    if (!S.bbActiveScreen) S.bbActiveScreen = 'breakouts';
-    if (typeof save === 'function') save();
-  }
-  
-  // ─────────── Register renderers into your existing RENDERERS map ───────────
-  function registerRenderers() {
-    if (typeof RENDERERS === 'undefined') { console.warn('[BB] RENDERERS not ready, retrying...'); return setTimeout(registerRenderers, 500); }
-    RENDERERS['bb-goals']    = BB.renderGoals;
-    RENDERERS['bb-screener'] = BB.renderScreener;
-    RENDERERS['bb-strategy'] = BB.renderStrategy;
-    RENDERERS['bb-insights'] = BB.renderInsights;
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════
-  // BB NAMESPACE
-  // ═══════════════════════════════════════════════════════════════════
-  window.BB = {
-    
-    // ─────────────────── GOALS ───────────────────
-    sipFor: function(g) {
-      var r = g.risk === 'aggressive' ? 0.12 : g.risk === 'moderate' ? 0.10 : 0.07;
-      var n = g.years || 1;
-      var fvCurrent = g.current * Math.pow(1 + r, n);
-      var shortfall = Math.max(0, g.target - fvCurrent);
-      var mr = r / 12;
-      var months = n * 12;
-      var sip = shortfall * mr / (Math.pow(1 + mr, months) - 1);
-      return Math.round(sip);
-    },
-    
-    portfolioCurrentValue: function() {
-      // Sum from your existing S structure if available
-      try {
-        if (typeof getCurrentValue === 'function') return getCurrentValue();
-        var total = 0;
-        ['indeq', 'useq', 'crypto', 'fd', 'mf'].forEach(function(k) {
-          var arr = S[k] || [];
-          arr.forEach(function(h) {
-            var cur = (h.ltp || h.currentPrice || h.price || 0) * (h.qty || h.units || 1);
-            if (k === 'useq') cur *= (S.usdInr || 83);
-            if (k === 'crypto') cur = (h.currentValueINR || cur);
-            if (k === 'fd' || k === 'mf') cur = (h.currentValue || cur);
-            total += cur;
-          });
-        });
-        return total;
-      } catch(e) { return 0; }
-    },
-    
-    renderGoals: function() {
-      var kpis = document.getElementById('bb-goal-kpis');
-      var list = document.getElementById('bb-goals-list');
-      if (!kpis || !list) return;
-      
-      var goals = S.goals || [];
-      var totalTarget = goals.reduce(function(a, g) { return a + (g.target || 0); }, 0);
-      var totalCurrent = goals.reduce(function(a, g) { return a + (g.current || 0); }, 0);
-      var totalSip = goals.reduce(function(a, g) { return a + BB.sipFor(g); }, 0);
-      var portfolioVal = BB.portfolioCurrentValue();
-      
-      kpis.innerHTML = 
-        '<div class="bb-kpi"><div class="bb-kl">Total Target</div><div class="bb-kv">₹' + (totalTarget/100000).toFixed(1) + 'L</div><div class="bb-ks">Across ' + goals.length + ' goals</div></div>' +
-        '<div class="bb-kpi"><div class="bb-kl">Allocated to Goals</div><div class="bb-kv">₹' + (totalCurrent/100000).toFixed(1) + 'L</div><div class="bb-ks">' + (totalTarget ? ((totalCurrent/totalTarget)*100).toFixed(0) : 0) + '% of total target</div></div>' +
-        '<div class="bb-kpi" style="border-left-color:#10b981;"><div class="bb-kl">Monthly SIP Needed</div><div class="bb-kv">₹' + (totalSip/1000).toFixed(0) + 'K</div><div class="bb-ks">' + (portfolioVal > 0 ? 'Your portfolio: ₹' + (portfolioVal/100000).toFixed(1) + 'L' : 'Add holdings to track funding') + '</div></div>';
-      
-      if (!goals.length) {
-        list.innerHTML = '<div class="bb-card" style="text-align:center;padding:32px;color:var(--T3);">No goals yet. Click "+ New Goal" to begin.</div>';
-        return;
-      }
-      
-      list.innerHTML = goals.map(function(g) {
-        var sip = BB.sipFor(g);
-        var progress = g.target ? (g.current / g.target) * 100 : 0;
-        return '<div class="bb-goal-row">' +
-          '<div style="display:flex;align-items:start;justify-content:space-between;flex-wrap:wrap;gap:12px;">' +
-            '<div style="flex:1;min-width:220px;">' +
-              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-                '<div style="font-family:\'Playfair Display\',serif;font-size:18px;font-weight:800;color:var(--T1);">' + BB.esc(g.name) + '</div>' +
-                '<span class="bb-pill bb-pill-wait">' + g.priority + '</span>' +
-                '<span class="bb-pill bb-pill-buy">' + g.risk + '</span>' +
-              '</div>' +
-              '<div style="font-size:13px;color:var(--T2);margin-top:6px;">₹' + (g.current/100000).toFixed(1) + 'L of ₹' + (g.target/100000).toFixed(1) + 'L · ' + g.years + 'y horizon</div>' +
-              '<div class="bb-progress" style="margin-top:8px;"><div class="bb-progress-fill" style="width:' + Math.min(100, progress) + '%"></div></div>' +
-              '<div style="font-size:11px;color:var(--T3);margin-top:3px;">' + progress.toFixed(1) + '% complete</div>' +
-            '</div>' +
-            '<div style="text-align:right;min-width:160px;">' +
-              '<div class="bb-label">Monthly SIP</div>' +
-              '<div class="bb-num-lg" style="color:#f59e0b;">₹' + sip.toLocaleString('en-IN') + '</div>' +
-              '<div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">' +
-                '<button class="bb-btn bb-btn-ghost bb-btn-sm" onclick="BB.editGoal(' + g.id + ')">Edit</button>' +
-                '<button class="bb-btn bb-btn-sm" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;" onclick="BB.deleteGoal(' + g.id + ')">Remove</button>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-    },
-    
-    openGoalEditor: function() { BB._goalEditor(null); },
-    editGoal: function(id) { var g = (S.goals || []).find(function(x){ return x.id === id; }); if (g) BB._goalEditor(g); },
-    deleteGoal: function(id) {
-      if (!confirm('Remove this goal?')) return;
-      S.goals = (S.goals || []).filter(function(g){ return g.id !== id; });
-      if (typeof save === 'function') save();
-      BB.renderGoals();
-      if (typeof toast === 'function') toast('Goal removed', 'ok');
-    },
-    _goalEditor: function(existing) {
-      var g = existing || { name: '', target: 1000000, current: 0, years: 5, priority: 'medium', risk: 'moderate' };
-      var isNew = !existing;
-      var modal = document.createElement('div');
-      modal.className = 'bb-modal-bg';
-      modal.innerHTML = 
-        '<div class="bb-modal">' +
-          '<h3 class="bb-h3" style="margin-bottom:14px;">' + (isNew ? 'New Goal' : 'Edit Goal') + '</h3>' +
-          '<div style="display:flex;flex-direction:column;gap:10px;">' +
-            '<div><div class="bb-label">Name</div><input class="bb-input" id="bbg-name" value="' + BB.esc(g.name) + '" placeholder="e.g. First Car" /></div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-              '<div><div class="bb-label">Target (₹)</div><input type="number" class="bb-input" id="bbg-target" value="' + g.target + '" /></div>' +
-              '<div><div class="bb-label">Current (₹)</div><input type="number" class="bb-input" id="bbg-current" value="' + g.current + '" /></div>' +
-            '</div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
-              '<div><div class="bb-label">Years</div><input type="number" class="bb-input" id="bbg-years" value="' + g.years + '" min="1" max="50" /></div>' +
-              '<div><div class="bb-label">Priority</div><select class="bb-input" id="bbg-pri"><option ' + (g.priority==='low'?'selected':'') + '>low</option><option ' + (g.priority==='medium'?'selected':'') + '>medium</option><option ' + (g.priority==='high'?'selected':'') + '>high</option></select></div>' +
-              '<div><div class="bb-label">Risk</div><select class="bb-input" id="bbg-risk"><option value="conservative" ' + (g.risk==='conservative'?'selected':'') + '>conservative</option><option value="moderate" ' + (g.risk==='moderate'?'selected':'') + '>moderate</option><option value="aggressive" ' + (g.risk==='aggressive'?'selected':'') + '>aggressive</option></select></div>' +
-            '</div>' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">' +
-            '<button class="bb-btn bb-btn-ghost" onclick="this.closest(\'.bb-modal-bg\').remove()">Cancel</button>' +
-            '<button class="bb-btn bb-btn-primary" id="bbg-save">Save Goal</button>' +
-          '</div>' +
-        '</div>';
-      document.body.appendChild(modal);
-      modal.querySelector('#bbg-save').onclick = function() {
-        var ng = {
-          id: g.id || Date.now(),
-          name: modal.querySelector('#bbg-name').value.trim() || 'Untitled Goal',
-          target: +modal.querySelector('#bbg-target').value || 0,
-          current: +modal.querySelector('#bbg-current').value || 0,
-          years: +modal.querySelector('#bbg-years').value || 1,
-          priority: modal.querySelector('#bbg-pri').value,
-          risk: modal.querySelector('#bbg-risk').value,
-        };
-        if (!S.goals) S.goals = [];
-        if (isNew) S.goals.push(ng);
-        else S.goals = S.goals.map(function(x){ return x.id === g.id ? ng : x; });
-        if (typeof save === 'function') save();
-        modal.remove();
-        BB.renderGoals();
-        if (typeof toast === 'function') toast('Goal saved', 'ok');
-      };
-    },
-    
-    // ─────────────────── SCREENER ───────────────────
-    SCREENS: {
-      breakouts:       { label: '🚀 Breakouts',           desc: 'Near 20-day high + volume surge' },
-      volumeShockers:  { label: '⚡ Volume Shockers',     desc: 'Volume > 1.8x avg' },
-      oversold:        { label: '🔻 Oversold Bouncers',   desc: 'RSI < 40' },
-      momentum:        { label: '📈 Strong Momentum',     desc: 'Up > 3% on volume' },
-      consolidating:   { label: '⏸️ Tight Consolidation', desc: 'Narrow range last 5 days' },
-      newHighs:        { label: '🎯 52w / 20D Highs',     desc: 'Near recent peaks' },
-    },
-    
-    renderScreener: function() {
-      // Render screen buttons
-      var btns = document.getElementById('bb-screen-buttons');
-      if (!btns) return;
-      btns.innerHTML = Object.keys(BB.SCREENS).map(function(k) {
-        var s = BB.SCREENS[k];
-        var active = S.bbActiveScreen === k ? 'bb-active' : '';
-        return '<button class="bb-screen-btn ' + active + '" onclick="BB.pickScreen(\'' + k + '\')">' +
-          '<div class="bb-st">' + s.label + '</div>' +
-          '<div class="bb-sd">' + s.desc + '</div>' +
-        '</button>';
-      }).join('');
-    },
-    
-    pickScreen: function(k) {
-      S.bbActiveScreen = k;
-      if (typeof save === 'function') save();
-      BB.renderScreener();
-    },
-    
-    useHoldingsAsScreenUniverse: function() {
-      var syms = BB._holdingSymbols();
-      if (!syms.length) {
-        if (typeof toast === 'function') toast('No holdings found — add some first', 'err');
-        return;
-      }
-      document.getElementById('bb-screen-syms').value = syms.join(', ');
-      if (typeof toast === 'function') toast('Loaded ' + syms.length + ' holdings into screener', 'ok');
-    },
-    
-    _holdingSymbols: function() {
-      var syms = [];
-      try {
-        (S.indeq || []).forEach(function(h) { if (h.symbol) syms.push(h.symbol + (h.symbol.includes('.') ? '' : '.NS')); });
-        (S.useq || []).forEach(function(h) { if (h.symbol) syms.push(h.symbol); });
-        (S.crypto || []).forEach(function(h) { if (h.symbol) syms.push(h.symbol); });
-      } catch(e) {}
-      return Array.from(new Set(syms));
-    },
-    
-    runScreener: async function() {
-      var raw = document.getElementById('bb-screen-syms').value.trim();
-      if (!raw) { if (typeof toast === 'function') toast('Add some symbols or use your holdings', 'err'); return; }
-      var symbols = raw.split(/[,\s]+/).filter(Boolean);
-      var results = document.getElementById('bb-screen-results');
-      results.innerHTML = '<div style="text-align:center;padding:24px;color:var(--T3);font-size:13px;">📡 Scanning ' + symbols.length + ' symbols... <strong id="bb-scan-prog">0</strong>/' + symbols.length + '</div>';
-      
-      var fetched = [];
-      for (var i = 0; i < symbols.length; i++) {
-        var sym = symbols[i];
-        try {
-          var data = await BB._fetchOHLCV(sym);
-          if (data) fetched.push(Object.assign({ symbol: sym }, data));
-        } catch(e) { console.warn('[BB] Failed to fetch', sym, e); }
-        var prog = document.getElementById('bb-scan-prog');
-        if (prog) prog.textContent = i + 1;
-      }
-      
-      if (!fetched.length) {
-        results.innerHTML = '<div style="text-align:center;padding:24px;color:var(--R,#ef4444);font-size:13px;">No symbols could be fetched. Yahoo proxy may be rate-limited — wait a minute and try fewer symbols.</div>';
-        return;
-      }
-      
-      // Run filter
-      var filtered = BB._applyScreen(fetched, S.bbActiveScreen);
-      BB._renderScreenResults(filtered, fetched);
-    },
-    
-    _fetchOHLCV: async function(ticker) {
-      // Fetch ~30 days of daily OHLCV via Yahoo + proxies (reuses your existing proxy infra)
-      var yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) + '?interval=1d&range=2mo';
-      var proxies = [
-        'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
-        'https://corsproxy.io/?' + encodeURIComponent(yfUrl),
-      ];
-      for (var i = 0; i < proxies.length; i++) {
-        try {
-          var ctrl = new AbortController();
-          var tid = setTimeout(function(){ ctrl.abort(); }, 8000);
-          var resp = await fetch(proxies[i], { signal: ctrl.signal });
-          clearTimeout(tid);
-          if (!resp.ok) continue;
-          var d = await resp.json();
-          var r = d?.chart?.result?.[0];
-          if (!r) continue;
-          var closes = r.indicators?.quote?.[0]?.close || [];
-          var vols = r.indicators?.quote?.[0]?.volume || [];
-          var highs = r.indicators?.quote?.[0]?.high || [];
-          var lows = r.indicators?.quote?.[0]?.low || [];
-          if (!closes.length) continue;
-          // Clean nulls
-          var c = closes.filter(function(x){ return x != null; });
-          var v = vols.filter(function(x){ return x != null; });
-          if (c.length < 5) continue;
-          
-          var price = c[c.length - 1];
-          var prev = c[c.length - 2] || price;
-          var change = ((price - prev) / prev) * 100;
-          var volume = v[v.length - 1] || 0;
-          var avgVol = v.slice(-20).reduce(function(a,b){ return a+b; }, 0) / Math.min(20, v.length);
-          var high20 = Math.max.apply(null, c.slice(-20));
-          var low20 = Math.min.apply(null, c.slice(-20));
-          var high52w = Math.max.apply(null, c);
-          
-          // RSI(14)
-          var gains = 0, losses = 0;
-          for (var j = c.length - 14; j < c.length; j++) {
-            if (j <= 0) continue;
-            var diff = c[j] - c[j-1];
-            if (diff > 0) gains += diff; else losses -= diff;
-          }
-          var rs = losses === 0 ? 100 : gains / losses;
-          var rsi = 100 - (100 / (1 + rs));
-          
-          // Last-5-day range
-          var last5 = c.slice(-5);
-          var range5 = (Math.max.apply(null, last5) - Math.min.apply(null, last5)) / Math.min.apply(null, last5) * 100;
-          
-          return { price: price, change: change, volume: volume, avgVol: avgVol, high20: high20, low20: low20, high52w: high52w, rsi: rsi, range5: range5 };
-        } catch(e) { /* try next proxy */ }
-      }
-      return null;
-    },
-    
-    _applyScreen: function(stocks, screenKey) {
-      return stocks.filter(function(s) {
-        switch(screenKey) {
-          case 'breakouts':      return s.price >= s.high20 * 0.97 && s.volume > s.avgVol * 1.3;
-          case 'volumeShockers': return s.volume > s.avgVol * 1.8;
-          case 'oversold':       return s.rsi < 40;
-          case 'momentum':       return s.change > 3 && s.volume > s.avgVol * 1.2;
-          case 'consolidating':  return s.range5 < 3;
-          case 'newHighs':       return s.price >= s.high52w * 0.95;
-          default: return true;
-        }
-      });
-    },
-    
-    _renderScreenResults: function(matches, all) {
-      var results = document.getElementById('bb-screen-results');
-      var screen = BB.SCREENS[S.bbActiveScreen];
-      if (!matches.length) {
-        results.innerHTML = '<div style="text-align:center;padding:24px;color:var(--T2);font-size:13px;">No matches today for <strong>' + screen.label + '</strong>. Scanned ' + all.length + ' symbols.</div>';
-        return;
-      }
-      results.innerHTML = 
-        '<div style="margin-bottom:10px;font-size:13px;color:var(--T2);"><strong>' + matches.length + '</strong> match' + (matches.length === 1 ? '' : 'es') + ' for ' + screen.label + ' · scanned ' + all.length + '</div>' +
-        '<div style="overflow-x:auto;">' +
-        '<table class="bb-table">' +
-          '<thead><tr><th>Symbol</th><th style="text-align:right;">Price</th><th style="text-align:right;">Change</th><th style="text-align:right;">RSI</th><th style="text-align:right;">Vol/Avg</th><th style="text-align:right;">20D Range</th><th style="text-align:right;">Vibe</th></tr></thead>' +
-          '<tbody>' + matches.map(function(s) {
-            var vibe = BB.computeVibe(s);
-            var v = BB.vibeVerdict(vibe);
-            return '<tr>' +
-              '<td><strong>' + s.symbol + '</strong></td>' +
-              '<td style="text-align:right;" class="bb-num">₹' + s.price.toFixed(2) + '</td>' +
-              '<td style="text-align:right;" class="bb-num" style="color:' + (s.change >= 0 ? '#10b981' : '#ef4444') + '">' + (s.change >= 0 ? '+' : '') + s.change.toFixed(2) + '%</td>' +
-              '<td style="text-align:right;" class="bb-num">' + s.rsi.toFixed(0) + '</td>' +
-              '<td style="text-align:right;" class="bb-num">' + (s.volume / s.avgVol).toFixed(1) + 'x</td>' +
-              '<td style="text-align:right;" class="bb-num">₹' + s.low20.toFixed(0) + '-' + s.high20.toFixed(0) + '</td>' +
-              '<td style="text-align:right;"><span class="bb-pill bb-pill-' + v.cls + '">' + vibe + ' · ' + v.label + '</span></td>' +
-            '</tr>';
-          }).join('') + '</tbody>' +
-        '</table></div>';
-    },
-    
-    // ─────────────────── VIBE ENGINE ───────────────────
-    computeVibe: function(s) {
-      var score = 50;
-      if (s.rsi < 30) score += 15;
-      else if (s.rsi < 45) score += 8;
-      else if (s.rsi > 70) score -= 15;
-      else if (s.rsi > 60) score -= 5;
-      if (s.volume && s.avgVol && s.volume > s.avgVol * 1.5) score += s.change > 0 ? 8 : -5;
-      if (s.high20 && s.low20) {
-        var pos = (s.price - s.low20) / (s.high20 - s.low20);
-        if (pos < 0.3) score += 10;
-        else if (pos > 0.85) score -= 8;
-      }
-      if (s.change > 2) score += 5;
-      if (s.change < -2) score -= 5;
-      return Math.max(5, Math.min(95, Math.round(score)));
-    },
-    vibeVerdict: function(v) {
-      if (v >= 65) return { label: 'BUY', cls: 'buy' };
-      if (v >= 45) return { label: 'WAIT', cls: 'wait' };
-      return { label: 'SELL', cls: 'sell' };
-    },
-    
-    // ─────────────────── STRATEGY ───────────────────
-    renderStrategy: function() { /* form is static; results render after generate */ },
-    
-    generateStrategy: function() {
-      var horizon = document.getElementById('bb-strat-horizon').value;
-      var capital = +document.getElementById('bb-strat-capital').value || 0;
-      var risk = document.getElementById('bb-strat-risk').value;
-      var plan = BB._localStrategy(horizon, capital, risk);
-      BB._renderStrategyOutput(plan, capital);
-    },
-    
-    generateStrategyAI: async function() {
-      var horizon = document.getElementById('bb-strat-horizon').value;
-      var capital = +document.getElementById('bb-strat-capital').value || 0;
-      var risk = document.getElementById('bb-strat-risk').value;
-      var out = document.getElementById('bb-strat-output');
-      
-      // Use your existing AI provider selection
-      var engine = localStorage.getItem('aiSelectedEngine') || 'builtin';
-      var key = localStorage.getItem('aikey_' + engine);
-      if (engine === 'builtin' || !key) {
-        out.innerHTML = '<div class="bb-card" style="border-left:3px solid #f59e0b;"><strong>No AI key configured.</strong> Set an API key in the Stock Analyser tab (AI section) for Groq / Gemini / OpenAI / Anthropic, then return here. Falling back to local plan.</div>';
-        return BB.generateStrategy();
-      }
-      
-      out.innerHTML = '<div class="bb-card" style="text-align:center;padding:24px;">🤖 Generating AI-powered strategy via ' + engine + '...</div>';
-      
-      var holdings = BB._holdingSummary();
-      var goals = (S.goals || []).map(function(g) { return g.name + ' (₹' + (g.target/100000).toFixed(1) + 'L in ' + g.years + 'y, ' + g.risk + ')'; }).join('; ');
-      var prompt = 'You are an India-focused investment strategist. Given:\n' +
-        '- Time horizon: ' + horizon + '\n' +
-        '- Capital available: ₹' + capital.toLocaleString('en-IN') + '\n' +
-        '- Risk appetite: ' + risk + '\n' +
-        '- Current holdings summary: ' + (holdings || 'none') + '\n' +
-        '- Goals: ' + (goals || 'not specified') + '\n\n' +
-        'Produce a concise, actionable plan in this exact JSON format (no preamble, no markdown fences):\n' +
-        '{"allocation": [{"name": "asset class", "value": percentage}], "picks": ["TICKER1", "TICKER2"], "plan": "execution plan in markdown with **bold** for key actions"}';
-      
-      try {
-        var resp = await BB._callAI(engine, key, prompt);
-        // Parse JSON robustly
-        var cleaned = resp.replace(/```json|```/g, '').trim();
-        var jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('AI did not return parseable JSON');
-        var parsed = JSON.parse(jsonMatch[0]);
-        BB._renderStrategyOutput(parsed, capital, true);
-      } catch(e) {
-        out.innerHTML = '<div class="bb-card" style="border-left:3px solid #ef4444;"><strong>AI generation failed:</strong> ' + BB.esc(e.message) + '<br><br>Falling back to local rule-based plan...</div>';
-        setTimeout(function(){ BB.generateStrategy(); }, 800);
-      }
-    },
-    
-    _holdingSummary: function() {
-      var parts = [];
-      var ind = (S.indeq || []).length;
-      var us = (S.useq || []).length;
-      var cr = (S.crypto || []).length;
-      var fd = (S.fd || []).length;
-      var mf = (S.mf || []).length;
-      if (ind) parts.push(ind + ' Indian stocks');
-      if (us) parts.push(us + ' US stocks');
-      if (cr) parts.push(cr + ' crypto positions');
-      if (fd) parts.push(fd + ' FDs');
-      if (mf) parts.push(mf + ' MF SIPs');
-      return parts.join(', ');
-    },
-    
-    _localStrategy: function(horizon, capital, risk) {
-      var allocation, picks, plan;
-      if (horizon === 'short') {
-        allocation = [
-          { name: 'Liquid Funds / Arbitrage', value: risk === 'aggressive' ? 30 : 50 },
-          { name: 'Large-Cap Momentum',       value: risk === 'aggressive' ? 35 : 25 },
-          { name: 'Sector Themes',            value: risk === 'aggressive' ? 25 : 15 },
-          { name: 'Cash Buffer',              value: 10 },
-        ];
-        picks = ['NIFTYBEES', 'HDFCBANK', 'TCS', 'RELIANCE'];
-        plan = '**6-month tactical plan:**\n\n• Lump-sum 40% now, stagger 60% over 4 weeks\n• Strict 8% trailing stop-losses\n• Review monthly, exit any position breaching stop\n• Tax: STCG 15% on gains < 12 months\n• Re-evaluate full plan at month 5';
-      } else if (horizon === 'mid') {
-        allocation = [
-          { name: 'Large-Cap Equity',         value: 40 },
-          { name: 'Mid-Cap Equity',           value: risk === 'aggressive' ? 30 : 20 },
-          { name: 'Index Funds',              value: 20 },
-          { name: 'Short-Duration Debt',      value: risk === 'aggressive' ? 5 : 15 },
-          { name: 'Gold ETF',                 value: 5 },
-        ];
-        picks = ['NIFTYBEES', 'INFY', 'BAJFINANCE', 'TATAMOTORS', 'JSWSTEEL', 'GOLDBEES'];
-        plan = '**3-5 year plan:**\n\n• Build via 12-month SIP across the pick list\n• Rebalance to target weights every 6 months\n• LTCG harvesting yearly up to ₹1L exempt\n• Reduce mid-cap weight in year 4 as goal nears\n• Match liquid fund tranches to goal deadlines';
-      } else {
-        allocation = [
-          { name: 'Quality Large-Cap',        value: 35 },
-          { name: 'Mid + Small Cap',          value: risk === 'aggressive' ? 30 : 20 },
-          { name: 'Broad Index Funds',        value: 25 },
-          { name: 'International (US ETF)',   value: 10 },
-          { name: 'Gold / SGB',               value: 5 },
-          { name: 'Long Debt',                value: risk === 'aggressive' ? 0 : 5 },
-        ];
-        picks = ['NIFTYBEES', 'RELIANCE', 'HDFCBANK', 'INFY', 'ASIANPAINT', 'DIVISLAB', 'MON100', 'SGBs'];
-        plan = '**10+ year wealth plan:**\n\n• Automate monthly SIPs — never time the market\n• Step-up SIP by 10% annually\n• Don\'t churn — review yearly, not monthly\n• NPS for separate retirement bucket (Sec 80CCD)\n• At year 8, start de-risking — shift 5% per year into debt';
-      }
-      return { allocation: allocation, picks: picks, plan: plan };
-    },
-    
-    _renderStrategyOutput: function(p, capital, aiGenerated) {
-      var out = document.getElementById('bb-strat-output');
-      var colors = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#06b6d4', '#64748b'];
-      var allocHtml = p.allocation.map(function(a, i) {
-        var amt = (capital * a.value) / 100;
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd,#f1f5f9);">' +
-          '<div style="display:flex;align-items:center;gap:10px;"><div style="width:10px;height:10px;border-radius:2px;background:' + colors[i % colors.length] + ';"></div><span>' + BB.esc(a.name) + '</span></div>' +
-          '<div class="bb-num">' + a.value + '% · ₹' + (amt/1000).toFixed(0) + 'K</div>' +
-        '</div>';
-      }).join('');
-      
-      var picksHtml = (p.picks || []).map(function(t) {
-        return '<span style="display:inline-block;padding:4px 10px;border-radius:6px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);color:#d97706;font-family:\'JetBrains Mono\',monospace;font-size:12px;font-weight:600;">' + BB.esc(t) + '</span>';
-      }).join(' ');
-      
-      var planHtml = (p.plan || '').replace(/\*\*(.*?)\*\*/g, '<strong style="color:#d97706;">$1</strong>').replace(/\n/g, '<br>');
-      
-      out.innerHTML = '<div class="bb-strat-result"><div class="bb-grid bb-grid-2">' +
-        '<div class="bb-card">' +
-          '<h3 class="bb-h3">Recommended Allocation' + (aiGenerated ? ' <span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;vertical-align:middle;">AI-GENERATED</span>' : '') + '</h3>' +
-          '<div style="margin-top:10px;">' + allocHtml + '</div>' +
-        '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:14px;">' +
-          '<div class="bb-card"><h3 class="bb-h3">Pick List</h3><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">' + picksHtml + '</div></div>' +
-          '<div class="bb-card"><h3 class="bb-h3">Execution Plan</h3><div style="font-size:13px;color:var(--T2);line-height:1.7;margin-top:8px;">' + planHtml + '</div></div>' +
-        '</div>' +
-      '</div></div>';
-    },
-    
-    // ─────────────────── LIVE POLLING & INSIGHTS ───────────────────
-    _pollTimer: null,
-    
-    renderInsights: function() {
-      BB._renderWatchlist();
-      // Sync UI to state
-      var sel = document.getElementById('bb-poll-secs');
-      if (sel) sel.value = S.bbLive.intervalSec;
-      var disp = document.getElementById('bb-poll-secs-disp');
-      if (disp) disp.textContent = S.bbLive.intervalSec;
-      BB._updateLiveUI();
-      // Auto-resume if it was on
-      if (S.bbLive.enabled && !BB._pollTimer) BB._startPolling();
-    },
-    
-    _renderWatchlist: function() {
-      var wrap = document.getElementById('bb-watchlist');
-      if (!wrap) return;
-      var rows = [];
-      // Indian equity
-      (S.indeq || []).forEach(function(h) {
-        rows.push({ symbol: h.symbol, sym: (h.symbol || '') + ((h.symbol||'').includes('.') ? '' : '.NS'), name: h.name || h.symbol, qty: h.qty, ltp: h.ltp, avgBuy: h.avgBuy, cls: 'IN' });
-      });
-      (S.useq || []).forEach(function(h) {
-        rows.push({ symbol: h.symbol, sym: h.symbol, name: h.name || h.symbol, qty: h.qty, ltp: h.ltp, avgBuy: h.avgBuy, cls: 'US' });
-      });
-      (S.crypto || []).forEach(function(h) {
-        rows.push({ symbol: h.symbol, sym: h.symbol, name: h.name || h.symbol, qty: h.qty, ltp: h.ltp, avgBuy: h.avgBuy, cls: 'CR' });
-      });
-      
-      if (!rows.length) {
-        wrap.innerHTML = '<div style="text-align:center;padding:24px 12px;color:var(--T3,#64748b);font-size:13px;">Add holdings in India Equity / US Equity / Crypto tabs to populate your watchlist.</div>';
-        return;
-      }
-      
-      wrap.innerHTML = '<div style="overflow-x:auto;"><table class="bb-table">' +
-        '<thead><tr><th>Symbol</th><th>Class</th><th style="text-align:right;">LTP</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Value</th><th style="text-align:right;">P&L %</th><th style="text-align:right;">Vibe</th></tr></thead>' +
-        '<tbody>' + rows.map(function(r) {
-          var ltp = r.ltp || 0;
-          var avg = r.avgBuy || 0;
-          var value = ltp * (r.qty || 0);
-          var pnlPct = avg > 0 ? ((ltp - avg) / avg) * 100 : 0;
-          var pnlColor = pnlPct >= 0 ? '#10b981' : '#ef4444';
-          return '<tr data-bb-sym="' + r.sym + '">' +
-            '<td><strong>' + BB.esc(r.symbol) + '</strong><div style="font-size:11px;color:var(--T3);">' + BB.esc(r.name) + '</div></td>' +
-            '<td><span class="bb-pill" style="background:var(--surface2,#f3f4f6);color:var(--T2);border:1px solid var(--bd);">' + r.cls + '</span></td>' +
-            '<td style="text-align:right;" class="bb-num" data-bb-ltp>₹' + ltp.toFixed(2) + '</td>' +
-            '<td style="text-align:right;" class="bb-num">' + (r.qty || 0) + '</td>' +
-            '<td style="text-align:right;" class="bb-num">₹' + value.toFixed(0) + '</td>' +
-            '<td style="text-align:right;" class="bb-num" style="color:' + pnlColor + ';">' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</td>' +
-            '<td style="text-align:right;"><span class="bb-pill" style="background:var(--surface2);color:var(--T3);">—</span></td>' +
-          '</tr>';
-        }).join('') + '</tbody></table></div>';
-    },
-    
-    setPollInterval: function(s) {
-      S.bbLive.intervalSec = +s || 60;
-      if (typeof save === 'function') save();
-      var disp = document.getElementById('bb-poll-secs-disp');
-      if (disp) disp.textContent = S.bbLive.intervalSec;
-      if (S.bbLive.enabled) { BB._stopPolling(); BB._startPolling(); }
-    },
-    
-    toggleLive: function() {
-      S.bbLive.enabled = !S.bbLive.enabled;
-      if (typeof save === 'function') save();
-      BB._updateLiveUI();
-      if (S.bbLive.enabled) BB._startPolling();
-      else BB._stopPolling();
-    },
-    
-    _updateLiveUI: function() {
-      var dot = document.getElementById('bb-live-indicator');
-      var status = document.getElementById('bb-live-status');
-      var btn = document.getElementById('bb-live-toggle');
-      if (!dot || !status || !btn) return;
-      if (S.bbLive.enabled) {
-        dot.className = 'bb-live-dot';
-        status.textContent = 'Live polling: ON';
-        btn.textContent = '⏸ Pause';
-      } else {
-        dot.className = 'bb-live-dot bb-live-off';
-        status.textContent = 'Live polling: OFF';
-        btn.textContent = '▶ Start Live';
-      }
-    },
-    
-    _startPolling: function() {
-      BB._stopPolling();
-      BB._pollNow(); // immediate first refresh
-      BB._pollTimer = setInterval(BB._pollNow, S.bbLive.intervalSec * 1000);
-    },
-    
-    _stopPolling: function() {
-      if (BB._pollTimer) { clearInterval(BB._pollTimer); BB._pollTimer = null; }
-    },
-    
-    _pollNow: async function() {
-      var wrap = document.getElementById('bb-watchlist');
-      if (!wrap) return; // not on insights page
-      var rows = wrap.querySelectorAll('tr[data-bb-sym]');
-      if (!rows.length) return;
-      
-      for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        var sym = row.getAttribute('data-bb-sym');
-        var ltpCell = row.querySelector('[data-bb-ltp]');
-        if (!ltpCell) continue;
-        var oldPrice = parseFloat(ltpCell.textContent.replace(/[^\d.-]/g, '')) || 0;
-        
-        try {
-          var price = await BB._fetchLivePrice(sym);
-          if (price && price > 0) {
-            ltpCell.textContent = '₹' + price.toFixed(2);
-            if (oldPrice > 0) {
-              if (price > oldPrice) {
-                row.classList.add('bb-flash-up');
-                setTimeout(function(r){ return function(){ r.classList.remove('bb-flash-up'); }; }(row), 1000);
-              } else if (price < oldPrice) {
-                row.classList.add('bb-flash-down');
-                setTimeout(function(r){ return function(){ r.classList.remove('bb-flash-down'); }; }(row), 1000);
-              }
-            }
-          }
-        } catch(e) { /* skip */ }
-      }
-      
-      var ts = document.getElementById('bb-last-update');
-      if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN');
-    },
-    
-    // Reuse the existing _fetchLivePrice if available; otherwise our own
-    _fetchLivePrice: async function(ticker) {
-      if (typeof _fetchLivePrice === 'function') {
-        try { return await _fetchLivePrice(ticker, 'unknown'); } catch(e) { /* fall through */ }
-      }
-      var yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) + '?interval=1d&range=1d';
-      var proxies = [
-        'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
-        'https://corsproxy.io/?' + encodeURIComponent(yfUrl),
-      ];
-      for (var i = 0; i < proxies.length; i++) {
-        try {
-          var ctrl = new AbortController();
-          var tid = setTimeout(function(){ ctrl.abort(); }, 6000);
-          var resp = await fetch(proxies[i], { signal: ctrl.signal });
-          clearTimeout(tid);
-          if (!resp.ok) continue;
-          var d = await resp.json();
-          var r = d?.chart?.result?.[0];
-          var raw = r?.meta?.regularMarketPrice || r?.meta?.previousClose;
-          if (raw) return parseFloat(raw);
-        } catch(e) {}
-      }
-      return null;
-    },
-    
-    // ─────────────────── AI HELPERS ───────────────────
-    _callAI: async function(engine, key, prompt) {
-      // Use same patterns as your existing AI router
-      if (engine === 'groq') {
-        var r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5 })
-        });
-        if (!r.ok) throw new Error('Groq HTTP ' + r.status);
-        return (await r.json()).choices?.[0]?.message?.content || '';
-      }
-      if (engine === 'gemini') {
-        var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-        if (!r.ok) throw new Error('Gemini HTTP ' + r.status);
-        return (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
-      }
-      if (engine === 'openai') {
-        var r = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.5 })
-        });
-        if (!r.ok) throw new Error('OpenAI HTTP ' + r.status);
-        return (await r.json()).choices?.[0]?.message?.content || '';
-      }
-      if (engine === 'anthropic') {
-        var r = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-          body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
-        });
-        if (!r.ok) throw new Error('Anthropic HTTP ' + r.status);
-        return (await r.json()).content?.[0]?.text || '';
-      }
-      throw new Error('Unknown engine: ' + engine);
-    },
-    
-    fetchFIIDIIviaAI: async function() {
-      var engine = localStorage.getItem('aiSelectedEngine') || 'builtin';
-      var key = localStorage.getItem('aikey_' + engine);
-      var out = document.getElementById('bb-fiidi-ai');
-      if (engine === 'builtin' || !key) {
-        out.innerHTML = '<div style="font-size:12px;color:var(--T3);padding:8px;background:var(--surface2);border-radius:6px;">Configure an AI key in the Stock Analyser tab to get AI-summarized FII/DII context.</div>';
-        return;
-      }
-      out.innerHTML = '<div style="font-size:12px;color:var(--T3);">🤖 Asking AI for latest read...</div>';
-      try {
-        var prompt = 'In 80 words, give a current read on Indian market FII/DII flows and sector rotation in 2025-26. Be specific about sectors. Plain text, no markdown.';
-        var resp = await BB._callAI(engine, key, prompt);
-        out.innerHTML = '<div style="font-size:12px;color:var(--T1);padding:10px;background:rgba(16,185,129,.05);border-left:3px solid #10b981;border-radius:0 6px 6px 0;line-height:1.6;">' + BB.esc(resp).slice(0, 800) + '</div>';
-      } catch(e) {
-        out.innerHTML = '<div style="font-size:12px;color:#ef4444;">AI request failed: ' + BB.esc(e.message) + '</div>';
-      }
-    },
-    
-    // ─────────────────── CSV PASTE FALLBACK ───────────────────
-    // Called from the Analyser when all proxy sources fail. Provides a modal where
-    // the user can paste/upload a CSV (Yahoo, Stooq, or NSE format) and feed it
-    // directly into the analyser's parsedData pipeline — bypassing all proxies.
-    openCsvPaste: function(yahooSym, sym, exch) {
-      // Remove any existing modal
-      var ex = document.getElementById('bb-csv-modal'); if (ex) ex.remove();
-      var modal = document.createElement('div');
-      modal.id = 'bb-csv-modal';
-      modal.className = 'bb-modal-bg';
-      modal.innerHTML = 
-        '<div class="bb-modal" style="max-width:680px;">' +
-          '<h3 class="bb-h3" style="margin-bottom:8px;">📋 Paste CSV — Manual Data Mode</h3>' +
-          '<div style="font-size:12px;color:var(--T2,#475569);margin-bottom:14px;line-height:1.5;">' +
-            'Proxies failed for <strong>' + BB.esc(yahooSym) + '</strong>. Download the OHLCV CSV from one of these and paste it below — the analyser will use it like a live fetch.' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
-            '<a href="https://finance.yahoo.com/quote/' + encodeURIComponent(yahooSym) + '/history/" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;">📥 Yahoo Finance →</a>' +
-            '<a href="https://stooq.com/q/d/?s=' + encodeURIComponent((sym + (exch==='BSE'?'.bo':'.in')).toLowerCase()) + '&i=d" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;">📥 Stooq →</a>' +
-            '<a href="https://www.nseindia.com/get-quotes/equity?symbol=' + encodeURIComponent(sym) + '" target="_blank" class="bb-btn bb-btn-ghost bb-btn-sm" style="text-decoration:none;">📥 NSE Historical →</a>' +
-          '</div>' +
-          '<div style="font-size:11px;color:var(--T3,#64748b);margin-bottom:8px;">Or upload a CSV file:</div>' +
-          '<input type="file" id="bb-csv-file" accept=".csv,.txt" class="bb-input" style="margin-bottom:12px;" />' +
-          '<div style="font-size:11px;color:var(--T3);margin-bottom:6px;">Or paste CSV content:</div>' +
-          '<textarea id="bb-csv-text" class="bb-input" rows="8" placeholder="Date,Open,High,Low,Close,Volume\n2024-01-01,1500,1520,1495,1510,2500000\n..." style="font-family:\'JetBrains Mono\',monospace;font-size:11px;resize:vertical;"></textarea>' +
-          '<div id="bb-csv-preview" style="margin-top:10px;font-size:11px;"></div>' +
-          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
-            '<button class="bb-btn bb-btn-ghost" onclick="document.getElementById(\'bb-csv-modal\').remove()">Cancel</button>' +
-            '<button class="bb-btn bb-btn-primary" onclick="BB.applyCsvPaste(\'' + BB.esc(yahooSym) + '\',\'' + BB.esc(sym) + '\',\'' + BB.esc(exch) + '\')">Load Into Analyser →</button>' +
-          '</div>' +
-        '</div>';
-      document.body.appendChild(modal);
-      
-      // Wire file upload to populate textarea
-      modal.querySelector('#bb-csv-file').addEventListener('change', function(e) {
-        var f = e.target.files[0]; if (!f) return;
-        var reader = new FileReader();
-        reader.onload = function(ev) {
-          modal.querySelector('#bb-csv-text').value = ev.target.result;
-          BB._previewCsv();
-        };
-        reader.readAsText(f);
-      });
-      
-      // Live preview as user types
-      modal.querySelector('#bb-csv-text').addEventListener('input', BB._previewCsv);
-    },
-    
-    _previewCsv: function() {
-      var ta = document.getElementById('bb-csv-text');
-      var prev = document.getElementById('bb-csv-preview');
-      if (!ta || !prev) return;
-      var text = ta.value.trim();
-      if (!text) { prev.innerHTML = ''; return; }
-      var rows = BB._parseCsvToOhlcv(text);
-      if (!rows || rows.length < 5) {
-        prev.innerHTML = '<span style="color:#dc2626;">⚠️ Could not parse — need at least 5 rows with Date and Close. Found: ' + (rows ? rows.length : 0) + '</span>';
-        return;
-      }
-      var first = rows[0], last = rows[rows.length-1];
-      prev.innerHTML = '<span style="color:#059669;">✓ Detected <strong>' + rows.length + '</strong> rows · ' + first['Date'] + ' → ' + last['Date'] + ' · Latest close: <strong>' + last['Close Price'] + '</strong></span>';
-    },
-    
-    // Parse a CSV (Yahoo/Stooq/NSE/generic) into the analyser's expected row format
-    _parseCsvToOhlcv: function(text) {
-      try {
-        var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
-        if (lines.length < 2) return null;
-        
-        // Detect header row
-        var header = lines[0].split(',').map(function(h){ return h.trim().toLowerCase(); });
-        var hasHeader = /date|datetime/.test(header[0]);
-        var startIdx = hasHeader ? 1 : 0;
-        
-        // Try to find column indices for Date, Open, High, Low, Close, Volume
-        // Handles: Yahoo (Date,Open,High,Low,Close,Adj Close,Volume),
-        //          Stooq (Date,Open,High,Low,Close,Volume),
-        //          NSE (Date,Open,High,Low,Close,LTP,Close,...),
-        //          generic (Date,Open,High,Low,Close[,Volume])
-        var colIdx = { date: 0, open: 1, high: 2, low: 3, close: 4, volume: -1 };
-        if (hasHeader) {
-          header.forEach(function(h, i) {
-            if (/^date|datetime/.test(h)) colIdx.date = i;
-            else if (/^open/.test(h)) colIdx.open = i;
-            else if (/^high/.test(h)) colIdx.high = i;
-            else if (/^low/.test(h)) colIdx.low = i;
-            else if (/adj.?close/.test(h)) { /* prefer adj close */ colIdx.close = i; }
-            else if (/^close/.test(h) && colIdx.close === 4) colIdx.close = i;
-            else if (/volume|qty|quantity|traded/.test(h)) colIdx.volume = i;
-          });
-        }
-        
-        var rows = [];
-        for (var i = startIdx; i < lines.length; i++) {
-          var parts = lines[i].split(',').map(function(p){ return p.trim().replace(/^"|"$/g, ''); });
-          if (parts.length < 5) continue;
-          var dateStr = parts[colIdx.date];
-          if (!dateStr || /^date/i.test(dateStr)) continue;
-          var d = new Date(dateStr);
-          if (isNaN(d)) continue;
-          var fmt = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
-          var close = parseFloat((parts[colIdx.close] || '').replace(/[^\d.-]/g, ''));
-          if (isNaN(close) || close <= 0) continue;
-          var open = parseFloat((parts[colIdx.open] || '').replace(/[^\d.-]/g, '')) || close;
-          var high = parseFloat((parts[colIdx.high] || '').replace(/[^\d.-]/g, '')) || close;
-          var low = parseFloat((parts[colIdx.low] || '').replace(/[^\d.-]/g, '')) || close;
-          var vol = colIdx.volume >= 0 ? (parseFloat((parts[colIdx.volume] || '').replace(/[^\d.-]/g, '')) || 0) : 0;
-          rows.push({
-            'Date': fmt,
-            'Open Price': open.toFixed(2),
-            'High Price': high.toFixed(2),
-            'Low Price': low.toFixed(2),
-            'Close Price': close.toFixed(2),
-            'Total Traded Quantity': String(vol),
-            '_sortKey': d.getTime(),
-          });
-        }
-        // Sort oldest-first (the analyser expects this) and strip sort key
-        rows.sort(function(a, b){ return a._sortKey - b._sortKey; });
-        rows.forEach(function(r) { delete r._sortKey; });
-        return rows;
-      } catch(e) { console.warn('[BB] CSV parse failed:', e); return null; }
-    },
-    
-    applyCsvPaste: function(yahooSym, sym, exch) {
-      var text = document.getElementById('bb-csv-text').value.trim();
-      if (!text) { alert('Paste CSV content or upload a file first.'); return; }
-      var rows = BB._parseCsvToOhlcv(text);
-      if (!rows || rows.length < 10) {
-        alert('Could not parse enough rows (need at least 10). Got: ' + (rows ? rows.length : 0) + '.\nMake sure your CSV has Date, Open, High, Low, Close columns.');
-        return;
-      }
-      
-      // Inject into the analyser's pipeline — same as a successful fetch would
-      try {
-        window.parsedData = rows;
-        var latestClose = parseFloat(rows[rows.length - 1]['Close Price']);
-        var companyEl = document.getElementById('companyName');
-        var symEl = document.getElementById('stockSymbol');
-        var priceEl = document.getElementById('currentPrice');
-        var mktEl = document.getElementById('marketSelect');
-        var flEl = document.getElementById('fileList');
-        var stEl = document.getElementById('fetchStatus');
-        if (symEl) symEl.value = sym;
-        if (priceEl) priceEl.value = latestClose.toFixed(2);
-        if (mktEl) mktEl.value = exch;
-        if (companyEl && !companyEl.value) companyEl.value = sym;
-        if (flEl) flEl.innerHTML = '<div class="file-item"><div class="file-item-info">📋 <span>' + BB.esc(sym) + ' — <strong>' + rows.length + ' days</strong> via manual paste</span> <span style="color:#10b981">✓ Loaded</span></div></div>';
-        if (stEl) stEl.innerHTML = '<div class="alert alert-success">✅ <strong>Manual CSV loaded:</strong> ' + rows.length + ' rows for <strong>' + BB.esc(sym) + '</strong>. Latest close: ' + latestClose.toFixed(2) + '. You can now Analyse.</div>';
-        if (typeof window.uploadedFiles !== 'undefined') {
-          window.uploadedFiles = [{ name: yahooSym + '_pasted.csv', size: rows.length * 50 }];
-        }
-        if (typeof window.checkReady === 'function') window.checkReady();
-        document.getElementById('bb-csv-modal').remove();
-      } catch(e) {
-        alert('Failed to inject CSV into analyser: ' + e.message);
-      }
-    },
-    
-    // ─────────────────── UTILS ───────────────────
-    esc: function(s) { return String(s || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); },
-  };
-  
-  // ─────────── Wait for app to be ready, then wire in ───────────
-  function ready() {
-    if (typeof S === 'undefined' || typeof RENDERERS === 'undefined') {
-      console.log('[BazaarBuddy] Waiting for main app...');
-      return setTimeout(ready, 300);
-    }
-    injectNavTabs();
-    initState();
-    registerRenderers();
-    
-    // Re-render counts label is handled by your existing updateCounts(); we don't add counts.
-    
-    // Hook: auto-resume live polling if it was enabled in a previous session
-    setTimeout(function() {
-      if (S.bbLive && S.bbLive.enabled) {
-        console.log('[BazaarBuddy] Auto-resuming live polling');
-        BB._startPolling();
-      }
-    }, 1500);
-    
-    console.log('[BazaarBuddy] ✓ Add-on loaded. New tabs: Goals · Live & Insights · Screener · Strategy');
-  }
-  
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', ready);
-  } else {
-    ready();
-  }
-})();
-</script>
-<!-- ════════════════ END BAZAARBUDDY ADD-ON ════════════════ -->
-
 </body>
 </html>
