@@ -4231,7 +4231,10 @@ window.SBPatternEngine = (function () {
     if(!best) return null; let [signal,bias,stage,lvl,touches]=best;
     if(signal==="Resistance Breakout"){ const rl=Math.min(...ctx.L.slice(-5)); if(rl<=lvl*1.012&&price>lvl){signal="Breakout Retest";stage="confirmation_pending";} }
     const narrative=signal==="Reversal From Support"?"A horizontal support zone marks an area where buyers have consistently defended price. The rebound from this level suggests buying interest has returned, supporting a bullish reversal.":"A horizontal resistance level marks a zone where sellers repeatedly capped price. The breakout above this level confirms buyers have absorbed supply, strengthening the bullish outlook.";
-    return card({ pattern:"Horizontal Trendline", signal, bias, stage, narrative, levels:{level:+lvl.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:touches.length,geometryFit:0.85} });
+    const isSup=signal==="Reversal From Support";
+    const graphics={ lines:[{points:[{time:ctx.d[Math.min(...touches)].time,value:lvl},{time:ctx.d[last].time,value:lvl}],color:isSup?"#26a69a":"#ef5350",width:2,title:isSup?"Support":"Resistance"}],
+      markers:[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
+    return card({ pattern:"Horizontal Trendline", signal, bias, stage, narrative, levels:{level:+lvl.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:touches.length,geometryFit:0.85}, graphics });
   }
   function detectHorizontalChannel(ctx){
     const {ph,pl,last,price,H,L}=ctx; if(ph.length<2||pl.length<2) return null;
@@ -4245,7 +4248,12 @@ window.SBPatternEngine = (function () {
     else if(price<=lo*1.02&&ctx.C[last]>ctx.C[last-2]){signal="Reversal From Support";stage="confirmed";narrative="A horizontal support zone marks an area where buyers have consistently defended price. The rebound from this level suggests buying interest has returned.";}
     else if(price>hi*0.985){signal="On The Verge Of Breakout";stage="anticipatory";narrative="Price is compressing beneath channel resistance. A close above the zone would open the next bullish leg.";}
     else return null;
-    return card({ pattern:"Horizontal Channel", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:topT+botT,geometryFit:0.8} });
+    const chStart=ctx.d[Math.min(pl[0],ph[0])].time, chEnd=ctx.d[last].time;
+    const graphics={ lines:[
+      {points:[{time:chStart,value:hi},{time:chEnd,value:hi}],color:"#ef5350",width:2,title:"Resistance"},
+      {points:[{time:chStart,value:lo},{time:chEnd,value:lo}],color:"#26a69a",width:2,title:"Support"},
+    ], markers: price>hi*1.004?[{time:chEnd,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"}]:[] };
+    return card({ pattern:"Horizontal Channel", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:topT+botT,geometryFit:0.8}, graphics });
   }
   function detectRectangle(ctx){
     const {last,price,H,L,C}=ctx;
@@ -4256,7 +4264,12 @@ window.SBPatternEngine = (function () {
       if(price>hi*1.004){signal="Bullish Reversal";stage="confirmed";narrative="A rectangle pattern reflects a period of sideways consolidation within a defined range. A breakout from resistance suggests buyers are regaining control, pointing to a potential bullish reversal.";}
       else if(price>hi*0.99){signal="On The Verge Of Breakout";stage="anticipatory";narrative="A rectangle pattern reflects a phase of consolidation after the prior move. Price is nearing the resistance zone, with a breakout likely to trigger the next bullish leg.";}
       else continue;
-      return card({ pattern:"Rectangle Pattern", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:4,geometryFit:0.75,boxHeightPct:+height.toFixed(2)} });
+      const rStart=ctx.d[a].time, rEnd=ctx.d[last].time;
+      const graphics={ lines:[
+        {points:[{time:rStart,value:hi},{time:rEnd,value:hi}],color:"#ef5350",width:2,title:"Resistance"},
+        {points:[{time:rStart,value:lo},{time:rEnd,value:lo}],color:"#26a69a",width:2,title:"Support"},
+      ], markers: price>hi*1.004?[{time:rEnd,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"}]:[] };
+      return card({ pattern:"Rectangle Pattern", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:4,geometryFit:0.75,boxHeightPct:+height.toFixed(2)}, graphics });
     }
     return null;
   }
@@ -4279,7 +4292,12 @@ window.SBPatternEngine = (function () {
     if(price>upper*1.004){ if(Math.min(...L.slice(-5))<=upper*1.012){signal="Breakout Retest";stage="confirmation_pending";narrative=`Price broke above the resistance of the ${name.toLowerCase()}. It is now retesting the breakout zone as support — a move from this level could be a strong bullish leg.`;} else {signal="Bullish Reversal";stage="confirmed";} }
     else if(price>upper*0.99){signal="On The Verge Of Breakout";stage="anticipatory";}
     else return null;
-    return card({ pattern:name, signal, bias:"bullish", stage, narrative, levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:up.touches.length+dn.touches.length,geometryFit:+((up.r2+dn.r2)/2).toFixed(3)} });
+    const uT0=Math.min(...up.touches), dT0=Math.min(...dn.touches);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[uT0].time,value:up.slope*uT0+up.intercept},{time:ctx.d[last].time,value:up.slope*last+up.intercept}],color:"#ef5350",width:2,title:"Resistance"},
+      {points:[{time:ctx.d[dT0].time,value:dn.slope*dT0+dn.intercept},{time:ctx.d[last].time,value:dn.slope*last+dn.intercept}],color:"#26a69a",width:2,title:"Support"},
+    ], markers: price>upper*1.004?[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"}]:[] };
+    return card({ pattern:name, signal, bias:"bullish", stage, narrative, levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:up.touches.length+dn.touches.length,geometryFit:+((up.r2+dn.r2)/2).toFixed(3)}, graphics });
   }
   function detectRisingTrendline(ctx){
     const {pl,last,price,L,C}=ctx; const res=bestBoundary(pl,L,false,3,1.5); if(!res) return null;
@@ -4288,7 +4306,10 @@ window.SBPatternEngine = (function () {
     if(price<lineNow*0.99&&C[last-1]<lineNow){signal="Bearish Breakdown";bias="bearish";stage="confirmed";narrative="A rising trendline had been supporting the uptrend. The breakdown below this level signals weakening buying interest and increases the risk of further downside.";}
     else if(Math.abs(price-lineNow)/lineNow<0.02&&rsiRebound(ctx,last)){signal="Reversal From Support";bias="bullish";stage="confirmed";narrative="A reversal from the rising trendline support, with RSI turning up from the 30 level, suggests buying interest at support.";}
     else return null;
-    return card({ pattern:"Rising Trendline", signal, bias, stage, narrative, levels:{trendline:+lineNow.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)} });
+    const rtl0=Math.min(...res.touches);
+    const graphics={ lines:[{points:[{time:ctx.d[rtl0].time,value:res.slope*rtl0+res.intercept},{time:ctx.d[last].time,value:res.slope*last+res.intercept}],color:bias==="bearish"?"#ef5350":"#26a69a",width:2,title:"Trendline"}],
+      markers:[{time:ctx.d[last].time,position:bias==="bearish"?"aboveBar":"belowBar",color:bias==="bearish"?"#ef5350":"#26a69a",shape:bias==="bearish"?"arrowDown":"arrowUp",text:signal}] };
+    return card({ pattern:"Rising Trendline", signal, bias, stage, narrative, levels:{trendline:+lineNow.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
   }
   function detectFallingTrendline(ctx){
     const {ph,last,price,H}=ctx; const res=bestBoundary(ph,H,true,3,1.5); if(!res) return null;
@@ -4297,7 +4318,12 @@ window.SBPatternEngine = (function () {
     if(price>prevHigh){signal="Previous High Breakout";stage="confirmed";narrative="Price has broken above the falling trendline and cleared the previous swing high, confirming strengthening momentum and opening the next bullish leg.";}
     else {signal="Bullish Reversal";stage="confirmed";narrative="A falling trendline reflects sustained selling pressure through lower highs. The breakout above resistance indicates buyers are regaining control.";}
     const ind=confluence(ctx,last); if(ind.includes("MACD golden crossover")) narrative+=" A MACD golden crossover supports the shift in momentum.";
-    return card({ pattern:"Falling Trendline", signal, bias:"bullish", stage, narrative, levels:{trendline:+lineNow.toFixed(2),prevSwingHigh:+prevHigh.toFixed(2),close:+price.toFixed(2)}, indicators:ind, components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)} });
+    const ftl0=Math.min(...res.touches);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[ftl0].time,value:res.slope*ftl0+res.intercept},{time:ctx.d[last].time,value:res.slope*last+res.intercept}],color:"#ef5350",width:2,title:"Falling Resistance"},
+      {points:[{time:ctx.d[Math.max(...res.touches)].time,value:prevHigh},{time:ctx.d[last].time,value:prevHigh}],color:"#3b82f6",width:1,dashed:true,title:"Prev Swing High"},
+    ], markers:[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
+    return card({ pattern:"Falling Trendline", signal, bias:"bullish", stage, narrative, levels:{trendline:+lineNow.toFixed(2),prevSwingHigh:+prevHigh.toFixed(2),close:+price.toFixed(2)}, indicators:ind, components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
   }
   function detectDoubleBottom(ctx){
     const {pl,ph,last,price,L,H,C}=ctx; if(pl.length<2) return null;
@@ -4311,7 +4337,15 @@ window.SBPatternEngine = (function () {
     let signal,stage,narrative;
     if(price>neck*1.004){signal="Bullish Reversal";stage="confirmed";narrative="A double bottom has completed after a prolonged decline. The decisive move above the neckline confirms the reversal.";}
     else {signal="Probable Double Bottom";stage="anticipatory";narrative="A potential double bottom is taking shape after a prolonged decline. A decisive move above the neckline would confirm the pattern and signal a potential bullish reversal.";}
-    return card({ pattern:"Double Bottom", signal, bias:"bullish", stage, narrative, levels:{neckline:+neck.toFixed(2),bottom1:+la.toFixed(2),bottom2:+lb.toFixed(2),close:+price.toFixed(2),target:+(neck+(neck-base)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:+(1-Math.abs(la-lb)/base/0.03).toFixed(3)} });
+    const dbTarget=neck+(neck-base);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[a].time,value:neck},{time:ctx.d[last].time,value:neck}],color:"#f59e0b",width:2,title:"Neckline"},
+      {points:[{time:ctx.d[a].time,value:dbTarget},{time:ctx.d[last].time,value:dbTarget}],color:"#3b82f6",width:1,dashed:true,title:"Target"},
+    ], markers:[
+      {time:ctx.d[a].time,position:"belowBar",color:"#26a69a",shape:"circle",text:"B1"},
+      {time:ctx.d[b].time,position:"belowBar",color:"#26a69a",shape:"circle",text:"B2"},
+    ] };
+    return card({ pattern:"Double Bottom", signal, bias:"bullish", stage, narrative, levels:{neckline:+neck.toFixed(2),bottom1:+la.toFixed(2),bottom2:+lb.toFixed(2),close:+price.toFixed(2),target:+dbTarget.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:+(1-Math.abs(la-lb)/base/0.03).toFixed(3)}, graphics });
   }
   function detectCupHandle(ctx){
     const {last,price,H,L}=ctx; if(last<60) return null; const a=last-60; const segH=H.slice(a), segL=L.slice(a);
@@ -4321,7 +4355,14 @@ window.SBPatternEngine = (function () {
     const cupLow=segL[troughI]; const depth=(leftRim-cupLow)/leftRim; if(depth<=0.10||depth>=0.50) return null;
     const handleLow=Math.min(...segL.slice(-15)); const retrace=(rightRim-handleLow)/(rightRim-cupLow); if(retrace>0.45) return null;
     const rim=Math.max(leftRim,rightRim); if(price<rim*0.995) return null;
-    return card({ pattern:"Cup & Handle", signal:"Bullish Reversal", bias:"bullish", stage:price>rim*1.004?"confirmed":"anticipatory", narrative:"A cup and handle pattern shows price after a large consolidation and a small pullback. A breakout above it shows buyers are back.", levels:{rim:+rim.toFixed(2),cupLow:+cupLow.toFixed(2),close:+price.toFixed(2),target:+(rim+(rim-cupLow)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:3,geometryFit:+(1-retrace).toFixed(3)} });
+    const cupTarget=rim+(rim-cupLow);
+    const cupPts=[]; for(let i=0;i<segL.length;i+=2) cupPts.push({time:ctx.d[a+i].time,value:segL[i]});
+    const graphics={ lines:[
+      {points:cupPts,color:"#8b5cf6",width:2,title:"Cup"},
+      {points:[{time:ctx.d[a].time,value:rim},{time:ctx.d[last].time,value:rim}],color:"#f59e0b",width:2,title:"Rim"},
+      {points:[{time:ctx.d[a].time,value:cupTarget},{time:ctx.d[last].time,value:cupTarget}],color:"#3b82f6",width:1,dashed:true,title:"Target"},
+    ], markers:[{time:ctx.d[a+troughI].time,position:"belowBar",color:"#8b5cf6",shape:"circle",text:"Cup Low"}] };
+    return card({ pattern:"Cup & Handle", signal:"Bullish Reversal", bias:"bullish", stage:price>rim*1.004?"confirmed":"anticipatory", narrative:"A cup and handle pattern shows price after a large consolidation and a small pullback. A breakout above it shows buyers are back.", levels:{rim:+rim.toFixed(2),cupLow:+cupLow.toFixed(2),close:+price.toFixed(2),target:+cupTarget.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:3,geometryFit:+(1-retrace).toFixed(3)}, graphics });
   }
   function detectGartley(ctx){
     const {last,price,L,H}=ctx; let pl=[...ctx.pl], ph=[...ctx.ph];
@@ -4334,14 +4375,21 @@ window.SBPatternEngine = (function () {
       const ab=(A-B)/XA, bc=A!==B?(Cp-B)/(A-B):0, cd=Cp!==B?(Cp-D)/(Cp-B):0, ad=(A-D)/XA;
       const ok=ab>=0.586-tol&&ab<=0.638+tol&&bc>=0.382-tol&&bc<=0.886+tol&&cd>=1.13-tol&&cd<=1.618+tol&&ad>=0.75-tol&&ad<=0.83+tol;
       if(!ok) continue; if(idx[4]<last-12) continue;
-      return card({ pattern:"Bullish Gartley", signal:"Reversal Pattern", bias:"bullish", stage:"anticipatory", narrative:"A Bullish Gartley is a five-point harmonic chart pattern utilizing precise Fibonacci ratios to identify a high-probability reversal zone (PRZ).", levels:{X:+X.toFixed(2),A:+A.toFixed(2),B:+B.toFixed(2),C:+Cp.toFixed(2),dPrz:+D.toFixed(2),close:+price.toFixed(2),target1:+(D+0.382*(A-D)).toFixed(2),target2:+(D+0.618*(A-D)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:5,geometryFit:+Math.max(0.3,1-Math.abs(ad-0.786)/0.08).toFixed(3)} });
+      const gPts=[{time:ctx.d[idx[0]].time,value:X},{time:ctx.d[idx[1]].time,value:A},{time:ctx.d[idx[2]].time,value:B},{time:ctx.d[idx[3]].time,value:Cp},{time:ctx.d[idx[4]].time,value:D}];
+      const graphics={ lines:[
+        {points:gPts,color:"#8b5cf6",width:2,title:"XABCD"},
+        {points:[{time:ctx.d[idx[4]].time,value:D+0.618*(A-D)},{time:ctx.d[last].time,value:D+0.618*(A-D)}],color:"#3b82f6",width:1,dashed:true,title:"Target"},
+      ], markers:["X","A","B","C","D"].map((lbl,k)=>({time:ctx.d[idx[k]].time,position:(k%2===0)?"belowBar":"aboveBar",color:"#8b5cf6",shape:"circle",text:lbl})) };
+      return card({ pattern:"Bullish Gartley", signal:"Reversal Pattern", bias:"bullish", stage:"anticipatory", narrative:"A Bullish Gartley is a five-point harmonic chart pattern utilizing precise Fibonacci ratios to identify a high-probability reversal zone (PRZ).", levels:{X:+X.toFixed(2),A:+A.toFixed(2),B:+B.toFixed(2),C:+Cp.toFixed(2),dPrz:+D.toFixed(2),close:+price.toFixed(2),target1:+(D+0.382*(A-D)).toFixed(2),target2:+(D+0.618*(A-D)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:5,geometryFit:+Math.max(0.3,1-Math.abs(ad-0.786)/0.08).toFixed(3)}, graphics });
     }
     return null;
   }
   function detect52WeekBreakout(ctx){
     const {full,last,price}=ctx; if(!full||full.length<200) return null;
     const hist=full.slice(0,-1).slice(-252).map(b=>b.high); const priorHigh=Math.max(...hist); if(price<=priorHigh*1.001) return null;
-    return card({ pattern:"52-Week Breakout", signal:"Bullish Breakout", bias:"bullish", stage:"confirmed", narrative:"The stock breaks out of its 52-week high and the horizontal trendline indicates the bulls are in control of the trend.", levels:{prior52wHigh:+priorHigh.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9} });
+    const graphics={ lines:[{points:[{time:ctx.d[0].time,value:priorHigh},{time:ctx.d[last].time,value:priorHigh}],color:"#ef5350",width:2,title:"52-Wk High"}],
+      markers:[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"52W Breakout"}] };
+    return card({ pattern:"52-Week Breakout", signal:"Bullish Breakout", bias:"bullish", stage:"confirmed", narrative:"The stock breaks out of its 52-week high and the horizontal trendline indicates the bulls are in control of the trend.", levels:{prior52wHigh:+priorHigh.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9}, graphics });
   }
   function scoreCard(c, timeframe){
     const geo=c.components.geometryFit??0.7; const touches=Math.min((c.components.touches??2)/5,1);
@@ -4550,6 +4598,103 @@ function renderFundamentals(ar) {
   }).catch(()=>{});
 }
 
+var _patternChart = null;
+var _selectedPatternIdx = 0;
+
+const _PAT_BIAS_COL = b => b === 'bullish' ? 'var(--green)' : b === 'bearish' ? 'var(--red)' : 'var(--accent)';
+const _PAT_LVL_WORD = cf => cf >= 75 ? 'High' : cf >= 60 ? 'Moderate' : 'Low';
+const _PAT_LVL_COL  = cf => cf >= 75 ? 'var(--green)' : cf >= 60 ? 'var(--accent)' : 'var(--text3)';
+const _PAT_REC_WORD = st => st === 'confirmed' ? 'Actionable now' : st === 'confirmation_pending' ? 'Confirm on retest' : 'Watchlist';
+
+function patternCardHtml(c) {
+  const cur = CUR();
+  const bc = _PAT_BIAS_COL(c.bias);
+  const priceKeys = new Set(['X','A','B','C']);
+  const levelLabel = k => ({ close:'Close', level:'Level', resistance:'Resistance', support:'Support', target:'Target', target1:'Target 1', target2:'Target 2', neckline:'Neckline', trendline:'Trendline', prevSwingHigh:'Prev Swing High', prior52wHigh:'Prior 52w High', rim:'Rim', cupLow:'Cup Low', bottom1:'Bottom 1', bottom2:'Bottom 2', dPrz:'D (PRZ)' }[k] || k);
+  const lv = Object.entries(c.levels || {}).map(([k, v]) => `<span style="display:inline-flex;gap:5px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11.5px;"><span style="color:var(--text3)">${levelLabel(k)}</span><b>${(typeof v === 'number' && !priceKeys.has(k)) ? cur : ''}${v}</b></span>`).join('');
+  const ind = (c.indicators || []).map(i => `<span style="font-size:11px;color:var(--green);background:rgba(16,185,129,0.12);border:1px solid var(--green);border-radius:20px;padding:2px 9px;">✓ ${i}</span>`).join('');
+  const dt = new Date(c.detectedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+  return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--card-shadow);">
+    <div style="background:linear-gradient(135deg,${bc}22,${bc}0d);border-bottom:1px solid var(--border);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#fff;background:${bc};padding:3px 8px;border-radius:5px;text-transform:uppercase;">${c.bias}</span>
+      <div><div style="font-size:15px;font-weight:800;">${c.pattern}</div><div style="font-size:12px;color:var(--text2);">${c.signal}</div></div>
+      <div style="margin-left:auto;text-align:right;">
+        <div style="font-size:20px;font-weight:900;color:${_PAT_LVL_COL(c.confidence)};">${c.confidence}%</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${_PAT_LVL_WORD(c.confidence)} recommendation${c._empirical ? ' · learned' : ''}</div>
+      </div>
+    </div>
+    <div style="padding:13px 15px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <span style="font-size:11px;font-weight:700;color:${bc};background:${bc}18;border-radius:20px;padding:3px 11px;">📌 ${_PAT_REC_WORD(c.stage)}</span>
+        <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">Stage: ${c.stage.replace(/_/g, ' ')}</span>
+        <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">${c.timeframe}</span>
+      </div>
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:11px;">${c.narrative}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${ind ? '10px' : '6px'};">${lv}</div>
+      ${ind ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${ind}</div>` : ''}
+      <div style="font-size:10.5px;color:var(--text3);border-top:1px dashed var(--border);padding-top:7px;">Detected ${dt} · Structural rating, not a probability — not investment advice.</div>
+    </div>
+  </div>`;
+}
+
+function drawPatternChart(card) {
+  const host = document.getElementById('patternChart');
+  if (!host || !analysisResult || typeof LightweightCharts === 'undefined') return;
+  if (_patternChart) { try { _patternChart.remove(); } catch(e){} _patternChart = null; }
+  host.innerHTML = '';
+  const data = analysisResult.data;
+  if (!data || !data.length) return;
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bg=isDark?'#131722':'#f8fafc', txtC=isDark?'#d1d4dc':'#334155', gridC=isDark?'rgba(42,46,57,0.3)':'rgba(0,0,0,0.05)', bdC=isDark?'#363c4e':'#e2e8f0';
+  const chart = LightweightCharts.createChart(host, {
+    layout:{background:{color:bg},textColor:txtC}, grid:{vertLines:{color:gridC},horzLines:{color:gridC}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    rightPriceScale:{borderColor:bdC,scaleMargins:{top:0.12,bottom:0.08}},
+    timeScale:{borderColor:bdC,timeVisible:false,secondsVisible:false,rightOffset:6,barSpacing:8,minBarSpacing:2},
+    width:host.clientWidth||600, height:host.clientHeight||360,
+  });
+  const toTs = d => Math.floor(d.date.getTime()/1000);
+  const sl = Math.max(0, data.length - 160);
+  const sd = data.slice(sl);
+  const candle = chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350'});
+  candle.setData(sd.map(d=>({time:toTs(d),open:d.open,high:d.high,low:d.low,close:d.close})));
+  const { sma20, sma50 } = analysisResult;
+  const mk = c => chart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+  if (sma20) { const s=mk('rgba(245,158,11,0.55)'); s.setData(sd.map((d,i)=>{const v=sma20[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
+  if (sma50) { const s=mk('rgba(59,130,246,0.55)'); s.setData(sd.map((d,i)=>{const v=sma50[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
+  // Pattern overlay
+  const g = card && card.graphics ? card.graphics : { lines:[], markers:[] };
+  (g.lines||[]).forEach(ln => {
+    const s = chart.addLineSeries({ color:ln.color||'#f59e0b', lineWidth:ln.width||2, lineStyle:ln.dashed?LightweightCharts.LineStyle.Dashed:LightweightCharts.LineStyle.Solid, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+    const pts=(ln.points||[]).filter(p=>p&&isFinite(p.time)&&isFinite(p.value)).sort((a,b)=>a.time-b.time);
+    const seen=new Set(); const clean=[]; for(const p of pts){ if(!seen.has(p.time)){ seen.add(p.time); clean.push({time:p.time,value:p.value}); } }
+    if (clean.length>=1) s.setData(clean);
+  });
+  if (g.markers && g.markers.length) {
+    const ms=g.markers.filter(m=>isFinite(m.time)).sort((a,b)=>a.time-b.time).map(m=>({time:m.time,position:m.position||'belowBar',color:m.color||'#26a69a',shape:m.shape||'circle',text:m.text||''}));
+    try { candle.setMarkers(ms); } catch(e){}
+  }
+  chart.timeScale().fitContent();
+  const ro = new ResizeObserver(()=>{ try{ chart.applyOptions({width:host.clientWidth}); }catch(e){} });
+  ro.observe(host);
+  _patternChart = { remove(){ try{ro.disconnect();}catch(e){} try{chart.remove();}catch(e){} } };
+}
+
+function selectPattern(idx) {
+  const cards = analysisResult && analysisResult.chartPatterns ? analysisResult.chartPatterns : [];
+  if (!cards[idx]) return;
+  _selectedPatternIdx = idx;
+  document.querySelectorAll('#patternChips [data-pidx]').forEach(el => {
+    const on = +el.getAttribute('data-pidx') === idx;
+    el.style.background = on ? _PAT_BIAS_COL(cards[idx].bias) : 'var(--surface2)';
+    el.style.color = on ? '#fff' : 'var(--text2)';
+    el.style.borderColor = on ? _PAT_BIAS_COL(cards[idx].bias) : 'var(--border2)';
+  });
+  drawPatternChart(cards[idx]);
+  const cardEl = document.getElementById('patternCard');
+  if (cardEl) cardEl.innerHTML = patternCardHtml(cards[idx]);
+}
+
 function renderChartPatterns(ar) {
   const el = document.getElementById('chartPatterns');
   if (!el) return;
@@ -4558,56 +4703,33 @@ function renderChartPatterns(ar) {
     el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;color:var(--text3);font-size:13px;line-height:1.6;">📐 No high-confidence chart patterns (triangles, channels, double bottom, cup &amp; handle, 52-week breakout…) on the current data. Clean geometric patterns are relatively rare — the candlestick signals below still apply.</div>`;
     return;
   }
-  const cur = CUR();
-  const biasCol = b => b === 'bullish' ? 'var(--green)' : b === 'bearish' ? 'var(--red)' : 'var(--accent)';
-  const priceKeys = new Set(['X','A','B','C']); // raw Fibonacci points — not currency-prefixed
-  const levelLabel = k => ({ close:'Close', level:'Level', resistance:'Resistance', support:'Support', target:'Target', target1:'Target 1', target2:'Target 2', neckline:'Neckline', trendline:'Trendline', prevSwingHigh:'Prev Swing High', prior52wHigh:'Prior 52w High', rim:'Rim', cupLow:'Cup Low', bottom1:'Bottom 1', bottom2:'Bottom 2', dPrz:'D (PRZ)' }[k] || k);
-  const recWord = st => st === 'confirmed' ? 'Actionable now' : st === 'confirmation_pending' ? 'Confirm on retest' : 'Watchlist';
-  const lvlWord = cf => cf >= 75 ? 'High' : cf >= 60 ? 'Moderate' : 'Low';
-  const lvlCol  = cf => cf >= 75 ? 'var(--green)' : cf >= 60 ? 'var(--accent)' : 'var(--text3)';
-
+  _selectedPatternIdx = 0;
   const top = cards[0];
   const bullN = cards.filter(c => c.bias === 'bullish').length, bearN = cards.filter(c => c.bias === 'bearish').length;
-  const summary = `<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.6;">
-    <b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — strongest: <b style="color:${biasCol(top.bias)}">${top.pattern}</b> (${top.signal}) at <b>${top.confidence}%</b> · <b style="color:${lvlCol(top.confidence)}">${lvlWord(top.confidence)} recommendation level</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Confidence blends geometry, touches, volume &amp; confluence, adjusted by your own logged outcomes — a structural rating, not a probability.</span></div>`;
+  const summary = `<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:12px;font-size:12.5px;color:var(--text2);line-height:1.6;">
+    <b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — strongest: <b style="color:${_PAT_BIAS_COL(top.bias)}">${top.pattern}</b> at <b>${top.confidence}%</b> · <b style="color:${_PAT_LVL_COL(top.confidence)}">${_PAT_LVL_WORD(top.confidence)} recommendation</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Select a pattern to draw it on the chart. Confidence is a structural rating, not a probability.</span></div>`;
+  const chips = `<div id="patternChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${cards.map((c,i) => `<button data-pidx="${i}" onclick="selectPattern(${i})" style="cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s;">${c.pattern} · ${c.confidence}%</button>`).join('')}</div>`;
+  const chart = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);flex-wrap:wrap;">
+      <span style="color:#26a69a;font-weight:700;">▲ Bull</span><span style="color:#ef5350;font-weight:700;">▼ Bear</span>
+      <span style="color:#ef5350;">── Resistance</span><span style="color:#26a69a;">── Support</span>
+      <span style="color:#3b82f6;">┈ Target</span><span style="color:rgba(245,158,11,0.7);">── SMA20</span>
+      <span style="margin-left:auto;">Pattern drawn on price · last 160 bars</span>
+    </div>
+    <div id="patternChart" style="height:360px;width:100%;"></div>
+  </div>`;
+  el.innerHTML = summary + chips + chart + `<div id="patternCard"></div>`;
 
-  const cardHtml = c => {
-    const bc = biasCol(c.bias);
-    const lv = Object.entries(c.levels || {}).map(([k, v]) => `<span style="display:inline-flex;gap:5px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11.5px;"><span style="color:var(--text3)">${levelLabel(k)}</span><b>${(typeof v === 'number' && !priceKeys.has(k)) ? cur : ''}${v}</b></span>`).join('');
-    const ind = (c.indicators || []).map(i => `<span style="font-size:11px;color:var(--green);background:rgba(16,185,129,0.12);border:1px solid var(--green);border-radius:20px;padding:2px 9px;">✓ ${i}</span>`).join('');
-    const dt = new Date(c.detectedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-    return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--card-shadow);">
-      <div style="background:linear-gradient(135deg,${bc}22,${bc}0d);border-bottom:1px solid var(--border);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#fff;background:${bc};padding:3px 8px;border-radius:5px;text-transform:uppercase;">${c.bias}</span>
-        <div><div style="font-size:15px;font-weight:800;">${c.pattern}</div><div style="font-size:12px;color:var(--text2);">${c.signal}</div></div>
-        <div style="margin-left:auto;text-align:right;">
-          <div style="font-size:20px;font-weight:900;color:${lvlCol(c.confidence)};">${c.confidence}%</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${lvlWord(c.confidence)}${c._empirical ? ' · learned' : ''}</div>
-        </div>
-      </div>
-      <div style="padding:13px 15px;">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-          <span style="font-size:11px;font-weight:700;color:${bc};background:${bc}18;border-radius:20px;padding:3px 11px;">📌 ${recWord(c.stage)}</span>
-          <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">Stage: ${c.stage.replace(/_/g, ' ')}</span>
-          <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">${c.timeframe}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:11px;">${c.narrative}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${ind ? '10px' : '6px'};">${lv}</div>
-        ${ind ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${ind}</div>` : ''}
-        <div style="font-size:10.5px;color:var(--text3);border-top:1px dashed var(--border);padding-top:7px;">Detected ${dt} · Structural rating, not a probability — not investment advice.</div>
-      </div>
-    </div>`;
-  };
-
-  el.innerHTML = summary + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">${cards.map(cardHtml).join('')}</div>`;
-
-  // Learning loop: log surfaced cards (dedupe same symbol+pattern+signal+close among open records)
+  // Learning loop: log surfaced cards (dedupe by symbol+pattern+signal+close among open records)
   try {
     const T = SBPatternEngine.OutcomeTracker;
     const key = c => `${c.symbol}|${c.pattern}|${c.signal}|${c.levels?.close}`;
     const seen = new Set(T._read().filter(r => !r.outcome).map(key));
     cards.forEach(c => { if (!seen.has(key(c))) { T.log(c); seen.add(key(c)); } });
   } catch (e) {}
+
+  // Draw the strongest pattern (deferred so layout settles; chart needs non-zero width)
+  setTimeout(() => { try { selectPattern(0); } catch(e){} }, 60);
 }
 
 function openByok() {
@@ -5109,9 +5231,12 @@ function switchResTab(name, el) {
   document.querySelectorAll('.res-tab-panel').forEach(p => {
     p.style.display = (p.getAttribute('data-rtab') === name) ? '' : 'none';
   });
-  // Chart is built while its tab is hidden → it sizes to 0. Rebuild on reveal.
+  // Charts built while their tab is hidden size to 0 → rebuild on reveal.
   if (name === 'levels' && analysisResult) {
     setTimeout(() => { try { buildChart(currentChartType || 'candle'); } catch(e){} }, 40);
+  }
+  if (name === 'patterns' && analysisResult && analysisResult.chartPatterns && analysisResult.chartPatterns.length) {
+    setTimeout(() => { try { selectPattern(_selectedPatternIdx || 0); } catch(e){} }, 60);
   }
 }
 
