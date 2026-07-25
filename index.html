@@ -1531,8 +1531,11 @@ td.r{text-align:right}
 
       <!-- ===== PATTERNS TAB ===== -->
       <div class="res-tab-panel" data-rtab="patterns" style="display:none;">
+      <!-- Chart Patterns (multi-bar geometry + recommendation) -->
+      <div class="section-header" style="margin-top:6px;"><span class="section-title">📐 Chart Patterns &amp; Recommendation</span><div class="section-line"></div></div>
+      <div id="chartPatterns" style="margin-bottom:24px;"></div>
       <!-- Candlestick Patterns -->
-      <div class="section-header" style="margin-top:6px;"><span class="section-title">🕯️ Candlestick Pattern Signals</span><div class="section-line"></div></div>
+      <div class="section-header"><span class="section-title">🕯️ Candlestick Pattern Signals</span><div class="section-line"></div></div>
       <div id="candlePatterns" style="margin-bottom:24px;"></div>
       </div>
 
@@ -4165,6 +4168,230 @@ let currentChartType = 'candle';
 let selectedEngine = 'builtin';
 
 // ============================================================
+// CHART PATTERN ENGINE (Stock Buddy) — namespaced, zero-dependency
+// Detects triangles, channels, double bottom, cup & handle, Gartley, 52wk, etc.
+// ============================================================
+window.SBPatternEngine = (function () {
+  const TIMEFRAME_WEIGHT = { "30 mins":0.45,"1 hour":0.55,"2 hours":0.65,"4 hours":0.80,"1 day":0.95,"1 week":1.00 };
+  const STAGE_MULTIPLIER = { confirmed:1.0, confirmation_pending:0.85, anticipatory:0.65 };
+  const WEIGHTS = { geometryFit:0.35, touchCount:0.20, volume:0.15, confluence:0.15, timeframe:0.10, maturity:0.05 };
+
+  function ema(values, span){ const a=2/(span+1); const out=[values[0]]; for(let i=1;i<values.length;i++) out.push(values[i]*a+out[i-1]*(1-a)); return out; }
+  function rsi(closes, period=14){ const out=new Array(closes.length).fill(50); let ag=0,al=0; for(let i=1;i<closes.length;i++){ const d=closes[i]-closes[i-1]; const g=Math.max(d,0),l=Math.max(-d,0); if(i<=period){ag+=g/period;al+=l/period;} else {ag=(ag*(period-1)+g)/period;al=(al*(period-1)+l)/period;} out[i]=al===0?100:100-100/(1+ag/al);} return out; }
+  function macd(closes, fast=12, slow=26, sig=9){ const ef=ema(closes,fast),es=ema(closes,slow); const line=ef.map((v,i)=>v-es[i]); return { line, signal:ema(line,sig) }; }
+  function sma(values, period){ const out=new Array(values.length).fill(NaN); let sum=0; for(let i=0;i<values.length;i++){ sum+=values[i]; if(i>=period) sum-=values[i-period]; if(i>=period-1) out[i]=sum/period; } return out; }
+
+  function findPivots(highs, lows, left=3, right=3){
+    const rawH=[], rawL=[];
+    for(let i=left;i<highs.length-right;i++){ let isH=true,isL=true; for(let j=i-left;j<=i+right;j++){ if(highs[j]>highs[i]) isH=false; if(lows[j]<lows[i]) isL=false; } if(isH) rawH.push(i); if(isL) rawL.push(i); }
+    const pick=(g,vals,takeMax)=>g.reduce((b,i)=>(takeMax?vals[i]>vals[b]:vals[i]<vals[b])?i:b,g[0]);
+    const thin=(idxs,vals,takeMax)=>{ if(!idxs.length) return []; const out=[]; let group=[idxs[0]]; for(let k=1;k<idxs.length;k++){ if(idxs[k]-group[group.length-1]<=Math.max(2,left)) group.push(idxs[k]); else {out.push(pick(group,vals,takeMax));group=[idxs[k]];} } out.push(pick(group,vals,takeMax)); return out; };
+    return { highs:thin(rawH,highs,true), lows:thin(rawL,lows,false) };
+  }
+  function fitLine(xs, ys){
+    const n=xs.length; if(n<2) return {slope:0,intercept:ys[0]||0,r2:0};
+    const mx=xs.reduce((a,b)=>a+b,0)/n, my=ys.reduce((a,b)=>a+b,0)/n;
+    let num=0,den=0; for(let i=0;i<n;i++){ num+=(xs[i]-mx)*(ys[i]-my); den+=(xs[i]-mx)**2; }
+    const slope=den===0?0:num/den, intercept=my-slope*mx;
+    let ssRes=0,ssTot=0; for(let i=0;i<n;i++){ ssRes+=(ys[i]-(slope*xs[i]+intercept))**2; ssTot+=(ys[i]-my)**2; }
+    return { slope, intercept, r2:ssTot===0?1:Math.max(0,1-ssRes/ssTot) };
+  }
+  function bestBoundary(pivots, values, upper, minPts=3, tolPct=1.5){
+    if(pivots.length<minPts) return null; let best=null;
+    for(let a=0;a<pivots.length;a++) for(let b=a+1;b<pivots.length;b++){
+      const i=pivots[a], j=pivots[b]; if(j-i<5) continue;
+      const slope=(values[j]-values[i])/(j-i), intercept=values[i]-slope*i;
+      const touches=[]; let violated=false;
+      for(const p of pivots){ const line=slope*p+intercept; if(line<=0) continue; const dev=((values[p]-line)/line)*100; if((upper&&dev>tolPct)||(!upper&&dev<-tolPct)){violated=true;break;} if(Math.abs(dev)<=tolPct) touches.push(p); }
+      if(violated||touches.length<minPts) continue;
+      const fit=fitLine(touches,touches.map(p=>values[p])); const score=touches.length*1000+fit.r2;
+      if(!best||score>best.score) best={score,...fit,touches};
+    }
+    return best;
+  }
+  const slopePct=(slope,price)=>(price?(100*slope)/price:0);
+
+  function volumeConfirms(ctx, idx, win=3){ const vma=ctx.volMa[idx]; if(!vma||isNaN(vma)) return false; let mx=0; for(let i=Math.max(0,idx-win);i<=idx;i++) mx=Math.max(mx,ctx.V[i]); return mx>=1.5*vma; }
+  function macdGolden(ctx, idx, win=5){ const {line,signal}=ctx.macd; for(let i=Math.max(1,idx-win);i<=idx;i++) if(line[i-1]<=signal[i-1]&&line[i]>signal[i]) return true; return false; }
+  function rsiRebound(ctx, idx, win=6, floor=38){ const seg=ctx.rsi.slice(Math.max(0,idx-win),idx+1); const mn=Math.min(...seg); return mn<floor&&seg[seg.length-1]>mn+3; }
+  function confluence(ctx, idx){ const out=[]; if(volumeConfirms(ctx,idx)) out.push("Volume expansion"); if(macdGolden(ctx,idx)) out.push("MACD golden crossover"); if(rsiRebound(ctx,idx)) out.push("RSI rebounding from oversold"); return out; }
+  const card=(o)=>({ symbol:"", timeframe:"", confidence:0, detectedAt:new Date().toISOString(), ...o });
+
+  function detectHorizontalTrendline(ctx){
+    const {ph,pl,last,price,H,L,C}=ctx; let best=null;
+    for(const [group,kind] of [[ph,"res"],[pl,"sup"]]){ if(group.length<3) continue; const vals=kind==="res"?H:L;
+      for(const i of group){ const lvl=vals[i]; const touches=group.filter(j=>Math.abs(vals[j]-lvl)/lvl<0.005); if(touches.length<3) continue;
+        const mx=Math.max(...touches), mn=Math.min(...touches); if(mx>last-2) continue; const span=mx-mn; if(span<20||span<0.35*last) continue;
+        const seg=C.slice(mn,mx+1); const breach=kind==="res"?seg.filter(v=>v>lvl*1.005).length/seg.length:seg.filter(v=>v<lvl*0.995).length/seg.length; if(breach>0.15) continue;
+        let cand=null; const recentLow=Math.min(...L.slice(-6));
+        if(kind==="res"&&price>lvl*1.008) cand=["Resistance Breakout","bullish","confirmed",lvl,touches];
+        else if(kind==="sup"&&price>lvl*1.008&&recentLow<=lvl*1.01) cand=["Reversal From Support","bullish","confirmed",lvl,touches];
+        if(cand&&(!best||cand[4].length>best[4].length)) best=cand;
+      } }
+    if(!best) return null; let [signal,bias,stage,lvl,touches]=best;
+    if(signal==="Resistance Breakout"){ const rl=Math.min(...ctx.L.slice(-5)); if(rl<=lvl*1.012&&price>lvl){signal="Breakout Retest";stage="confirmation_pending";} }
+    const narrative=signal==="Reversal From Support"?"A horizontal support zone marks an area where buyers have consistently defended price. The rebound from this level suggests buying interest has returned, supporting a bullish reversal.":"A horizontal resistance level marks a zone where sellers repeatedly capped price. The breakout above this level confirms buyers have absorbed supply, strengthening the bullish outlook.";
+    return card({ pattern:"Horizontal Trendline", signal, bias, stage, narrative, levels:{level:+lvl.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:touches.length,geometryFit:0.85} });
+  }
+  function detectHorizontalChannel(ctx){
+    const {ph,pl,last,price,H,L}=ctx; if(ph.length<2||pl.length<2) return null;
+    const median=a=>{const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)];};
+    const hi=median(ph.slice(-4).map(i=>H[i])), lo=median(pl.slice(-4).map(i=>L[i])); if(hi<=lo) return null;
+    const height=((hi-lo)/lo)*100; if(height<=2||height>=25) return null;
+    const topT=ph.filter(i=>Math.abs(H[i]-hi)/hi<0.012).length, botT=pl.filter(i=>Math.abs(L[i]-lo)/lo<0.012).length; if(topT<2||botT<2) return null;
+    const hx=ph.slice(-4); const fit=fitLine(hx,hx.map(i=>H[i])); if(Math.abs(slopePct(fit.slope,hi))>0.15) return null;
+    let signal,stage,narrative;
+    if(price>hi*1.004){signal="Bullish Breakout";stage="confirmed";narrative="Price broke above the horizontal channel after a consolidation underneath. A breakout suggests buyers are strong.";}
+    else if(price<=lo*1.02&&ctx.C[last]>ctx.C[last-2]){signal="Reversal From Support";stage="confirmed";narrative="A horizontal support zone marks an area where buyers have consistently defended price. The rebound from this level suggests buying interest has returned.";}
+    else if(price>hi*0.985){signal="On The Verge Of Breakout";stage="anticipatory";narrative="Price is compressing beneath channel resistance. A close above the zone would open the next bullish leg.";}
+    else return null;
+    return card({ pattern:"Horizontal Channel", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:topT+botT,geometryFit:0.8} });
+  }
+  function detectRectangle(ctx){
+    const {last,price,H,L,C}=ctx;
+    for(const win of [25,35,50]){ if(last<win+5) continue; const a=last-win,b=last-1;
+      const hi=Math.max(...H.slice(a,b)), lo=Math.min(...L.slice(a,b)); const height=((hi-lo)/lo)*100; if(height>8||height<1.5) continue;
+      const seg=C.slice(a,b); if(seg.filter(v=>v>lo&&v<hi).length/seg.length<0.9) continue;
+      let signal,stage,narrative;
+      if(price>hi*1.004){signal="Bullish Reversal";stage="confirmed";narrative="A rectangle pattern reflects a period of sideways consolidation within a defined range. A breakout from resistance suggests buyers are regaining control, pointing to a potential bullish reversal.";}
+      else if(price>hi*0.99){signal="On The Verge Of Breakout";stage="anticipatory";narrative="A rectangle pattern reflects a phase of consolidation after the prior move. Price is nearing the resistance zone, with a breakout likely to trigger the next bullish leg.";}
+      else continue;
+      return card({ pattern:"Rectangle Pattern", signal, bias:"bullish", stage, narrative, levels:{resistance:+hi.toFixed(2),support:+lo.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:4,geometryFit:0.75,boxHeightPct:+height.toFixed(2)} });
+    }
+    return null;
+  }
+  function detectTriangle(ctx, kind){
+    const {ph,pl,last,price,H,L}=ctx; if(ph.length<2||pl.length<2) return null;
+    const up=bestBoundary(ph,H,true,2,1.5), dn=bestBoundary(pl,L,false,2,1.5); if(!up||!dn) return null;
+    const shP=slopePct(up.slope,price), slP=slopePct(dn.slope,price);
+    const edge=Math.max(Math.max(...up.touches),Math.max(...dn.touches));
+    const span=edge-Math.min(Math.min(...up.touches),Math.min(...dn.touches)); if(span<18) return null;
+    let evalBar=last;
+    if(Math.abs(up.slope-dn.slope)>1e-9){ const apex=(dn.intercept-up.intercept)/(up.slope-dn.slope); if(up.slope<dn.slope&&apex>edge) evalBar=Math.min(last,Math.floor(apex)-1); }
+    evalBar=Math.max(evalBar,edge);
+    let upper=up.slope*evalBar+up.intercept, lower=dn.slope*evalBar+dn.intercept;
+    if(upper<=lower){upper=up.slope*edge+up.intercept;lower=dn.slope*edge+dn.intercept;} if(upper<=lower) return null;
+    let name,narrative;
+    if(kind==="ascending"){ if(!(Math.abs(shP)<0.10&&slP>0.12)) return null; name="Ascending Triangle"; narrative="An ascending triangle reflects rising buying pressure beneath a fixed resistance, with higher lows showing improving demand. A move above resistance is likely to trigger fresh upside."; }
+    else if(kind==="descending"){ if(!(Math.abs(slP)<0.10&&shP<-0.12)) return null; name="Descending Triangle"; narrative="A descending triangle formed during the consolidation phase. The breakout above resistance signals buyers have regained the upper hand, paving the way for further upside."; }
+    else { if(!(shP<-0.08&&slP>0.08)) return null; name="Symmetrical Triangle"; narrative="The breakout from a symmetrical triangle marks a transition from consolidation to expansion, confirming a bullish reversal."; }
+    let signal,stage;
+    if(price>upper*1.004){ if(Math.min(...L.slice(-5))<=upper*1.012){signal="Breakout Retest";stage="confirmation_pending";narrative=`Price broke above the resistance of the ${name.toLowerCase()}. It is now retesting the breakout zone as support — a move from this level could be a strong bullish leg.`;} else {signal="Bullish Reversal";stage="confirmed";} }
+    else if(price>upper*0.99){signal="On The Verge Of Breakout";stage="anticipatory";}
+    else return null;
+    return card({ pattern:name, signal, bias:"bullish", stage, narrative, levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:up.touches.length+dn.touches.length,geometryFit:+((up.r2+dn.r2)/2).toFixed(3)} });
+  }
+  function detectRisingTrendline(ctx){
+    const {pl,last,price,L,C}=ctx; const res=bestBoundary(pl,L,false,3,1.5); if(!res) return null;
+    if(slopePct(res.slope,price)<0.08) return null; const lineNow=res.slope*last+res.intercept;
+    let signal,bias,stage,narrative;
+    if(price<lineNow*0.99&&C[last-1]<lineNow){signal="Bearish Breakdown";bias="bearish";stage="confirmed";narrative="A rising trendline had been supporting the uptrend. The breakdown below this level signals weakening buying interest and increases the risk of further downside.";}
+    else if(Math.abs(price-lineNow)/lineNow<0.02&&rsiRebound(ctx,last)){signal="Reversal From Support";bias="bullish";stage="confirmed";narrative="A reversal from the rising trendline support, with RSI turning up from the 30 level, suggests buying interest at support.";}
+    else return null;
+    return card({ pattern:"Rising Trendline", signal, bias, stage, narrative, levels:{trendline:+lineNow.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)} });
+  }
+  function detectFallingTrendline(ctx){
+    const {ph,last,price,H}=ctx; const res=bestBoundary(ph,H,true,3,1.5); if(!res) return null;
+    if(slopePct(res.slope,price)>-0.08) return null; const lineNow=res.slope*last+res.intercept; if(price<lineNow*1.003) return null;
+    const prevHigh=H[Math.max(...res.touches)]; let signal,stage,narrative;
+    if(price>prevHigh){signal="Previous High Breakout";stage="confirmed";narrative="Price has broken above the falling trendline and cleared the previous swing high, confirming strengthening momentum and opening the next bullish leg.";}
+    else {signal="Bullish Reversal";stage="confirmed";narrative="A falling trendline reflects sustained selling pressure through lower highs. The breakout above resistance indicates buyers are regaining control.";}
+    const ind=confluence(ctx,last); if(ind.includes("MACD golden crossover")) narrative+=" A MACD golden crossover supports the shift in momentum.";
+    return card({ pattern:"Falling Trendline", signal, bias:"bullish", stage, narrative, levels:{trendline:+lineNow.toFixed(2),prevSwingHigh:+prevHigh.toFixed(2),close:+price.toFixed(2)}, indicators:ind, components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)} });
+  }
+  function detectDoubleBottom(ctx){
+    const {pl,ph,last,price,L,H,C}=ctx; if(pl.length<2) return null;
+    const a=pl[pl.length-2], b=pl[pl.length-1]; if(b-a<10) return null;
+    const la=L[a], lb=L[b], base=Math.min(la,lb); if(Math.abs(la-lb)/base>0.03) return null;
+    const windowLow=Math.min(...L.slice(Math.max(0,a-30))); if(base>windowLow*1.01) return null;
+    if(Math.min(...L.slice(b))<lb*0.99) return null;
+    const mids=ph.filter(i=>i>a&&i<b); if(!mids.length) return null; const neck=Math.max(...mids.map(i=>H[i])); if((neck-base)/base<0.04) return null;
+    const pre=H.slice(0,Math.max(1,a)); if(!pre.length) return null; const priorHigh=Math.max(...pre); if((priorHigh-base)/priorHigh<0.08) return null; if(pre.indexOf(priorHigh)>a-5) return null;
+    const equalEarlier=pl.filter(i=>i<a&&Math.abs(L[i]-base)/base<0.03).length; if(equalEarlier>=1) return null;
+    let signal,stage,narrative;
+    if(price>neck*1.004){signal="Bullish Reversal";stage="confirmed";narrative="A double bottom has completed after a prolonged decline. The decisive move above the neckline confirms the reversal.";}
+    else {signal="Probable Double Bottom";stage="anticipatory";narrative="A potential double bottom is taking shape after a prolonged decline. A decisive move above the neckline would confirm the pattern and signal a potential bullish reversal.";}
+    return card({ pattern:"Double Bottom", signal, bias:"bullish", stage, narrative, levels:{neckline:+neck.toFixed(2),bottom1:+la.toFixed(2),bottom2:+lb.toFixed(2),close:+price.toFixed(2),target:+(neck+(neck-base)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:+(1-Math.abs(la-lb)/base/0.03).toFixed(3)} });
+  }
+  function detectCupHandle(ctx){
+    const {last,price,H,L}=ctx; if(last<60) return null; const a=last-60; const segH=H.slice(a), segL=L.slice(a);
+    let troughI=0; for(let i=1;i<segL.length;i++) if(segL[i]<segL[troughI]) troughI=i; if(troughI<=15||troughI>=45) return null;
+    const leftRim=Math.max(...segH.slice(0,troughI-5)); const rightPart=segH.slice(troughI+5); if(!rightPart.length) return null; const rightRim=Math.max(...rightPart);
+    if(Math.abs(leftRim-rightRim)/leftRim>0.05) return null;
+    const cupLow=segL[troughI]; const depth=(leftRim-cupLow)/leftRim; if(depth<=0.10||depth>=0.50) return null;
+    const handleLow=Math.min(...segL.slice(-15)); const retrace=(rightRim-handleLow)/(rightRim-cupLow); if(retrace>0.45) return null;
+    const rim=Math.max(leftRim,rightRim); if(price<rim*0.995) return null;
+    return card({ pattern:"Cup & Handle", signal:"Bullish Reversal", bias:"bullish", stage:price>rim*1.004?"confirmed":"anticipatory", narrative:"A cup and handle pattern shows price after a large consolidation and a small pullback. A breakout above it shows buyers are back.", levels:{rim:+rim.toFixed(2),cupLow:+cupLow.toFixed(2),close:+price.toFixed(2),target:+(rim+(rim-cupLow)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:3,geometryFit:+(1-retrace).toFixed(3)} });
+  }
+  function detectGartley(ctx){
+    const {last,price,L,H}=ctx; let pl=[...ctx.pl], ph=[...ctx.ph];
+    const all=[...pl,...ph];
+    if(all.length){ const head=Math.min(...all); if(head>3){ let mi=0; for(let i=1;i<head;i++) if(L[i]<L[mi]) mi=i; pl.push(mi); } const tail=Math.max(...all); if(last-tail>2){ let mi=tail+1; for(let i=tail+1;i<=last;i++) if(L[i]<L[mi]) mi=i; pl.push(mi); } }
+    pl=[...new Set(pl)].sort((a,b)=>a-b);
+    const piv=[...pl.map(i=>[i,"L"]),...ph.map(i=>[i,"H"])].sort((a,b)=>a[0]-b[0]); if(piv.length<5) return null; const tol=0.06;
+    for(let s=piv.length-5;s>=0;s--){ const seq=piv.slice(s,s+5); if(seq.map(p=>p[1]).join("")!=="LHLHL") continue;
+      const idx=seq.map(p=>p[0]); const X=L[idx[0]],A=H[idx[1]],B=L[idx[2]],Cp=H[idx[3]],D=L[idx[4]]; const XA=A-X; if(XA<=0) continue;
+      const ab=(A-B)/XA, bc=A!==B?(Cp-B)/(A-B):0, cd=Cp!==B?(Cp-D)/(Cp-B):0, ad=(A-D)/XA;
+      const ok=ab>=0.586-tol&&ab<=0.638+tol&&bc>=0.382-tol&&bc<=0.886+tol&&cd>=1.13-tol&&cd<=1.618+tol&&ad>=0.75-tol&&ad<=0.83+tol;
+      if(!ok) continue; if(idx[4]<last-12) continue;
+      return card({ pattern:"Bullish Gartley", signal:"Reversal Pattern", bias:"bullish", stage:"anticipatory", narrative:"A Bullish Gartley is a five-point harmonic chart pattern utilizing precise Fibonacci ratios to identify a high-probability reversal zone (PRZ).", levels:{X:+X.toFixed(2),A:+A.toFixed(2),B:+B.toFixed(2),C:+Cp.toFixed(2),dPrz:+D.toFixed(2),close:+price.toFixed(2),target1:+(D+0.382*(A-D)).toFixed(2),target2:+(D+0.618*(A-D)).toFixed(2)}, indicators:confluence(ctx,last), components:{touches:5,geometryFit:+Math.max(0.3,1-Math.abs(ad-0.786)/0.08).toFixed(3)} });
+    }
+    return null;
+  }
+  function detect52WeekBreakout(ctx){
+    const {full,last,price}=ctx; if(!full||full.length<200) return null;
+    const hist=full.slice(0,-1).slice(-252).map(b=>b.high); const priorHigh=Math.max(...hist); if(price<=priorHigh*1.001) return null;
+    return card({ pattern:"52-Week Breakout", signal:"Bullish Breakout", bias:"bullish", stage:"confirmed", narrative:"The stock breaks out of its 52-week high and the horizontal trendline indicates the bulls are in control of the trend.", levels:{prior52wHigh:+priorHigh.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9} });
+  }
+  function scoreCard(c, timeframe){
+    const geo=c.components.geometryFit??0.7; const touches=Math.min((c.components.touches??2)/5,1);
+    const vol=c.indicators.includes("Volume expansion")?1.0:0.35; const conf=Math.min(c.indicators.filter(i=>i!=="Volume expansion").length/2,1);
+    const tfw=TIMEFRAME_WEIGHT[timeframe]??0.7; const maturity=c.stage==="confirmed"?1.0:0.6;
+    const raw=WEIGHTS.geometryFit*geo+WEIGHTS.touchCount*touches+WEIGHTS.volume*vol+WEIGHTS.confluence*conf+WEIGHTS.timeframe*tfw+WEIGHTS.maturity*maturity;
+    let score=100*raw*(STAGE_MULTIPLIER[c.stage]??0.8); if(!c.indicators.length) score=Math.min(score,65); return +score.toFixed(1);
+  }
+  const FAMILY={ "Horizontal Trendline":"level","Horizontal Channel":"level","Rectangle Pattern":"level","52-Week Breakout":"extreme","Ascending Triangle":"diagonal","Descending Triangle":"diagonal","Symmetrical Triangle":"diagonal","Rising Trendline":"diagonal","Falling Trendline":"diagonal","Double Bottom":"reversal","Cup & Handle":"reversal","Bullish Gartley":"harmonic" };
+  function dedupe(cards){
+    const specific=new Set(["reversal","diagonal","harmonic"]); const seen=new Set(); let hasSpecific=false; const out=[];
+    for(const c of cards){ const f=FAMILY[c.pattern]??c.pattern; if(seen.has(f)) continue; if(f==="level"&&hasSpecific) continue; if(specific.has(f)) hasSpecific=true; seen.add(f); out.push(c); }
+    return out;
+  }
+  function scanPatterns(bars, opts={}){
+    const { symbol="", timeframe="4 hours", minConfidence=45, lookback=150 }=opts;
+    if(!bars||bars.length<40) return [];
+    const full=bars; const d=bars.slice(-lookback);
+    const O=d.map(b=>b.open),H=d.map(b=>b.high),L=d.map(b=>b.low),C=d.map(b=>b.close),V=d.map(b=>b.volume);
+    const last=d.length-1, price=C[last]; const piv=findPivots(H,L);
+    const ctx={ ph:piv.highs, pl:piv.lows, last, price, rsi:rsi(C), macd:macd(C), volMa:sma(V,20), H,L,C,V,d,full };
+    const detectors=[ detectGartley, detectCupHandle, detectDoubleBottom, d2=>detectTriangle(d2,"ascending"), d2=>detectTriangle(d2,"descending"), d2=>detectTriangle(d2,"symmetrical"), detectFallingTrendline, detectRisingTrendline, detect52WeekBreakout, detectHorizontalTrendline, detectRectangle, detectHorizontalChannel ];
+    let cards=[]; detectors.forEach((fn,rank)=>{ let r=null; try{r=fn(ctx);}catch(e){r=null;} if(r){r._priority=rank;cards.push(r);} });
+    cards.forEach(c=>{ c.symbol=symbol; c.timeframe=timeframe; c.confidence=scoreCard(c,timeframe); });
+    cards=cards.filter(c=>c.confidence>=minConfidence); cards.sort((a,b)=>a._priority-b._priority); cards=dedupe(cards); cards.sort((a,b)=>b.confidence-a.confidence); cards.forEach(c=>delete c._priority);
+    return cards;
+  }
+
+  const OutcomeTracker={
+    KEY:"sb_pattern_outcomes",
+    _read(){ try{return JSON.parse(localStorage.getItem(this.KEY)||"[]");}catch{return [];} },
+    _write(recs){ try{localStorage.setItem(this.KEY,JSON.stringify(recs));}catch{} },
+    log(cardObj){ const recs=this._read(); recs.push({...cardObj,outcome:null,returnPct:null,gradedAt:null}); this._write(recs); },
+    grade(symbol, futureBars, horizon=20){ if(futureBars.length<horizon) return; const recs=this._read(); const fwd=futureBars.slice(-horizon);
+      for(const r of recs){ if(r.outcome||r.symbol!==symbol) continue; const entry=r.levels?.close; if(!entry) continue; const lastC=fwd[fwd.length-1].close;
+        const ret=r.bias==="bullish"?((lastC-entry)/entry)*100:((entry-lastC)/entry)*100;
+        const mfe=r.bias==="bullish"?((Math.max(...fwd.map(b=>b.high))-entry)/entry)*100:((entry-Math.min(...fwd.map(b=>b.low)))/entry)*100;
+        r.returnPct=+ret.toFixed(2); r.outcome=mfe>=2.0&&ret>0?"win":"loss"; r.gradedAt=new Date().toISOString(); }
+      this._write(recs); },
+    hitRates(){ const graded=this._read().filter(r=>r.outcome); const map={};
+      for(const r of graded){ const k=`${r.pattern}|${r.signal}|${r.timeframe}`; map[k]=map[k]||{pattern:r.pattern,signal:r.signal,timeframe:r.timeframe,n:0,wins:0,sum:0}; map[k].n++; if(r.outcome==="win") map[k].wins++; map[k].sum+=r.returnPct||0; }
+      return Object.values(map).map(v=>({...v,hitRate:+((v.wins/v.n)*100).toFixed(1),avgReturn:+(v.sum/v.n).toFixed(2),prior:+((v.wins+1)/(v.n+2)).toFixed(3)})).sort((a,b)=>b.hitRate-a.hitRate); },
+    adjust(cardObj, weight=0.35){ const rates=this.hitRates(); const m=rates.find(r=>r.pattern===cardObj.pattern&&r.signal===cardObj.signal&&r.timeframe===cardObj.timeframe); if(!m||m.n<5) return cardObj.confidence; const adj=cardObj.confidence*(1-weight)+(m.prior*100)*weight; return +adj.toFixed(1); },
+    reset(){ this._write([]); },
+  };
+
+  return { scanPatterns, OutcomeTracker, findPivots, bestBoundary };
+})();
+
+// ============================================================
 // BREAKOUT SCREENER — tight consolidation → resistance break → range expansion
 // ============================================================
 function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10) {
@@ -4323,6 +4550,66 @@ function renderFundamentals(ar) {
   }).catch(()=>{});
 }
 
+function renderChartPatterns(ar) {
+  const el = document.getElementById('chartPatterns');
+  if (!el) return;
+  const cards = ar.chartPatterns || [];
+  if (!cards.length) {
+    el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;color:var(--text3);font-size:13px;line-height:1.6;">📐 No high-confidence chart patterns (triangles, channels, double bottom, cup &amp; handle, 52-week breakout…) on the current data. Clean geometric patterns are relatively rare — the candlestick signals below still apply.</div>`;
+    return;
+  }
+  const cur = CUR();
+  const biasCol = b => b === 'bullish' ? 'var(--green)' : b === 'bearish' ? 'var(--red)' : 'var(--accent)';
+  const priceKeys = new Set(['X','A','B','C']); // raw Fibonacci points — not currency-prefixed
+  const levelLabel = k => ({ close:'Close', level:'Level', resistance:'Resistance', support:'Support', target:'Target', target1:'Target 1', target2:'Target 2', neckline:'Neckline', trendline:'Trendline', prevSwingHigh:'Prev Swing High', prior52wHigh:'Prior 52w High', rim:'Rim', cupLow:'Cup Low', bottom1:'Bottom 1', bottom2:'Bottom 2', dPrz:'D (PRZ)' }[k] || k);
+  const recWord = st => st === 'confirmed' ? 'Actionable now' : st === 'confirmation_pending' ? 'Confirm on retest' : 'Watchlist';
+  const lvlWord = cf => cf >= 75 ? 'High' : cf >= 60 ? 'Moderate' : 'Low';
+  const lvlCol  = cf => cf >= 75 ? 'var(--green)' : cf >= 60 ? 'var(--accent)' : 'var(--text3)';
+
+  const top = cards[0];
+  const bullN = cards.filter(c => c.bias === 'bullish').length, bearN = cards.filter(c => c.bias === 'bearish').length;
+  const summary = `<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.6;">
+    <b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — strongest: <b style="color:${biasCol(top.bias)}">${top.pattern}</b> (${top.signal}) at <b>${top.confidence}%</b> · <b style="color:${lvlCol(top.confidence)}">${lvlWord(top.confidence)} recommendation level</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Confidence blends geometry, touches, volume &amp; confluence, adjusted by your own logged outcomes — a structural rating, not a probability.</span></div>`;
+
+  const cardHtml = c => {
+    const bc = biasCol(c.bias);
+    const lv = Object.entries(c.levels || {}).map(([k, v]) => `<span style="display:inline-flex;gap:5px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11.5px;"><span style="color:var(--text3)">${levelLabel(k)}</span><b>${(typeof v === 'number' && !priceKeys.has(k)) ? cur : ''}${v}</b></span>`).join('');
+    const ind = (c.indicators || []).map(i => `<span style="font-size:11px;color:var(--green);background:rgba(16,185,129,0.12);border:1px solid var(--green);border-radius:20px;padding:2px 9px;">✓ ${i}</span>`).join('');
+    const dt = new Date(c.detectedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+    return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--card-shadow);">
+      <div style="background:linear-gradient(135deg,${bc}22,${bc}0d);border-bottom:1px solid var(--border);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#fff;background:${bc};padding:3px 8px;border-radius:5px;text-transform:uppercase;">${c.bias}</span>
+        <div><div style="font-size:15px;font-weight:800;">${c.pattern}</div><div style="font-size:12px;color:var(--text2);">${c.signal}</div></div>
+        <div style="margin-left:auto;text-align:right;">
+          <div style="font-size:20px;font-weight:900;color:${lvlCol(c.confidence)};">${c.confidence}%</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${lvlWord(c.confidence)}${c._empirical ? ' · learned' : ''}</div>
+        </div>
+      </div>
+      <div style="padding:13px 15px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <span style="font-size:11px;font-weight:700;color:${bc};background:${bc}18;border-radius:20px;padding:3px 11px;">📌 ${recWord(c.stage)}</span>
+          <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">Stage: ${c.stage.replace(/_/g, ' ')}</span>
+          <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">${c.timeframe}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:11px;">${c.narrative}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${ind ? '10px' : '6px'};">${lv}</div>
+        ${ind ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${ind}</div>` : ''}
+        <div style="font-size:10.5px;color:var(--text3);border-top:1px dashed var(--border);padding-top:7px;">Detected ${dt} · Structural rating, not a probability — not investment advice.</div>
+      </div>
+    </div>`;
+  };
+
+  el.innerHTML = summary + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">${cards.map(cardHtml).join('')}</div>`;
+
+  // Learning loop: log surfaced cards (dedupe same symbol+pattern+signal+close among open records)
+  try {
+    const T = SBPatternEngine.OutcomeTracker;
+    const key = c => `${c.symbol}|${c.pattern}|${c.signal}|${c.levels?.close}`;
+    const seen = new Set(T._read().filter(r => !r.outcome).map(key));
+    cards.forEach(c => { if (!seen.has(key(c))) { T.log(c); seen.add(key(c)); } });
+  } catch (e) {}
+}
+
 function openByok() {
   let m = document.getElementById('byokQuickModal');
   if (m) { m.style.display = 'flex'; return; }
@@ -4394,6 +4681,24 @@ async function runAnalysis() {
     const breakout = analyzeBreakout(data, 20, 0.10);
     const backtest = backtestVerdict(data, signals.long.signal, 10);
 
+    // ── Chart pattern engine (multi-bar geometry + recommendation levels) ──
+    let chartPatterns = [];
+    try {
+      const _sym = (document.getElementById('stockSymbol').value.trim() || 'STOCK').toUpperCase();
+      const _bars = data.map(b => ({
+        time: (b.date instanceof Date ? Math.floor(b.date.getTime()/1000) : 0),
+        open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume || 0,
+      }));
+      const T = SBPatternEngine.OutcomeTracker;
+      try { T.grade(_sym, _bars, 20); } catch(e) {}   // grade prior cards vs recent price
+      chartPatterns = SBPatternEngine.scanPatterns(_bars, { symbol: _sym, timeframe: '1 day', minConfidence: 45 });
+      chartPatterns.forEach(c => {
+        const base = c.confidence;
+        try { c.confidence = T.adjust(c); } catch(e) {}
+        c._empirical = Math.abs(c.confidence - base) >= 0.1;   // flag if a real hit-rate moved it
+      });
+    } catch(e) { chartPatterns = []; console.warn('pattern scan failed', e); }
+
     const currentPrice = parseFloat(document.getElementById('currentPrice').value) || closes[last];
     const prevClose    = closes[last-1] || closes[last];
     const priceChg     = currentPrice - prevClose;
@@ -4401,7 +4706,7 @@ async function runAnalysis() {
 
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, breakout, backtest, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, chartPatterns, currentPrice, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -4598,6 +4903,9 @@ function renderResults() {
       <div class="pattern-action ${p.cls}">📌 ${p.action}</div></div>
     </div>`).join('')
   }</div>`;
+
+  // CHART PATTERNS (multi-bar engine)
+  renderChartPatterns(analysisResult);
 
   // INDICATORS
   const { rsiV, macdV, sigV, histV, sma20v, sma50v, sma200v, bbD, atrV,
