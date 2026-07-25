@@ -4,7 +4,8 @@
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vipin's StockAIPro Analyser</title>
+<title>MiyeeStock Buddy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a0e1a'/%3E%3Crect x='3' y='11' width='4' height='10' rx='1' fill='%23ef4444'/%3E%3Crect x='10' y='4' width='4' height='17' rx='1' fill='%2310b981'/%3E%3Crect x='17' y='9' width='4' height='12' rx='1' fill='%23ef4444'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -13,8 +14,6 @@
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
 
-
-<title>AdvanceStock Pro Stock Analyser &amp; Portfolio Manager</title>
 <style>
 :root {
   --bg: #0a0e1a;
@@ -25,14 +24,18 @@
   --text: #e2e8f0;
   --text2: #94a3b8;
   --text3: #64748b;
-  --accent: #f59e0b;
-  --accent2: #fbbf24;
+  /* MiyeeStock Buddy brand: indigo→violet. Deliberately not green or red so the
+     brand never competes with the bull/bear signal colours. */
+  --accent: #7c6cf5;
+  --accent2: #a78bfa;
+  --brand1: #6366f1;
+  --brand2: #a855f7;
   --green: #10b981;
   --red: #ef4444;
   --blue: #3b82f6;
   --purple: #8b5cf6;
   --cyan: #06b6d4;
-  --glow: rgba(245,158,11,0.15);
+  --glow: rgba(124,108,245,0.18);
   --card-shadow: 0 4px 24px rgba(0,0,0,0.4);
   --radius: 16px;
   --radius-sm: 8px;
@@ -46,7 +49,7 @@
   --text: #0f172a;
   --text2: #475569;
   --text3: #94a3b8;
-  --glow: rgba(245,158,11,0.08);
+  --glow: rgba(124,108,245,0.10);
   --card-shadow: 0 4px 24px rgba(0,0,0,0.08);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -80,6 +83,14 @@ body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-ser
 .disclaimer-page{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:40px 20px;position:relative;overflow:hidden;}
 .disclaimer-page::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(245,158,11,0.06) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,0.04) 0%,transparent 50%);pointer-events:none;}
 .disclaimer-hero{text-align:center;margin-bottom:40px;}
+/* ── Hero: animated red/green candlesticks only ──────────────────────── */
+.bullbear{display:flex;align-items:flex-end;justify-content:center;gap:clamp(3px,1.2vw,7px);margin-bottom:18px;min-height:90px;}
+.bb-candle{width:clamp(7px,1.8vw,13px);border-radius:2px;transform-origin:bottom;
+  animation:bbGrow 2.4s ease-in-out infinite;display:block;}
+.bb-up{background:linear-gradient(180deg,#34d399,#059669);box-shadow:0 0 10px rgba(16,185,129,.4);}
+.bb-dn{background:linear-gradient(180deg,#f87171,#dc2626);box-shadow:0 0 10px rgba(239,68,68,.4);}
+@keyframes bbGrow{0%,100%{transform:scaleY(.4);opacity:.65}50%{transform:scaleY(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.bb-candle{animation:none!important;transform:scaleY(1);opacity:1}}
 .disclaimer-icon{font-size:80px;margin-bottom:16px;animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
 .disclaimer-title{font-family:'Playfair Display',serif;font-size:clamp(32px,5vw,56px);font-weight:900;background:linear-gradient(135deg,var(--accent),#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;}
@@ -286,7 +297,7 @@ canvas{max-width:100%;}
 #disclaimer-overlay.hidden{display:none;}
 .disc-card{background:#111827;border:1px solid #1e293b;border-radius:20px;max-width:680px;width:100%;padding:40px 36px;box-shadow:0 24px 64px rgba(0,0,0,.7);position:relative;}
 .disc-icon{font-size:64px;text-align:center;margin-bottom:12px;animation:pulse 2s infinite;}
-.disc-title{font-family:'Playfair Display',serif;font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#f59e0b,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
+.disc-title{font-family:'Playfair Display',serif;font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
 .disc-sub{color:#94a3b8;font-size:14px;text-align:center;margin-bottom:28px;}
 .disc-quote{background:linear-gradient(135deg,#1a2236,#111827);border:1px solid #2d3f5a;border-left:4px solid #f59e0b;border-radius:12px;padding:18px 22px;margin-bottom:24px;}
 .disc-quote p{font-size:16px;font-style:italic;color:#e2e8f0;line-height:1.6;margin-bottom:6px;}
@@ -301,7 +312,7 @@ canvas{max-width:100%;}
 .disc-checkbox-row label{font-size:13px;color:#94a3b8;line-height:1.5;cursor:pointer;}
 .disc-checkbox-row label b{color:#e2e8f0;}
 .disc-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
-.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#f59e0b,#f97316);color:#000;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
+.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
 .disc-btn-accept.enabled{opacity:1;pointer-events:all;}
 .disc-btn-accept.enabled:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(245,158,11,.4);}
 .disc-btn-decline{padding:14px 24px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;cursor:pointer;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.3);transition:all .2s;}
@@ -1016,7 +1027,15 @@ td.r{text-align:right}
 
     <!-- Content shown before accept -->
     <div id="disc-content">
-      <div class="disc-icon">🦁</div>
+      <div class="bullbear" role="img" aria-label="Market chart">
+        <i class="bb-candle bb-dn" style="height:34px;animation-delay:0s"></i>
+        <i class="bb-candle bb-up" style="height:52px;animation-delay:.12s"></i>
+        <i class="bb-candle bb-dn" style="height:28px;animation-delay:.24s"></i>
+        <i class="bb-candle bb-up" style="height:64px;animation-delay:.36s"></i>
+        <i class="bb-candle bb-dn" style="height:40px;animation-delay:.48s"></i>
+        <i class="bb-candle bb-up" style="height:76px;animation-delay:.6s"></i>
+        <i class="bb-candle bb-up" style="height:58px;animation-delay:.72s"></i>
+      </div>
       <div class="disc-title">Welcome, Investor!</div>
       <div class="disc-sub">Before we dive into the markets a wise investor always reads the fine print.</div>
 
@@ -1105,17 +1124,17 @@ td.r{text-align:right}
 })();
 </script>
 
-<!-- AdvanceStock Pro App Switcher -->
+<!-- MiyeeStock Buddy App Switcher -->
 <div id="app-switcher" style="position:fixed;top:0;left:0;right:0;height:44px;background:#0f172a;border-bottom:1px solid #1e293b;z-index:10000;display:flex;align-items:center;justify-content:space-between;padding:0 12px;box-shadow:0 2px 12px rgba(0,0,0,.4);">
   <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-    <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#f59e0b,#f97316);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#000;letter-spacing:-1px;flex-shrink:0;">AS</div>
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#a855f7);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(124,108,245,.45);">🐂</div>
     <div class="as-brand-text">
-      <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.1;white-space:nowrap;">AdvanceStock <span style="color:#f59e0b">Pro</span></div>
+      <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.1;white-space:nowrap;">MiyeeStock <span style="color:#a78bfa">Buddy</span></div>
       <div style="font-size:9px;color:rgba(255,255,255,.4);font-weight:400;letter-spacing:.3px">by Vipin Nair</div>
     </div>
   </div>
   <div style="display:flex;gap:6px;">
-    <button id="btn-analyser" onclick="switchApp('analyser')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#f59e0b,#f97316);color:#000;">&#128269; Stock Analyser</button>
+    <button id="btn-analyser" onclick="switchApp('analyser')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;">&#128269; Stock Analyser</button>
     <button id="btn-portfolio" onclick="switchApp('portfolio')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.15);transition:all .2s;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);">&#128188; Portfolio Manager</button>
   </div>
 </div>
@@ -1126,10 +1145,10 @@ td.r{text-align:right}
 <header class="app-header">
   <div class="header-inner">
     <div class="logo-area">
-      <span class="logo-icon">📈</span>
+      <span class="logo-icon">🐂</span>
       <div class="logo-text">
-        <span class="logo-title">Vipin's StockAIPro Analyser</span>
-        <span class="logo-sub" id="marketSubtitle">Powered by AI · NSE/BSE Analysis</span>
+        <span class="logo-title">MiyeeStock Buddy</span>
+        <span class="logo-sub" id="marketSubtitle">by Vipin Nair · NSE/BSE Analysis</span>
       </div>
     </div>
     <div class="header-right">
@@ -1146,7 +1165,15 @@ td.r{text-align:right}
   <div class="disclaimer-page">
     <div class="app-container">
       <div class="disclaimer-hero">
-        <div class="disclaimer-icon">🦁</div>
+        <div class="bullbear" role="img" aria-label="Market chart">
+          <i class="bb-candle bb-dn" style="height:34px;animation-delay:0s"></i>
+          <i class="bb-candle bb-up" style="height:52px;animation-delay:.12s"></i>
+          <i class="bb-candle bb-dn" style="height:28px;animation-delay:.24s"></i>
+          <i class="bb-candle bb-up" style="height:64px;animation-delay:.36s"></i>
+          <i class="bb-candle bb-dn" style="height:40px;animation-delay:.48s"></i>
+          <i class="bb-candle bb-up" style="height:76px;animation-delay:.6s"></i>
+          <i class="bb-candle bb-up" style="height:58px;animation-delay:.72s"></i>
+        </div>
         <div class="disclaimer-title">Welcome, Investor!</div>
         <div class="disclaimer-subtitle">Before we dive into the market, a wise investor always reads the fine print</div>
       </div>
@@ -1637,7 +1664,7 @@ td.r{text-align:right}
   </div>
 
   <footer class="app-footer">
-    <div>Vipin's StockAIPro Analyser · Built with ❤️ for Indian &amp; US Markets</div>
+    <div>🐂 MiyeeStock Buddy · by Vipin Nair · Built with ❤️ for Indian &amp; US Markets</div>
     <div class="footer-disclaimer">
       ⚠️ <strong>Disclaimer:</strong> Vipin Nair is NOT a SEBI Registered Investment Advisor. This tool is for educational purposes only. Recommendations and AI analysis may vary. Macro-economic and external factors also impact stock prices significantly. Always consult a registered advisor before investing.
       <br>📧 <a href="mailto:audit.vipin@gmail.com">audit.vipin@gmail.com</a>
@@ -1722,9 +1749,9 @@ td.r{text-align:right}
 <!-- ═══ HEADER ═══ -->
 <div id="hdr">
   <div class="brand">
-    <div class="brand-mark">IP</div>
+    <div class="brand-mark">🐂</div>
     <div>
-      <div class="brand-name">InvestManager <span style="color:var(--P)">Pro</span></div>
+      <div class="brand-name">MiyeeStock <span style="color:var(--P)">Buddy</span></div>
       <div class="brand-by">by Vipin Nair</div>
     </div>
   </div>
@@ -2569,19 +2596,19 @@ td.r{text-align:right}
 <footer style="background:var(--NV);color:rgba(255,255,255,.65);padding:24px 20px;margin-top:8px">
   <div style="max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
     <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--P),#FF9A6C);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff">IP</div>
+      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--P),#FF9A6C);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff">🐂</div>
       <div>
-        <div style="font-size:13px;font-weight:700;color:#fff">InvestManager <span style="color:var(--P)">Pro</span></div>
+        <div style="font-size:13px;font-weight:700;color:#fff">MiyeeStock <span style="color:var(--P)">Buddy</span></div>
         <div style="font-size:10.5px;opacity:.5">by Vipin Nair · Personal Investment Tracker</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <button onclick="switchApp('analyser')" style="color:rgba(255,255,255,.65);font-size:12px;display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer" onmouseover="this.style.color='var(--P)'" onmouseout="this.style.color='rgba(255,255,255,.65)'">🔍 Stock Analyser</button>
       <span style="color:rgba(255,255,255,.2)">|</span>
-      <a href="mailto:?subject=InvestManager Pro — Feedback&body=Hi Vipin,%0A%0AHere is my feedback / suggestion for InvestManager Pro:%0A%0A[Your message here]%0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(255,107,53,.3)'" onmouseout="this.style.background='rgba(255,107,53,.15)'">
+      <a href="mailto:?subject=MiyeeStock Buddy — Feedback&body=Hi Vipin,%0A%0AHere is my feedback / suggestion for MiyeeStock Buddy:%0A%0A[Your message here]%0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(255,107,53,.3)'" onmouseout="this.style.background='rgba(255,107,53,.15)'">
         📧 Send Feedback / Suggestions
       </a>
-      <a href="mailto:?subject=InvestManager Pro — Bug Report&body=Hi Vipin,%0A%0AI found a bug in InvestManager Pro:%0A%0APage/Feature: %0ASteps to reproduce: %0AExpected: %0AActual: %0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(217,48,37,.15);border:1px solid rgba(217,48,37,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(217,48,37,.3)'" onmouseout="this.style.background='rgba(217,48,37,.15)'">
+      <a href="mailto:?subject=MiyeeStock Buddy — Bug Report&body=Hi Vipin,%0A%0AI found a bug in MiyeeStock Buddy:%0A%0APage/Feature: %0ASteps to reproduce: %0AExpected: %0AActual: %0A%0AThanks!" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;background:rgba(217,48,37,.15);border:1px solid rgba(217,48,37,.3);border-radius:6px;padding:6px 14px;transition:all .15s" onmouseover="this.style.background='rgba(217,48,37,.3)'" onmouseout="this.style.background='rgba(217,48,37,.15)'">
         🐛 Report a Bug
       </a>
     </div>
@@ -2659,7 +2686,7 @@ window.addEventListener('DOMContentLoaded', () => {
     marketMode = m;
     const isUS = m === 'us', isCrypto = m === 'crypto';
     const el = id => document.getElementById(id);
-    const subtitles = { india:'Powered by AI · NSE/BSE Analysis', us:'Powered by AI · NYSE/NASDAQ Analysis', crypto:'Powered by AI · Crypto Top 10 Analysis' };
+    const subtitles = { india:'by Vipin Nair · NSE/BSE Analysis', us:'by Vipin Nair · NYSE/NASDAQ Analysis', crypto:'by Vipin Nair · Crypto Top 10 Analysis' };
     const modeLabels = { india:'🇮🇳 India', us:'🇺🇸 US', crypto:'🪙 Crypto' };
     if (el('marketSubtitle')) el('marketSubtitle').textContent = subtitles[m];
     if (el('marketModeBtn'))  { el('marketModeBtn').textContent = modeLabels[m]; el('marketModeBtn').style.display = ''; }
@@ -2677,7 +2704,7 @@ function selectMarket(mode) {
   const notIndia = isUS || isCrypto;
 
   // ── Header subtitle & mode button
-  const subtitles = { india:'Powered by AI · NSE/BSE Analysis', us:'Powered by AI · NYSE/NASDAQ Analysis', crypto:'Powered by AI · Crypto Top 10 Analysis' };
+  const subtitles = { india:'by Vipin Nair · NSE/BSE Analysis', us:'by Vipin Nair · NYSE/NASDAQ Analysis', crypto:'by Vipin Nair · Crypto Top 10 Analysis' };
   const modeLabels = { india:'🇮🇳 India', us:'🇺🇸 US', crypto:'🪙 Crypto' };
   document.getElementById('marketSubtitle').textContent = subtitles[mode];
   const modeBtn = document.getElementById('marketModeBtn');
@@ -6455,7 +6482,7 @@ function buildPrompt(ar, mode) {
   const adv = marketMode === 'us' ? 'a licensed financial advisor' : 'a SEBI-registered investment advisor';
   const isDetailed = mode === 'detailed';
 
-  const systemPrompt = `You are an expert, SEBI-registered-style financial analyst powering "AdvanceStock Pro". Analyze the provided technical stock data and deliver findings STRICTLY as valid JSON. Do NOT output any text outside the JSON object. Do NOT wrap in markdown fences. The JSON must be parseable by JSON.parse().
+  const systemPrompt = `You are an expert, SEBI-registered-style financial analyst powering "MiyeeStock Buddy". Analyze the provided technical stock data and deliver findings STRICTLY as valid JSON. Do NOT output any text outside the JSON object. Do NOT wrap in markdown fences. The JSON must be parseable by JSON.parse().
 
 ANALYSIS DATE: ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} — anchor all commentary to this date.
 DISCLAIMER: Always reflect that this is an educational tool. Past performance does not guarantee future results. ${isDetailed ? '' : ''}`;
@@ -9302,9 +9329,7 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 loadLocal();
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-// FY indicator in banner
-const _fy=_now.getMonth()>=3?_now.getFullYear():_now.getFullYear()-1;
-document.title=`InvestManager Pro — FY ${_fy}-${String(_fy+1).slice(2)}`;
+document.title='MiyeeStock Buddy';
 document.getElementById('usd-hdr').textContent='₹'+S.usdInr;
 updateCounts();
 GD.updateUI();
@@ -9363,13 +9388,13 @@ function scrollNav(dir) {
   setTimeout(updateArrows, 300);
 })();
 
-// ─── AdvanceStock Pro App Switcher ────────────────────────────────────────────
+// ─── MiyeeStock Buddy App Switcher ────────────────────────────────────────────
 function switchApp(app) {
   var sA = document.getElementById('section-analyser');
   var sP = document.getElementById('section-portfolio');
   var bA = document.getElementById('btn-analyser');
   var bP = document.getElementById('btn-portfolio');
-  var activeStyle  = 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#f59e0b,#f97316);color:#000;';
+  var activeStyle  = 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;';
   var inactiveStyle= 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.15);transition:all .2s;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);';
   if (app === 'analyser') {
     sA.style.display = 'block';
