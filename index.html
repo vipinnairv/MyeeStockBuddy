@@ -14,7 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
 
 
-<title>AdvanceStock Pro — Stock Analyser &amp; Portfolio Manager</title>
+<title>AdvanceStock Pro Stock Analyser &amp; Portfolio Manager</title>
 <style>
 :root {
   --bg: #0a0e1a;
@@ -1018,7 +1018,7 @@ td.r{text-align:right}
     <div id="disc-content">
       <div class="disc-icon">🦁</div>
       <div class="disc-title">Welcome, Investor!</div>
-      <div class="disc-sub">Before we dive into the markets — a wise investor always reads the fine print.</div>
+      <div class="disc-sub">Before we dive into the markets a wise investor always reads the fine print.</div>
 
       <div class="disc-quote">
         <p>"Risk comes from not knowing what you're doing."</p>
@@ -1280,6 +1280,36 @@ td.r{text-align:right}
         <div class="sample-banner-text" id="sampleBannerText">🎯 <strong>BSE Ltd. (BSE:BSE)</strong> — 1 year of real trade data pre-loaded for demo. Try it!</div>
         <button class="btn btn-primary btn-sm" id="sampleBannerBtn" onclick="loadSampleData()">Load BSE Sample Data</button>
       </div>
+
+      <!-- PATTERN SCREENER -->
+      <details id="screenerPanel" style="margin:14px 0;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;" ontoggle="if(this.open)renderWatchlistChips()">
+        <summary style="cursor:pointer;padding:13px 16px;font-size:14px;font-weight:700;list-style:none;display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+          🔍 Pattern Screener
+          <span style="font-size:11.5px;font-weight:400;color:var(--text3);">Scan your portfolio &amp; watchlist for chart patterns — daily + weekly</span>
+        </summary>
+        <div style="padding:0 16px 16px;border-top:1px solid var(--border);">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:13px 0;">
+            <input id="screenSymInput" placeholder="Add symbol, e.g. TCS" onkeydown="if(event.key==='Enter')screenAddSymbol()"
+              style="flex:1;min-width:150px;padding:8px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;">
+            <select id="screenExchInput" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;">
+              <option value="NSE">NSE</option><option value="BSE">BSE</option><option value="US">US</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="screenAddSymbol()">+ Add</button>
+          </div>
+          <div id="screenWatchlist" style="margin-bottom:13px;"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            <label style="font-size:12px;color:var(--text3);">Min confidence
+              <select id="screenMinConf" style="margin-left:6px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;">
+                <option value="45">45%</option><option value="55" selected>55%</option><option value="65">65%</option><option value="75">75%</option>
+              </select>
+            </label>
+            <button class="btn btn-primary btn-sm" id="screenRunBtn" onclick="runScreener()">🔍 Run Screener</button>
+          </div>
+          <div id="screenStatus" style="margin-bottom:10px;"></div>
+          <div id="screenResults"></div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.5;">Scans 3 symbols at a time via public CORS proxies; cached results are reused for 6 h. Structural ratings, not investment advice.</div>
+        </div>
+      </details>
 
       <div class="card">
         <!-- Tabs -->
@@ -2371,7 +2401,7 @@ td.r{text-align:right}
           📂 Choose JSON Backup File
           <input type="file" accept=".json" style="display:none" onchange="restoreJSON(event)">
         </label>
-        <div id="restore-msg" style="margin-top:10px"></div>
+        <div id="restore-msg" class="restore-msg" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -2527,7 +2557,7 @@ td.r{text-align:right}
           <div class="dz-sub">Select a previously exported .json backup file</div>
         </div>
         <input type="file" id="restore-file" accept=".json" style="display:none" onchange="restoreJSON(event)">
-        <div id="restore-msg" style="margin-top:10px"></div>
+        <div id="restore-msg-2" class="restore-msg" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -3356,8 +3386,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // OHLCV CACHE — localStorage first, IndexedDB fallback
 // ============================================================
 const _CACHE_TTL  = 6 * 60 * 60 * 1000; // 6 h
-const _CACHE_PFX  = 'ohlcv_v4_';
+// v5: O/H/L dividend/split-adjusted into the same frame as close (v≤4 mixed
+//     adjusted close with raw O/H/L and is unsafe).
+// v6: rows stored as positional arrays [Date,O,H,L,C,V] — ~66% smaller.
+const _CACHE_PFX  = 'ohlcv_v6_';
 let   _idbPromise = null;
+
+// One-time purge of superseded cache generations (frees ~40 KB per symbol).
+(function _purgeStaleCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && /^ohlcv_v[1-5]_/.test(k)) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+})();
 
 function _idbOpen() {
   if (_idbPromise) return _idbPromise;
@@ -3375,13 +3418,53 @@ function _idbOpen() {
   return _idbPromise;
 }
 
+// Rows are stored as positional arrays [Date,O,H,L,C,V] instead of objects with
+// six verbose keys repeated per row — ~66% smaller, raising the localStorage
+// ceiling from ~129 to ~380 cached symbols.
+const _ROW_KEYS = ['Date','Open Price','High Price','Low Price','Close Price','Total Traded Quantity'];
+function _rowsEncode(rows) {
+  return rows.map(r => [r['Date'], +r['Open Price'], +r['High Price'], +r['Low Price'], +r['Close Price'], +r['Total Traded Quantity'] || 0]);
+}
+function _rowsDecode(packed) {
+  if (!Array.isArray(packed) || !packed.length) return [];
+  if (!Array.isArray(packed[0])) return packed;          // legacy object rows
+  return packed.map(a => ({
+    'Date': a[0], 'Open Price': String(a[1]), 'High Price': String(a[2]),
+    'Low Price': String(a[3]), 'Close Price': String(a[4]), 'Total Traded Quantity': String(a[5]),
+  }));
+}
+
+// Yahoo adjusts ONLY close for dividends/splits. Apply the same ratio to O/H/L
+// so every bar sits in one price frame — otherwise close can fall outside the
+// H–L range, corrupting candles, ATR, pivots and breakout tests.
+// Shared by the interactive fetch and the headless screener.
+function _yfRowsFrom(timestamps, q, adjClose) {
+  return timestamps.map((ts, i) => {
+    const rawC = q.close?.[i];
+    const adjC = adjClose?.[i] ?? rawC;
+    const k = (rawC && adjC && rawC > 0) ? adjC / rawC : 1;   // adjustment factor
+    const o = (q.open?.[i] ?? rawC ?? 0) * k;
+    const h = (q.high?.[i] ?? rawC ?? 0) * k;
+    const l = (q.low?.[i]  ?? rawC ?? 0) * k;
+    const c = adjC || 0;
+    return {
+      'Date': new Date(ts*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-'),
+      'Open Price':  o.toFixed(2),
+      'High Price':  Math.max(h, o, c).toFixed(2),   // guard against float drift
+      'Low Price':   Math.min(l, o, c).toFixed(2),
+      'Close Price': c.toFixed(2),
+      'Total Traded Quantity': (q.volume?.[i] || 0).toString(),
+    };
+  }).filter(r => +r['Close Price'] > 0);
+}
+
 async function _cacheGet(sym) {
   // Layer 1: localStorage (zero-latency)
   try {
     const raw = localStorage.getItem(_CACHE_PFX + sym);
     if (raw) {
       const obj = JSON.parse(raw);
-      if (Date.now() - obj.ts < _CACHE_TTL) return obj.rows;
+      if (Date.now() - obj.ts < _CACHE_TTL) return _rowsDecode(obj.rows);
     }
   } catch(e) {}
   // Layer 2: IndexedDB (large payloads that overflow localStorage)
@@ -3394,7 +3477,7 @@ async function _cacheGet(sym) {
         const req = tx.objectStore('ohlcv').get(sym);
         req.onsuccess = () => {
           const v = req.result;
-          res(v && Date.now() - v.ts < _CACHE_TTL ? v.rows : null);
+          res(v && Date.now() - v.ts < _CACHE_TTL ? _rowsDecode(v.rows) : null);
         };
         req.onerror = () => res(null);
       } catch(e) { res(null); }
@@ -3403,7 +3486,7 @@ async function _cacheGet(sym) {
 }
 
 async function _cachePut(sym, rows) {
-  const payload = { sym, rows, ts: Date.now() };
+  const payload = { sym, rows: _rowsEncode(rows), ts: Date.now() };
   // Prefer localStorage (instant on next lookup)
   try {
     localStorage.setItem(_CACHE_PFX + sym, JSON.stringify(payload));
@@ -3550,8 +3633,13 @@ async function fetchSymbolData() {
         .sort(([a],[b]) => a < b ? -1 : 1)
         .map(([date, v]) => {
           const fmt = new Date(date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-          return { 'Date':fmt, 'Open Price':(+v['1. open']).toFixed(2), 'High Price':(+v['2. high']).toFixed(2), 'Low Price':(+v['3. low']).toFixed(2),
-            'Close Price':(+(v['5. adjusted close']||v['4. close'])).toFixed(2), 'Total Traded Quantity':(+(v['6. volume']||0)).toString() };
+          // Same adjustment-frame fix as Yahoo: scale O/H/L by adjClose/rawClose.
+          const rawC = +v['4. close'], adjC = +(v['5. adjusted close'] || v['4. close']);
+          const k = (rawC > 0 && adjC > 0) ? adjC / rawC : 1;
+          const o = (+v['1. open']) * k, h = (+v['2. high']) * k, l = (+v['3. low']) * k;
+          return { 'Date':fmt, 'Open Price':o.toFixed(2),
+            'High Price':Math.max(h, o, adjC).toFixed(2), 'Low Price':Math.min(l, o, adjC).toFixed(2),
+            'Close Price':adjC.toFixed(2), 'Total Traded Quantity':(+(v['6. volume']||0)).toString() };
         }).filter(r => +r['Close Price'] > 0).slice(-400);
 
     } else if (strat.src === 'td') {
@@ -3593,14 +3681,7 @@ async function fetchSymbolData() {
       if (!timestamps.length) throw new Error('YF: empty timestamps');
       const q = result.indicators?.quote?.[0] || {};
       const adjClose = result.indicators?.adjclose?.[0]?.adjclose || q.close;
-      rows = timestamps.map((ts, i) => ({
-        'Date': new Date(ts*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-'),
-        'Open Price':  (q.open?.[i]  || q.close?.[i] || 0).toFixed(2),
-        'High Price':  (q.high?.[i]  || q.close?.[i] || 0).toFixed(2),
-        'Low Price':   (q.low?.[i]   || q.close?.[i] || 0).toFixed(2),
-        'Close Price': (adjClose?.[i] || q.close?.[i] || 0).toFixed(2),
-        'Total Traded Quantity': (q.volume?.[i] || 0).toString(),
-      })).filter(r => +r['Close Price'] > 0);
+      rows = _yfRowsFrom(timestamps, q, adjClose);
 
     } else {
       // Stooq CSV (Date,Open,High,Low,Close,Volume — newest-first)
@@ -4389,11 +4470,121 @@ window.SBPatternEngine = (function () {
   }
   function detect52WeekBreakout(ctx){
     const {full,last,price}=ctx; if(!full||full.length<200) return null;
-    const hist=full.slice(0,-1).slice(-252).map(b=>b.high); const priorHigh=Math.max(...hist); if(price<=priorHigh*1.001) return null;
+    // Reference window ends 5 bars back: if the break spans several sessions the
+    // new extremes would otherwise redefine the level and suppress the signal.
+    if(full.length<206) return null;
+    const hist=full.slice(0,-6).slice(-252).map(b=>b.high); if(!hist.length) return null;
+    const priorHigh=Math.max(...hist); if(price<=priorHigh*1.001) return null;
     const graphics={ lines:[{points:[{time:ctx.d[0].time,value:priorHigh},{time:ctx.d[last].time,value:priorHigh}],color:"#ef5350",width:2,title:"52-Wk High"}],
       markers:[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"52W Breakout"}] };
     return card({ pattern:"52-Week Breakout", signal:"Bullish Breakout", bias:"bullish", stage:"confirmed", narrative:"The stock breaks out of its 52-week high and the horizontal trendline indicates the bulls are in control of the trend.", levels:{prior52wHigh:+priorHigh.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9}, graphics });
   }
+  // ── BEARISH / TOPPING DETECTORS ─────────────────────────────────────────
+  // Mirrors of the bullish set so the engine can warn on distribution, not just
+  // accumulation. Bias is always derived from where price actually breaks.
+  function detectDoubleTop(ctx){
+    const {pl,ph,last,price,L,H}=ctx; if(ph.length<2) return null;
+    const a=ph[ph.length-2], b=ph[ph.length-1]; if(b-a<10) return null;
+    const ha=H[a], hb=H[b], peak=Math.max(ha,hb);
+    if(Math.abs(ha-hb)/peak>0.03) return null;
+    const windowHigh=Math.max(...H.slice(Math.max(0,a-30))); if(peak<windowHigh*0.99) return null;
+    if(Math.max(...H.slice(b))>hb*1.01) return null;                 // no higher high after
+    const mids=pl.filter(i=>i>a&&i<b); if(!mids.length) return null;
+    const neck=Math.min(...mids.map(i=>L[i])); if((peak-neck)/peak<0.04) return null;
+    const pre=L.slice(0,Math.max(1,a)); if(!pre.length) return null;
+    const priorLow=Math.min(...pre); if((peak-priorLow)/priorLow<0.08) return null;  // needs a real advance into it
+    if(ph.filter(i=>i<a&&Math.abs(H[i]-peak)/peak<0.03).length>=1) return null;      // 3rd equal high = range, not a top
+    let signal,stage,narrative;
+    if(price<neck*0.996){ signal="Bearish Breakdown"; stage="confirmed";
+      narrative="A double top has completed after a sustained advance. The decisive break below the neckline confirms distribution and a bearish reversal."; }
+    else { signal="Probable Double Top"; stage="anticipatory";
+      narrative="A potential double top is forming after a sustained advance. A decisive close below the neckline would confirm the reversal and open downside."; }
+    const tgt=neck-(peak-neck);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[a].time,value:neck},{time:ctx.d[last].time,value:neck}],color:"#f59e0b",width:2,title:"Neckline"},
+      {points:[{time:ctx.d[a].time,value:tgt},{time:ctx.d[last].time,value:tgt}],color:"#3b82f6",width:1,dashed:true,title:"Target"},
+    ], markers:[
+      {time:ctx.d[a].time,position:"aboveBar",color:"#ef5350",shape:"circle",text:"T1"},
+      {time:ctx.d[b].time,position:"aboveBar",color:"#ef5350",shape:"circle",text:"T2"},
+      {time:ctx.d[last].time,position:"aboveBar",color:"#ef5350",shape:"arrowDown",text:signal},
+    ] };
+    return card({ pattern:"Double Top", signal, bias:"bearish", stage, narrative,
+      levels:{neckline:+neck.toFixed(2),top1:+ha.toFixed(2),top2:+hb.toFixed(2),close:+price.toFixed(2),target:+tgt.toFixed(2)},
+      indicators:confluence(ctx,last), components:{touches:2,geometryFit:+(1-Math.abs(ha-hb)/peak/0.03).toFixed(3)}, graphics });
+  }
+
+  function detectHeadShoulders(ctx){
+    const {ph,pl,last,price,H,L}=ctx; if(ph.length<3) return null;
+    const [ls,hd,rs]=[ph[ph.length-3],ph[ph.length-2],ph[ph.length-1]];
+    if(hd-ls<5||rs-hd<5) return null;
+    const hLS=H[ls], hHD=H[hd], hRS=H[rs];
+    if(!(hHD>hLS*1.02 && hHD>hRS*1.02)) return null;                 // head clears both shoulders
+    if(Math.abs(hLS-hRS)/Math.max(hLS,hRS)>0.05) return null;        // shoulders roughly level
+    const t1=pl.filter(i=>i>ls&&i<hd), t2=pl.filter(i=>i>hd&&i<rs);
+    if(!t1.length||!t2.length) return null;
+    const n1=Math.min(...t1.map(i=>L[i])), n2=Math.min(...t2.map(i=>L[i]));
+    const neck=(n1+n2)/2; if((hHD-neck)/hHD<0.05) return null;
+    if(Math.max(...H.slice(rs))>hHD) return null;                    // invalidated if head exceeded
+    let signal,stage,narrative;
+    if(price<neck*0.996){ signal="Bearish Breakdown"; stage="confirmed";
+      narrative="A head-and-shoulders top has completed — the left shoulder, higher head and lower right shoulder show buyers failing at successively weaker levels. The neckline break confirms the reversal."; }
+    else { signal="Probable Head & Shoulders"; stage="anticipatory";
+      narrative="A head-and-shoulders top is forming: a higher head flanked by two lower shoulders signals fading demand. A close below the neckline would confirm the reversal."; }
+    const tgt=neck-(hHD-neck);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[Math.min(...t1)].time,value:n1},{time:ctx.d[Math.max(...t2)].time,value:n2}],color:"#f59e0b",width:2,title:"Neckline"},
+      {points:[{time:ctx.d[ls].time,value:tgt},{time:ctx.d[last].time,value:tgt}],color:"#3b82f6",width:1,dashed:true,title:"Target"},
+    ], markers:[
+      {time:ctx.d[ls].time,position:"aboveBar",color:"#ef5350",shape:"circle",text:"LS"},
+      {time:ctx.d[hd].time,position:"aboveBar",color:"#ef5350",shape:"circle",text:"H"},
+      {time:ctx.d[rs].time,position:"aboveBar",color:"#ef5350",shape:"circle",text:"RS"},
+    ] };
+    return card({ pattern:"Head & Shoulders", signal, bias:"bearish", stage, narrative,
+      levels:{neckline:+neck.toFixed(2),head:+hHD.toFixed(2),leftShoulder:+hLS.toFixed(2),rightShoulder:+hRS.toFixed(2),close:+price.toFixed(2),target:+tgt.toFixed(2)},
+      indicators:confluence(ctx,last), components:{touches:5,geometryFit:+(1-Math.abs(hLS-hRS)/Math.max(hLS,hRS)/0.05).toFixed(3)}, graphics });
+  }
+
+  function detectRisingWedge(ctx){
+    const {ph,pl,last,price,H,L}=ctx; if(ph.length<3||pl.length<3) return null;
+    const up=bestBoundary(ph,H,true,3,1.5), dn=bestBoundary(pl,L,false,3,1.5);
+    if(!up||!dn) return null;
+    const su=slopePct(up.slope,price), sl=slopePct(dn.slope,price);
+    if(!(su>0.05 && sl>0.05 && sl>su*1.25)) return null;              // both rise, lows rise faster => converging
+    const edge=Math.max(Math.max(...up.touches),Math.max(...dn.touches));
+    const span=edge-Math.min(Math.min(...up.touches),Math.min(...dn.touches)); if(span<18) return null;
+    const lower=dn.slope*last+dn.intercept, upper=up.slope*last+up.intercept;
+    if(upper<=lower) return null;
+    let signal,stage,narrative;
+    if(price<lower*0.996){ signal="Bearish Breakdown"; stage="confirmed";
+      narrative="A rising wedge has broken down. Price was grinding higher into a narrowing range on fading momentum — the break below support confirms the advance has exhausted."; }
+    else if(price<lower*1.01){ signal="On The Verge Of Breakdown"; stage="anticipatory";
+      narrative="A rising wedge is compressing — higher highs and faster-rising lows on weakening momentum. A close below wedge support would trigger the bearish resolution."; }
+    else return null;
+    const u0=Math.min(...up.touches), d0=Math.min(...dn.touches);
+    const graphics={ lines:[
+      {points:[{time:ctx.d[u0].time,value:up.slope*u0+up.intercept},{time:ctx.d[last].time,value:upper}],color:"#ef5350",width:2,title:"Resistance"},
+      {points:[{time:ctx.d[d0].time,value:dn.slope*d0+dn.intercept},{time:ctx.d[last].time,value:lower}],color:"#f59e0b",width:2,title:"Wedge Support"},
+    ], markers:[{time:ctx.d[last].time,position:"aboveBar",color:"#ef5350",shape:"arrowDown",text:signal}] };
+    return card({ pattern:"Rising Wedge", signal, bias:"bearish", stage, narrative,
+      levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)},
+      indicators:confluence(ctx,last), components:{touches:up.touches.length+dn.touches.length,geometryFit:+((up.r2+dn.r2)/2).toFixed(3)}, graphics });
+  }
+
+  function detect52WeekBreakdown(ctx){
+    const {full,last,price}=ctx; if(!full||full.length<206) return null;
+    // Window ends 5 bars back — a multi-session breakdown must not redefine its
+    // own reference low (which would silently suppress the signal).
+    const hist=full.slice(0,-6).slice(-252).map(b=>b.low); if(!hist.length) return null;
+    const priorLow=Math.min(...hist);
+    if(price>=priorLow*0.999) return null;
+    const graphics={ lines:[{points:[{time:ctx.d[0].time,value:priorLow},{time:ctx.d[last].time,value:priorLow}],color:"#ef5350",width:2,title:"52-Wk Low"}],
+      markers:[{time:ctx.d[last].time,position:"aboveBar",color:"#ef5350",shape:"arrowDown",text:"52W Breakdown"}] };
+    return card({ pattern:"52-Week Breakdown", signal:"Bearish Breakdown", bias:"bearish", stage:"confirmed",
+      narrative:"The stock has broken below its 52-week low — bears are in full control and there is no overhead support from the past year's price action.",
+      levels:{prior52wLow:+priorLow.toFixed(2),close:+price.toFixed(2)},
+      indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9}, graphics });
+  }
+
   function scoreCard(c, timeframe){
     const geo=c.components.geometryFit??0.7; const touches=Math.min((c.components.touches??2)/5,1);
     const vol=c.indicators.includes("Volume expansion")?1.0:0.35; const conf=Math.min(c.indicators.filter(i=>i!=="Volume expansion").length/2,1);
@@ -4401,7 +4592,12 @@ window.SBPatternEngine = (function () {
     const raw=WEIGHTS.geometryFit*geo+WEIGHTS.touchCount*touches+WEIGHTS.volume*vol+WEIGHTS.confluence*conf+WEIGHTS.timeframe*tfw+WEIGHTS.maturity*maturity;
     let score=100*raw*(STAGE_MULTIPLIER[c.stage]??0.8); if(!c.indicators.length) score=Math.min(score,65); return +score.toFixed(1);
   }
-  const FAMILY={ "Horizontal Trendline":"level","Horizontal Channel":"level","Rectangle Pattern":"level","52-Week Breakout":"extreme","Ascending Triangle":"diagonal","Descending Triangle":"diagonal","Symmetrical Triangle":"diagonal","Rising Trendline":"diagonal","Falling Trendline":"diagonal","Double Bottom":"reversal","Cup & Handle":"reversal","Bullish Gartley":"harmonic" };
+  const FAMILY={ "Horizontal Trendline":"level","Horizontal Channel":"level","Rectangle Pattern":"level",
+    "52-Week Breakout":"extreme","52-Week Breakdown":"extreme",
+    "Ascending Triangle":"diagonal","Descending Triangle":"diagonal","Symmetrical Triangle":"diagonal",
+    "Rising Trendline":"diagonal","Falling Trendline":"diagonal","Rising Wedge":"diagonal",
+    "Double Bottom":"reversal","Cup & Handle":"reversal","Double Top":"reversal","Head & Shoulders":"reversal",
+    "Bullish Gartley":"harmonic" };
   function dedupe(cards){
     const specific=new Set(["reversal","diagonal","harmonic"]); const seen=new Set(); let hasSpecific=false; const out=[];
     for(const c of cards){ const f=FAMILY[c.pattern]??c.pattern; if(seen.has(f)) continue; if(f==="level"&&hasSpecific) continue; if(specific.has(f)) hasSpecific=true; seen.add(f); out.push(c); }
@@ -4414,7 +4610,11 @@ window.SBPatternEngine = (function () {
     const O=d.map(b=>b.open),H=d.map(b=>b.high),L=d.map(b=>b.low),C=d.map(b=>b.close),V=d.map(b=>b.volume);
     const last=d.length-1, price=C[last]; const piv=findPivots(H,L);
     const ctx={ ph:piv.highs, pl:piv.lows, last, price, rsi:rsi(C), macd:macd(C), volMa:sma(V,20), H,L,C,V,d,full };
-    const detectors=[ detectGartley, detectCupHandle, detectDoubleBottom, d2=>detectTriangle(d2,"ascending"), d2=>detectTriangle(d2,"descending"), d2=>detectTriangle(d2,"symmetrical"), detectFallingTrendline, detectRisingTrendline, detect52WeekBreakout, detectHorizontalTrendline, detectRectangle, detectHorizontalChannel ];
+    // Specific geometries first so a cup/H&S is not swallowed by a generic range.
+    const detectors=[ detectGartley, detectCupHandle, detectHeadShoulders, detectDoubleTop, detectDoubleBottom,
+      d2=>detectTriangle(d2,"ascending"), d2=>detectTriangle(d2,"descending"), d2=>detectTriangle(d2,"symmetrical"),
+      detectRisingWedge, detectFallingTrendline, detectRisingTrendline,
+      detect52WeekBreakout, detect52WeekBreakdown, detectHorizontalTrendline, detectRectangle, detectHorizontalChannel ];
     let cards=[]; detectors.forEach((fn,rank)=>{ let r=null; try{r=fn(ctx);}catch(e){r=null;} if(r){r._priority=rank;cards.push(r);} });
     cards.forEach(c=>{ c.symbol=symbol; c.timeframe=timeframe; c.confidence=scoreCard(c,timeframe); });
     cards=cards.filter(c=>c.confidence>=minConfidence); cards.sort((a,b)=>a._priority-b._priority); cards=dedupe(cards); cards.sort((a,b)=>b.confidence-a.confidence); cards.forEach(c=>delete c._priority);
@@ -4425,13 +4625,39 @@ window.SBPatternEngine = (function () {
     KEY:"sb_pattern_outcomes",
     _read(){ try{return JSON.parse(localStorage.getItem(this.KEY)||"[]");}catch{return [];} },
     _write(recs){ try{localStorage.setItem(this.KEY,JSON.stringify(recs));}catch{} },
-    log(cardObj){ const recs=this._read(); recs.push({...cardObj,outcome:null,returnPct:null,gradedAt:null}); this._write(recs); },
-    grade(symbol, futureBars, horizon=20){ if(futureBars.length<horizon) return; const recs=this._read(); const fwd=futureBars.slice(-horizon);
-      for(const r of recs){ if(r.outcome||r.symbol!==symbol) continue; const entry=r.levels?.close; if(!entry) continue; const lastC=fwd[fwd.length-1].close;
-        const ret=r.bias==="bullish"?((lastC-entry)/entry)*100:((entry-lastC)/entry)*100;
-        const mfe=r.bias==="bullish"?((Math.max(...fwd.map(b=>b.high))-entry)/entry)*100:((entry-Math.min(...fwd.map(b=>b.low)))/entry)*100;
-        r.returnPct=+ret.toFixed(2); r.outcome=mfe>=2.0&&ret>0?"win":"loss"; r.gradedAt=new Date().toISOString(); }
-      this._write(recs); },
+    // Each record stores the bar it was detected on (triggerTs) so grading can
+    // use ONLY bars that closed after it. Without this a card is graded against
+    // bars that pre-date it and instantly resolves "loss" at 0% return.
+    log(cardObj, triggerTs){
+      const recs=this._read();
+      const ts = triggerTs || cardObj.triggerTs || Math.floor(Date.now()/1000);
+      const key = `${cardObj.symbol}|${cardObj.pattern}|${cardObj.signal}|${cardObj.timeframe}|${ts}`;
+      if (recs.some(r => !r.outcome && `${r.symbol}|${r.pattern}|${r.signal}|${r.timeframe}|${r.triggerTs}` === key)) return; // dedupe re-scans
+      recs.push({...cardObj, triggerTs: ts, outcome:null, returnPct:null, gradedAt:null});
+      // hard cap so the log cannot grow without bound
+      this._write(recs.slice(-400));
+    },
+    grade(symbol, bars, horizon=20){
+      if(!bars || !bars.length) return;
+      const recs=this._read(); let changed=false;
+      for(const r of recs){
+        if(r.outcome || r.symbol!==symbol) continue;
+        const entry=r.levels?.close; if(!entry) continue;
+        const ts = r.triggerTs;
+        if(!ts) continue;                                   // legacy record, cannot grade safely
+        const fwd = bars.filter(b => b.time > ts);           // strictly AFTER detection
+        if(fwd.length < horizon) continue;                   // not enough forward data yet
+        const win = fwd.slice(0, horizon);                   // the first N bars after the signal
+        const lastC = win[win.length-1].close;
+        const ret = r.bias==="bullish" ? ((lastC-entry)/entry)*100 : ((entry-lastC)/entry)*100;
+        const mfe = r.bias==="bullish"
+          ? ((Math.max(...win.map(b=>b.high))-entry)/entry)*100
+          : ((entry-Math.min(...win.map(b=>b.low)))/entry)*100;
+        r.returnPct=+ret.toFixed(2); r.outcome = (mfe>=2.0 && ret>0) ? "win" : "loss";
+        r.gradedAt=new Date().toISOString(); changed=true;
+      }
+      if(changed) this._write(recs);
+    },
     hitRates(){ const graded=this._read().filter(r=>r.outcome); const map={};
       for(const r of graded){ const k=`${r.pattern}|${r.signal}|${r.timeframe}`; map[k]=map[k]||{pattern:r.pattern,signal:r.signal,timeframe:r.timeframe,n:0,wins:0,sum:0}; map[k].n++; if(r.outcome==="win") map[k].wins++; map[k].sum+=r.returnPct||0; }
       return Object.values(map).map(v=>({...v,hitRate:+((v.wins/v.n)*100).toFixed(1),avgReturn:+(v.sum/v.n).toFixed(2),prior:+((v.wins+1)/(v.n+2)).toFixed(3)})).sort((a,b)=>b.hitRate-a.hitRate); },
@@ -4439,7 +4665,52 @@ window.SBPatternEngine = (function () {
     reset(){ this._write([]); },
   };
 
-  return { scanPatterns, OutcomeTracker, findPivots, bestBoundary };
+  // ── Multi-timeframe ─────────────────────────────────────────────────────
+  // Resample daily bars into weekly (ISO week, Mon-anchored) entirely client-side.
+  // Weekly carries TIMEFRAME_WEIGHT 1.00 vs 0.95 daily, so a weekly pattern
+  // outranks the same daily shape — the higher-timeframe-wins convention.
+  function resampleWeekly(bars){
+    if(!bars||!bars.length) return [];
+    const out=[]; let cur=null, curKey=null;
+    for(const b of bars){
+      const d=new Date(b.time*1000);
+      const dow=(d.getUTCDay()+6)%7;                       // Mon=0
+      const monday=Math.floor(b.time/86400)*86400-dow*86400;
+      if(curKey!==monday){
+        if(cur) out.push(cur);
+        cur={time:monday,open:b.open,high:b.high,low:b.low,close:b.close,volume:b.volume||0};
+        curKey=monday;
+      } else {
+        cur.high=Math.max(cur.high,b.high); cur.low=Math.min(cur.low,b.low);
+        cur.close=b.close; cur.volume+=(b.volume||0);
+      }
+    }
+    if(cur) out.push(cur);
+    return out;
+  }
+
+  // Scan daily + weekly and merge. Weekly wins on ties within a pattern family.
+  function scanMultiTimeframe(bars, opts={}){
+    const { symbol="", minConfidence=45 } = opts;
+    const daily  = scanPatterns(bars, {symbol, timeframe:'1 day', minConfidence});
+    const weekly = scanPatterns(resampleWeekly(bars), {symbol, timeframe:'1 week', minConfidence});
+    daily.forEach(c=>c.tf='1 day'); weekly.forEach(c=>c.tf='1 week');
+    const merged=[...weekly,...daily];                     // weekly first => wins dedupe
+    const seen=new Set(), out=[];
+    for(const c of merged){
+      const k=FAMILY[c.pattern]||c.pattern;
+      if(seen.has(k)) { continue; }
+      seen.add(k); out.push(c);
+    }
+    // surface agreement: same pattern on both timeframes is a strong confluence
+    for(const c of out){
+      const other = (c.tf==='1 week'?daily:weekly).find(x=>x.pattern===c.pattern);
+      if(other){ c.mtfAgree=true; c.confidence=+Math.min(95,c.confidence+6).toFixed(1); }
+    }
+    return out.sort((a,b)=>b.confidence-a.confidence);
+  }
+
+  return { scanPatterns, scanMultiTimeframe, resampleWeekly, OutcomeTracker, findPivots, bestBoundary };
 })();
 
 // ============================================================
@@ -4811,7 +5082,8 @@ function patternCardHtml(c) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <span style="font-size:11px;font-weight:700;color:${bc};background:${bc}18;border-radius:20px;padding:3px 11px;">📌 ${_PAT_REC_WORD(c.stage)}</span>
         <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">Stage: ${c.stage.replace(/_/g, ' ')}</span>
-        <span style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:20px;padding:3px 11px;">${c.timeframe}</span>
+        <span style="font-size:11px;color:${c.timeframe === '1 week' ? 'var(--accent)' : 'var(--text3)'};background:var(--surface2);border-radius:20px;padding:3px 11px;">${c.timeframe === '1 week' ? '⬛ Weekly' : '📅 Daily'}</span>
+        ${c.mtfAgree ? `<span style="font-size:11px;font-weight:700;color:var(--green);background:rgba(16,185,129,0.12);border:1px solid var(--green);border-radius:20px;padding:3px 11px;">🔗 Daily + Weekly agree</span>` : ''}
       </div>
       <div style="font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:11px;">${c.narrative}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${ind ? '10px' : '6px'};">${lv}</div>
@@ -4838,14 +5110,24 @@ function drawPatternChart(card) {
     width:host.clientWidth||600, height:host.clientHeight||360,
   });
   const toTs = d => Math.floor(d.date.getTime()/1000);
-  const sl = Math.max(0, data.length - 160);
-  const sd = data.slice(sl);
   const candle = chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350'});
-  candle.setData(sd.map(d=>({time:toTs(d),open:d.open,high:d.high,low:d.low,close:d.close})));
-  const { sma20, sma50 } = analysisResult;
-  const mk = c => chart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
-  if (sma20) { const s=mk('rgba(245,158,11,0.55)'); s.setData(sd.map((d,i)=>{const v=sma20[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
-  if (sma50) { const s=mk('rgba(59,130,246,0.55)'); s.setData(sd.map((d,i)=>{const v=sma50[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
+  const isWeekly = card && card.timeframe === '1 week';
+
+  if (isWeekly) {
+    // Weekly card geometry is anchored to Monday timestamps — render weekly bars
+    // so the overlay lines land on the right candles.
+    const wk = SBPatternEngine.resampleWeekly(data.map(d=>({time:toTs(d),open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume||0})));
+    const sw = wk.slice(-120);
+    candle.setData(sw.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
+  } else {
+    const sl = Math.max(0, data.length - 160);
+    const sd = data.slice(sl);
+    candle.setData(sd.map(d=>({time:toTs(d),open:d.open,high:d.high,low:d.low,close:d.close})));
+    const { sma20, sma50 } = analysisResult;
+    const mk = c => chart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+    if (sma20) { const s=mk('rgba(245,158,11,0.55)'); s.setData(sd.map((d,i)=>{const v=sma20[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
+    if (sma50) { const s=mk('rgba(59,130,246,0.55)'); s.setData(sd.map((d,i)=>{const v=sma50[sl+i];return v!=null?{time:toTs(d),value:v}:null;}).filter(Boolean)); }
+  }
   // Pattern overlay
   const g = card && card.graphics ? card.graphics : { lines:[], markers:[] };
   (g.lines||[]).forEach(ln => {
@@ -4887,6 +5169,177 @@ function _synthConfirmText(c) {
   if (c.rule === 'hold_below') return `<b>Stays below</b> ${cur}${c.level} through <b>T+${c.expire}</b> on ${c.volMult}× vol ⇒ <b>confirmed</b>. Reclaims ${cur}${c.invalidateAbove} ⇒ invalidated.`;
   if (c.rule === 'followthrough') return `<b>Follow-through</b> ${c.dir > 0 ? 'above' : 'below'} ${cur}${c.level} on ${c.volMult}× vol within <b>T+${c.expire}</b>.`;
   return '';
+}
+
+// ============================================================
+// WATCHLIST SCREENER — scan many symbols for chart patterns
+// ============================================================
+const SCREEN_WL_KEY = 'asa_watchlist';
+function screenGetWatchlist() {
+  try { const v = JSON.parse(localStorage.getItem(SCREEN_WL_KEY)); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function screenSaveWatchlist(list) {
+  try { localStorage.setItem(SCREEN_WL_KEY, JSON.stringify([...new Set(list)].slice(0, 60))); } catch {}
+}
+// Symbols from the Portfolio Manager (India + US equity holdings)
+function screenPortfolioSymbols() {
+  const out = [];
+  try {
+    (S?.indEQ || []).forEach(h => { const t = (h.ticker || '').split(':').pop(); if (t) out.push({ sym: t.toUpperCase(), exch: (h.ticker || '').includes('BSE') ? 'BSE' : 'NSE', src: 'portfolio', name: h.name }); });
+    (S?.usEQ  || []).forEach(h => { const t = (h.ticker || '').split(':').pop(); if (t) out.push({ sym: t.toUpperCase(), exch: 'US', src: 'portfolio', name: h.name }); });
+  } catch {}
+  return out;
+}
+
+// Headless bar fetch: cache first, then Yahoo via proxies. No DOM side-effects.
+async function _screenFetchBars(sym, exch) {
+  const suffix = exch === 'US' ? '' : (exch === 'BSE' ? '.BO' : '.NS');
+  const key = sym + suffix;
+  const cached = await _cacheGet(key);
+  if (cached && cached.length >= 60) return cached;
+  const to = Math.floor(Date.now()/1000), from = to - 400*24*3600;
+  const yf = `https://query1.finance.yahoo.com/v8/finance/chart/${key}?period1=${from}&period2=${to}&interval=1d`;
+  const enc = encodeURIComponent;
+  const urls = [
+    { u: `https://api.allorigins.win/raw?url=${enc(yf)}`, wrap: false },
+    { u: `https://api.allorigins.win/get?url=${enc(yf)}`, wrap: true  },
+    { u: `https://corsproxy.io/?${enc(yf)}`,              wrap: false },
+  ];
+  for (const { u, wrap } of urls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      let res; try { res = await fetch(u, { signal: ctrl.signal }); } finally { clearTimeout(timer); }
+      if (!res.ok) continue;
+      let raw;
+      if (wrap) { const o = await res.json(); const t = o.contents || o.body || ''; if (!t) continue; raw = typeof t === 'string' ? JSON.parse(t) : t; }
+      else raw = await res.json();
+      const r = raw?.chart?.result?.[0];
+      if (!r || !r.timestamp?.length) continue;
+      const q = r.indicators?.quote?.[0] || {};
+      const rows = _yfRowsFrom(r.timestamp, q, r.indicators?.adjclose?.[0]?.adjclose || q.close);
+      if (rows.length >= 60) { _cachePut(key, rows); return rows; }
+    } catch {}
+  }
+  return null;
+}
+
+let _screenAbort = false;
+async function runScreener() {
+  const statusEl = document.getElementById('screenStatus');
+  const resEl    = document.getElementById('screenResults');
+  const btn      = document.getElementById('screenRunBtn');
+  if (!statusEl || !resEl) return;
+
+  const wl = screenGetWatchlist().map(s => {
+    const [sym, exch] = String(s).split('|');
+    return { sym: sym.toUpperCase(), exch: exch || 'NSE', src: 'watchlist' };
+  });
+  const pf = screenPortfolioSymbols();
+  const seen = new Set();
+  const targets = [...pf, ...wl].filter(t => { const k = t.sym + '|' + t.exch; if (seen.has(k)) return false; seen.add(k); return true; });
+
+  if (!targets.length) {
+    statusEl.innerHTML = `<div style="color:var(--text3);font-size:12.5px;">Nothing to scan yet — add symbols to the watchlist above, or add holdings in Portfolio Manager.</div>`;
+    resEl.innerHTML = ''; return;
+  }
+
+  _screenAbort = false;
+  btn.textContent = '⏹ Stop'; btn.onclick = () => { _screenAbort = true; };
+  const minConf = +(document.getElementById('screenMinConf')?.value || 55);
+  const found = [];
+  let done = 0, failed = 0;
+
+  const CONC = 3;                                    // polite concurrency vs public proxies
+  const queue = targets.slice();
+  async function worker() {
+    while (queue.length && !_screenAbort) {
+      const t = queue.shift();
+      try {
+        const rows = await _screenFetchBars(t.sym, t.exch);
+        if (rows && rows.length >= 60) {
+          const data = prepareData(rows);
+          const bars = data.map(b => ({ time: Math.floor(b.date.getTime()/1000), open:b.open, high:b.high, low:b.low, close:b.close, volume:b.volume||0 }));
+          const cards = SBPatternEngine.scanMultiTimeframe(bars, { symbol: t.sym, minConfidence: minConf });
+          cards.forEach(c => found.push({ ...c, _sym: t.sym, _exch: t.exch, _src: t.src, _name: t.name || t.sym, _last: data[data.length-1].close }));
+        } else failed++;
+      } catch { failed++; }
+      done++;
+      statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);">
+        <div style="flex:1;min-width:140px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;"><div style="width:${(done/targets.length*100).toFixed(0)}%;height:100%;background:var(--accent);transition:width .2s;"></div></div>
+        <span>${done}/${targets.length} scanned · <b style="color:var(--accent)">${found.length}</b> patterns${failed?` · ${failed} unavailable`:''}</span></div>`;
+      renderScreenResults(found);
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(CONC, targets.length)}, worker));
+
+  btn.textContent = '🔍 Run Screener'; btn.onclick = runScreener;
+  statusEl.innerHTML = `<div style="font-size:12.5px;color:var(--text2);">✅ Scanned <b>${done}</b> symbol${done===1?'':'s'} — found <b style="color:var(--accent)">${found.length}</b> pattern${found.length===1?'':'s'} at ≥${minConf}% confidence${failed?` · ${failed} could not be fetched`:''}.${_screenAbort?' <em>(stopped early)</em>':''}</div>`;
+  renderScreenResults(found);
+}
+
+function renderScreenResults(found) {
+  const el = document.getElementById('screenResults');
+  if (!el) return;
+  if (!found.length) { el.innerHTML = ''; return; }
+  const rows = [...found].sort((a,b) => b.confidence - a.confidence);
+  const cur = s => s === 'US' ? '$' : '₹';
+  el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px;">
+    <thead><tr style="border-bottom:1px solid var(--border2);">
+      ${['Symbol','Pattern','Signal','TF','Bias','Conf','Last','Action'].map(h=>`<th style="text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;">${h}</th>`).join('')}
+    </tr></thead><tbody>
+    ${rows.map(r => {
+      const bc = r.bias === 'bullish' ? 'var(--green)' : r.bias === 'bearish' ? 'var(--red)' : 'var(--accent)';
+      const cc = r.confidence >= 75 ? 'var(--green)' : r.confidence >= 60 ? 'var(--accent)' : 'var(--text3)';
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 10px;"><b>${r._sym}</b>${r._src==='portfolio'?' <span title="From your portfolio" style="font-size:10px;">💼</span>':''}<div style="font-size:10px;color:var(--text3);">${r._exch}</div></td>
+        <td style="padding:8px 10px;">${r.pattern}${r.mtfAgree?' <span title="Daily + weekly agree">🔗</span>':''}</td>
+        <td style="padding:8px 10px;color:var(--text2);">${r.signal}</td>
+        <td style="padding:8px 10px;font-size:11px;color:${r.timeframe==='1 week'?'var(--accent)':'var(--text3)'};">${r.timeframe==='1 week'?'⬛ W':'D'}</td>
+        <td style="padding:8px 10px;"><span style="font-size:10px;font-weight:800;color:#fff;background:${bc};padding:2px 7px;border-radius:4px;text-transform:uppercase;">${r.bias}</span></td>
+        <td style="padding:8px 10px;font-weight:800;color:${cc};">${r.confidence}%</td>
+        <td style="padding:8px 10px;">${cur(r._exch)}${r._last.toFixed(2)}</td>
+        <td style="padding:8px 10px;"><button onclick="screenOpen('${r._sym}','${r._exch}')" style="cursor:pointer;font-family:inherit;font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--accent);background:transparent;color:var(--accent);">Analyse</button></td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function screenOpen(sym, exch) {
+  if (typeof selectMarket === 'function') selectMarket(exch === 'US' ? 'us' : 'india');
+  const ex = document.getElementById('exchangeInput'), ms = document.getElementById('marketSelect');
+  if (exch !== 'US') { if (ex) ex.value = exch; if (ms) ms.value = exch; }
+  document.getElementById('symbolInput').value = sym;
+  document.getElementById('resolvedSymbol').value = sym;
+  try { await fetchSymbolData(); await runAnalysis(); switchResTab('patterns');
+        document.getElementById('resultsSection')?.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
+}
+
+function screenAddSymbol() {
+  const inp = document.getElementById('screenSymInput');
+  const exchSel = document.getElementById('screenExchInput');
+  const raw = (inp?.value || '').trim().toUpperCase();
+  if (!raw) return;
+  const list = screenGetWatchlist();
+  list.push(raw + '|' + (exchSel?.value || 'NSE'));
+  screenSaveWatchlist(list);
+  inp.value = '';
+  renderWatchlistChips();
+}
+function screenRemoveSymbol(entry) {
+  screenSaveWatchlist(screenGetWatchlist().filter(x => x !== entry));
+  renderWatchlistChips();
+}
+function renderWatchlistChips() {
+  const el = document.getElementById('screenWatchlist');
+  if (!el) return;
+  const wl = screenGetWatchlist();
+  const pf = screenPortfolioSymbols();
+  el.innerHTML = `
+    ${pf.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">💼 From portfolio (auto-included): ${pf.map(p=>`<span style="color:var(--text2)">${p.sym}</span>`).join(', ')}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${wl.map(w => {
+      const [s,e] = String(w).split('|');
+      return `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:4px 10px;font-size:12px;">${s} <span style="font-size:10px;color:var(--text3);">${e||'NSE'}</span> <button onclick="screenRemoveSymbol('${w}')" title="Remove" style="cursor:pointer;background:none;border:none;color:var(--text3);font-size:13px;line-height:1;padding:0;">×</button></span>`;
+    }).join('') || '<span style="font-size:12px;color:var(--text3);">No watchlist symbols yet.</span>'}</div>`;
 }
 
 function renderSynthesis(ar) {
@@ -4955,7 +5408,8 @@ function renderChartPatterns(ar) {
   const bullN = cards.filter(c => c.bias === 'bullish').length, bearN = cards.filter(c => c.bias === 'bearish').length;
   const summary = `<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:12px;font-size:12.5px;color:var(--text2);line-height:1.6;">
     <b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — strongest: <b style="color:${_PAT_BIAS_COL(top.bias)}">${top.pattern}</b> at <b>${top.confidence}%</b> · <b style="color:${_PAT_LVL_COL(top.confidence)}">${_PAT_LVL_WORD(top.confidence)} recommendation</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Select a pattern to draw it on the chart. Confidence is a structural rating, not a probability.</span></div>`;
-  const chips = `<div id="patternChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${cards.map((c,i) => `<button data-pidx="${i}" onclick="selectPattern(${i})" style="cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s;">${c.pattern} · ${c.confidence}%</button>`).join('')}</div>`;
+  const tfTag = c => c.timeframe === '1 week' ? '<span style="opacity:.75;font-size:10px;"> ⬛W</span>' : '<span style="opacity:.6;font-size:10px;"> D</span>';
+  const chips = `<div id="patternChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${cards.map((c,i) => `<button data-pidx="${i}" onclick="selectPattern(${i})" title="${c.timeframe} timeframe${c.mtfAgree?' · confirmed on both daily & weekly':''}" style="cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s;">${c.pattern} · ${c.confidence}%${tfTag(c)}${c.mtfAgree?' 🔗':''}</button>`).join('')}</div>`;
   const chart = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);flex-wrap:wrap;">
       <span style="color:#26a69a;font-weight:700;">▲ Bull</span><span style="color:#ef5350;font-weight:700;">▼ Bear</span>
@@ -4967,12 +5421,13 @@ function renderChartPatterns(ar) {
   </div>`;
   el.innerHTML = summary + chips + chart + `<div id="patternCard"></div>`;
 
-  // Learning loop: log surfaced cards (dedupe by symbol+pattern+signal+close among open records)
+  // Learning loop: log surfaced cards. log() dedupes on symbol|pattern|signal|timeframe|triggerTs,
+  // so re-scanning the same bar cannot create duplicate records.
   try {
     const T = SBPatternEngine.OutcomeTracker;
-    const key = c => `${c.symbol}|${c.pattern}|${c.signal}|${c.levels?.close}`;
-    const seen = new Set(T._read().filter(r => !r.outcome).map(key));
-    cards.forEach(c => { if (!seen.has(key(c))) { T.log(c); seen.add(key(c)); } });
+    const lastBar = ar.data && ar.data.length ? ar.data[ar.data.length-1] : null;
+    const ts = lastBar ? Math.floor(lastBar.date.getTime()/1000) : Math.floor(Date.now()/1000);
+    cards.forEach(c => T.log(c, c.triggerTs || ts));
   } catch (e) {}
 
   // Draw the strongest pattern (deferred so layout settles; chart needs non-zero width)
@@ -5060,8 +5515,10 @@ async function runAnalysis() {
       }));
       const T = SBPatternEngine.OutcomeTracker;
       try { T.grade(_sym, _bars, 20); } catch(e) {}   // grade prior cards vs recent price
-      chartPatterns = SBPatternEngine.scanPatterns(_bars, { symbol: _sym, timeframe: '1 day', minConfidence: 45 });
+      chartPatterns = SBPatternEngine.scanMultiTimeframe(_bars, { symbol: _sym, minConfidence: 45 });
+      const _lastTs = _bars.length ? _bars[_bars.length-1].time : Math.floor(Date.now()/1000);
       chartPatterns.forEach(c => {
+        c.triggerTs = _lastTs;                                // bar the pattern was detected on
         const base = c.confidence;
         try { c.confidence = T.adjust(c); } catch(e) {}
         c._empirical = Math.abs(c.confidence - base) >= 0.1;   // flag if a real hit-rate moved it
@@ -7416,6 +7873,8 @@ function exportJSON(){
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`InvestManagerPro_${today()}.json`;a.click();
   toast('JSON backup downloaded!','ok');
 }
+// Both restore UIs share this helper — ids are unique, so write to every slot.
+function _restoreMsg(html){ document.querySelectorAll('.restore-msg').forEach(el=>el.innerHTML=html); }
 function restoreJSON(e){
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
@@ -7424,10 +7883,10 @@ function restoreJSON(e){
       const d=JSON.parse(ev.target.result);
       if(!d.indEQ||!d.usEQ||!d.crypto){throw new Error('Invalid format');}
       Object.assign(S,d);save();renderAll();
-      document.getElementById('restore-msg').innerHTML=`<div style="background:var(--GL);color:var(--G);padding:9px 12px;border-radius:6px;font-size:12.5px;font-weight:600">✅ Portfolio restored successfully!</div>`;
+      _restoreMsg(`<div style="background:var(--GL);color:var(--G);padding:9px 12px;border-radius:6px;font-size:12.5px;font-weight:600">✅ Portfolio restored successfully!</div>`);
       toast('Portfolio restored!','ok');
     }catch(err){
-      document.getElementById('restore-msg').innerHTML=`<div style="background:var(--RL);color:var(--R);padding:9px 12px;border-radius:6px;font-size:12.5px">❌ Invalid backup file: ${err.message}</div>`;
+      _restoreMsg(`<div style="background:var(--RL);color:var(--R);padding:9px 12px;border-radius:6px;font-size:12.5px">❌ Invalid backup file: ${err.message}</div>`);
       toast('Invalid backup file','err');
     }
   };
