@@ -1531,8 +1531,11 @@ td.r{text-align:right}
 
       <!-- ===== PATTERNS TAB ===== -->
       <div class="res-tab-panel" data-rtab="patterns" style="display:none;">
+      <!-- Structural Synthesis (macro × micro conflict resolution) -->
+      <div class="section-header" style="margin-top:6px;"><span class="section-title">🧩 Structural Synthesis</span><div class="section-line"></div></div>
+      <div id="synthPanel" style="margin-bottom:24px;"></div>
       <!-- Chart Patterns (multi-bar geometry + recommendation) -->
-      <div class="section-header" style="margin-top:6px;"><span class="section-title">📐 Chart Patterns &amp; Recommendation</span><div class="section-line"></div></div>
+      <div class="section-header"><span class="section-title">📐 Chart Patterns &amp; Recommendation</span><div class="section-line"></div></div>
       <div id="chartPatterns" style="margin-bottom:24px;"></div>
       <!-- Candlestick Patterns -->
       <div class="section-header"><span class="section-title">🕯️ Candlestick Pattern Signals</span><div class="section-line"></div></div>
@@ -4440,6 +4443,187 @@ window.SBPatternEngine = (function () {
 })();
 
 // ============================================================
+// SIGNAL SYNTHESIS — contextualise micro candles within macro structure
+// Resolves conflicts like "Bearish Breakdown + Bullish Engulfing" into one
+// contextual signal (e.g. "Potential Breakdown Retest") + T+2 confirmation.
+// ============================================================
+window.SBSynth = (function () {
+  const NEAR = 0.5, RECLAIM = 0.25, FAR = 1.0;   // ATR-normalised location buckets
+
+  const _lvlOf = card => {
+    if (!card) return null; const L = card.levels || {};
+    return L.trendline ?? L.support ?? L.level ?? L.resistance ?? L.neckline ?? null;
+  };
+
+  function extractStructure(ar) {
+    const s = ar.signals || {}, price = ar.currentPrice;
+    const atr = s.atrV || price * 0.02, sma20 = s.sma20v, sma50 = s.sma50v;
+    const cps = ar.chartPatterns || [];
+    const bearBreak = cps.find(c => c.bias === 'bearish' && /Breakdown/i.test(c.signal));
+    const bullBreak = cps.find(c => c.bias === 'bullish' && /Breakout/i.test(c.signal));
+    let regime = 'range', brokenLevel = null, brokenDir = 0, source = null;
+    if (bearBreak) { regime = 'broken_down'; brokenLevel = _lvlOf(bearBreak); brokenDir = -1; source = bearBreak.pattern; }
+    else if (bullBreak) { regime = 'broken_up'; brokenLevel = _lvlOf(bullBreak); brokenDir = +1; source = bullBreak.pattern; }
+    else if (sma20 != null && sma50 != null) {
+      if (price > sma20 && sma20 > sma50) regime = 'uptrend';
+      else if (price < sma20 && sma20 < sma50) { regime = 'downtrend'; brokenLevel = sma20; brokenDir = -1; }
+    }
+    return { regime, brokenLevel, brokenDir, source, atr, sma20, sma50, price };
+  }
+
+  const _STR = { 'Bullish Engulfing':0.85,'Bearish Engulfing':0.85,'Bullish Marubozu':0.8,'Bearish Marubozu':0.8,'Morning Star':0.8,'Evening Star':0.8,'Hammer':0.7,'Shooting Star':0.7 };
+  function extractMicro(ar) {
+    const pats = (ar.patterns || []).filter(p => p.dir && p.dir !== 0);
+    if (!pats.length) return null;
+    let best = pats[0];
+    for (const p of pats) if ((_STR[p.name] || 0.5) > (_STR[best.name] || 0.5)) best = p;
+    return { name: best.name, bias: best.dir, strength: _STR[best.name] || 0.5 };
+  }
+
+  function synthesize(ar) {
+    const st = extractStructure(ar), micro = extractMicro(ar);
+    if (!micro) return null;
+    const price = st.price, atr = Math.max(st.atr || price * 0.02, 1e-9), L = st.brokenLevel;
+    const lastLow = ar.data[ar.data.length - 1].low;
+
+    // ── Core conflict: bullish micro right after a DOWN break ──
+    if ((st.regime === 'broken_down' || st.regime === 'downtrend') && L != null && micro.bias > 0) {
+      const reclaimed = price > L + RECLAIM * atr && st.sma20 != null && price > st.sma20;
+      const atLevel   = Math.abs(price - L) <= NEAR * atr && price <= L * 1.002;
+      const farBelow  = price < L - FAR * atr;
+      if (reclaimed) return _mk(ar, st, micro, 'trap', +1, 62, 'Potential Bear Trap',
+        `Price reclaimed the broken level ${_c(L)} and SMA20 on the same bar as a ${micro.name} — a failed breakdown. Bullish only if it holds.`,
+        { rule:'hold_above', level:+L.toFixed(2), expire:2, volMult:1.5, invalidateBelow:+(L - 0.5*atr).toFixed(2) });
+      if (atLevel) return _mk(ar, st, micro, 'retest', -1, 55, 'Potential Breakdown Retest',
+        `Broken support ${_c(L)} now acts as resistance. The ${micro.name} is a retest of that level from below — this is not a buy; bias stays bearish unless price reclaims the level.`,
+        { rule:'reject_or_reclaim', level:+L.toFixed(2), expire:2, volMult:1.2, reclaimAbove:+(L + 0.25*atr).toFixed(2), confirmBelow:+lastLow.toFixed(2) });
+      return _mk(ar, st, micro, 'countertrend_noise', -1, 35, 'Counter-trend Bounce (low quality)',
+        `The ${micro.name} is well below the broken level in an intact downtrend — dead-cat-bounce risk. Not a reversal.`, {});
+    }
+
+    // ── Symmetric: bearish micro right after an UP break (bull trap) ──
+    if (st.regime === 'broken_up' && L != null && micro.bias < 0) {
+      const lostIt  = price < L - RECLAIM * atr && st.sma20 != null && price < st.sma20;
+      const atLevel = Math.abs(price - L) <= NEAR * atr && price >= L * 0.998;
+      if (lostIt) return _mk(ar, st, micro, 'trap', -1, 60, 'Potential Bull Trap',
+        `Price fell back below the broken resistance ${_c(L)} with a ${micro.name} — a failed breakout.`,
+        { rule:'hold_below', level:+L.toFixed(2), expire:2, volMult:1.5, invalidateAbove:+(L + 0.5*atr).toFixed(2) });
+      if (atLevel) return _mk(ar, st, micro, 'retest', +1, 55, 'Potential Breakout Retest',
+        `Broken resistance ${_c(L)} now acts as support. The ${micro.name} tests it from above — bullish continuation if support holds.`,
+        { rule:'hold_above', level:+L.toFixed(2), expire:2, volMult:1.2, invalidateBelow:+(L - 0.25*atr).toFixed(2) });
+    }
+
+    // ── Continuation: micro agrees with an intact trend ──
+    if (st.regime === 'uptrend' && micro.bias > 0) return _mk(ar, st, micro, 'continuation', +1, 60, `${micro.name} — Trend Continuation`, `Momentum aligns with the prevailing uptrend.`, { rule:'followthrough', level:+price.toFixed(2), expire:2, volMult:1.3, dir:1 });
+    if (st.regime === 'downtrend' && micro.bias < 0) return _mk(ar, st, micro, 'continuation', -1, 60, `${micro.name} — Trend Continuation`, `Momentum aligns with the prevailing downtrend.`, { rule:'followthrough', level:+price.toFixed(2), expire:2, volMult:1.3, dir:-1 });
+
+    // ── Counter-trend micro against an intact trend (no structural break) ──
+    if ((st.regime === 'uptrend' && micro.bias < 0) || (st.regime === 'downtrend' && micro.bias > 0))
+      return _mk(ar, st, micro, 'countertrend_noise', 0, 42, `${micro.name} — Counter-trend`, `The ${micro.name} opposes the prevailing ${st.regime}. A warning, not a reversal, until structure breaks.`, {});
+    return null;
+  }
+
+  function _c(v) { return (window.CUR ? CUR() : '₹') + (+v).toFixed(2); }
+
+  function _mk(ar, st, micro, disp, netBias, base, label, narrative, confirm) {
+    let conf = base;
+    if (disp === 'retest') conf -= 8;
+    if (disp === 'countertrend_noise') conf -= 15;
+    if (disp === 'trap') conf += 4;
+    conf = Math.max(5, Math.min(95, conf * (0.6 + 0.4 * micro.strength)));
+    const last = ar.data[ar.data.length - 1];
+    const ts = last ? Math.floor(last.date.getTime() / 1000) : Math.floor(Date.now() / 1000);
+    return {
+      id: (ar.symbol || 'STOCK') + '-' + ts, symbol: ar.symbol || 'STOCK',
+      label, disposition: disp, netBias, rawMicroBias: micro.bias, confidence: +conf.toFixed(1),
+      state: 'pending', macro: st.regime, micro: micro.name,
+      level: st.brokenLevel != null ? +st.brokenLevel.toFixed(2) : null,
+      triggerTs: ts, confirm, narrative,
+    };
+  }
+
+  // L4 — advance a PENDING signal against bars that closed AFTER its trigger.
+  function advance(sig, data, volMa) {
+    if (sig.state !== 'pending' || !sig.confirm || !sig.confirm.rule) return sig;
+    const after = data.filter(b => Math.floor(b.date.getTime() / 1000) > sig.triggerTs);
+    if (!after.length) return sig;
+    const c = sig.confirm;
+    for (let k = 0; k < after.length; k++) {
+      const bar = after[k], n = k + 1, gi = data.indexOf(bar);
+      const vma = (volMa && gi >= 0) ? volMa[gi] : null;
+      const volOk = vma ? bar.volume >= (c.volMult || 1) * vma : true;
+      if (c.rule === 'reject_or_reclaim') {
+        if (bar.close > c.reclaimAbove && volOk) return _res(sig, 'invalidated', 'Bear trap — broken level reclaimed on volume.', +1);
+        if (bar.close < c.confirmBelow) return _res(sig, 'confirmed', 'Breakdown confirmed — retest rejected at resistance.', -1);
+      } else if (c.rule === 'hold_above') {
+        if (bar.close < c.invalidateBelow) return _res(sig, 'invalidated', 'Setup failed — level lost again (genuine breakdown).', -1);
+        if (n >= c.expire && bar.close > c.level && volOk) return _res(sig, 'confirmed', `Confirmed — held above the level through T+${n} on volume.`, +1);
+      } else if (c.rule === 'hold_below') {
+        if (bar.close > c.invalidateAbove) return _res(sig, 'invalidated', 'Setup failed — reclaimed resistance.', +1);
+        if (n >= c.expire && bar.close < c.level && volOk) return _res(sig, 'confirmed', `Confirmed — stayed below the level through T+${n}.`, -1);
+      } else if (c.rule === 'followthrough') {
+        const beyond = c.dir > 0 ? bar.close > c.level : bar.close < c.level;
+        if (beyond && volOk) return _res(sig, 'confirmed', 'Follow-through confirmed on volume.', c.dir);
+      }
+      if (n >= c.expire) return _res(sig, 'expired', `No confirmation within the T+${c.expire} window.`, sig.netBias);
+    }
+    return sig;
+  }
+  function _res(sig, state, why, netBias) {
+    sig.state = state; if (netBias != null) sig.netBias = netBias;
+    sig.narrative += ' ' + why;
+    sig.confidence = Math.max(5, Math.min(95, sig.confidence + (state === 'expired' ? -20 : state === 'confirmed' ? 12 : 8)));
+    sig.resolvedAt = Math.floor(Date.now() / 1000);
+    return sig;
+  }
+
+  return { synthesize, advance, extractStructure, extractMicro };
+})();
+
+// ── Sharded, quota-safe local store for synthesized signals (local-first) ──
+window.SBSynthStore = (function () {
+  const SCHEMA = 1, CAP_PENDING = 12, CAP_HIST = 60;
+  const KEY = sym => 'asa_synth_' + sym;
+  const _empty = sym => ({ v: SCHEMA, sym, u: 0, pending: [], history: [], stats: {} });
+  const read = sym => { try { return JSON.parse(localStorage.getItem(KEY(sym))) || _empty(sym); } catch { return _empty(sym); } };
+  function _evict(keep) {
+    try { let oK = null, oU = Infinity;
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i);
+        if (k && k.startsWith('asa_synth_') && k !== KEY(keep)) { try { const o = JSON.parse(localStorage.getItem(k)); if (o.u < oU) { oU = o.u; oK = k; } } catch {} } }
+      if (oK) localStorage.removeItem(oK);
+    } catch {}
+  }
+  function write(sym, obj) {
+    try { localStorage.setItem(KEY(sym), JSON.stringify(obj)); }
+    catch (e) { if (e && (e.name === 'QuotaExceededError' || e.code === 22)) { _evict(sym); try { localStorage.setItem(KEY(sym), JSON.stringify(obj)); } catch {} } }
+  }
+  const _slim = s => ({ id: s.id, label: s.label, disp: s.disposition, st: s.state, nb: s.netBias, cf: s.confidence, t: s.triggerTs, r: s.resolvedAt || null });
+  function _bump(stats, s) { const k = s.macro + '|' + s.disposition; const b = stats[k] || { n: 0, w: 0 }; b.n++; if (s.state === 'confirmed') b.w++; stats[k] = b; }
+
+  function process(sym, data, volMa, newSig) {
+    const shard = read(sym);
+    const resolved = [];
+    const stillPending = [];
+    for (const p of shard.pending) {
+      const adv = SBSynth.advance(p, data, volMa);
+      if (adv.state === 'pending') stillPending.push(adv);
+      else { shard.history.push(_slim(adv)); _bump(shard.stats, adv); resolved.push(adv); }
+    }
+    shard.pending = stillPending;
+    if (newSig && !shard.pending.some(p => p.id === newSig.id) && !shard.history.some(h => h.id === newSig.id))
+      shard.pending.push(newSig);
+    shard.pending = shard.pending.slice(-CAP_PENDING);
+    shard.history = shard.history.slice(-CAP_HIST);
+    shard.u = Date.now();
+    write(sym, shard);
+    return { shard, resolved };
+  }
+  function priorFor(sym, macro, disp) { const s = read(sym); const b = s.stats[macro + '|' + disp]; if (!b || b.n < 4) return null; return { pct: +((b.w + 1) / (b.n + 2) * 100).toFixed(0), n: b.n }; }
+  function reset(sym) { if (sym) localStorage.removeItem(KEY(sym)); else { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('asa_synth_')) localStorage.removeItem(k); } } }
+  return { process, read, priorFor, reset };
+})();
+
+// ============================================================
 // BREAKOUT SCREENER — tight consolidation → resistance break → range expansion
 // ============================================================
 function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10) {
@@ -4695,6 +4879,69 @@ function selectPattern(idx) {
   if (cardEl) cardEl.innerHTML = patternCardHtml(cards[idx]);
 }
 
+function _synthConfirmText(c) {
+  if (!c || !c.rule) return 'No confirmation rule (noise-grade signal).';
+  const cur = CUR();
+  if (c.rule === 'reject_or_reclaim') return `<b>Rejects</b> the level (close &lt; ${cur}${c.confirmBelow}) ⇒ breakdown <b>confirmed</b>. <b>Reclaims</b> ${cur}${c.reclaimAbove} on ${c.volMult}× vol ⇒ <b>bear trap</b>. Window <b>T+${c.expire}</b>.`;
+  if (c.rule === 'hold_above') return `<b>Holds above</b> ${cur}${c.level} through <b>T+${c.expire}</b> on ${c.volMult}× vol ⇒ <b>confirmed</b>. Loses ${cur}${c.invalidateBelow} ⇒ invalidated.`;
+  if (c.rule === 'hold_below') return `<b>Stays below</b> ${cur}${c.level} through <b>T+${c.expire}</b> on ${c.volMult}× vol ⇒ <b>confirmed</b>. Reclaims ${cur}${c.invalidateAbove} ⇒ invalidated.`;
+  if (c.rule === 'followthrough') return `<b>Follow-through</b> ${c.dir > 0 ? 'above' : 'below'} ${cur}${c.level} on ${c.volMult}× vol within <b>T+${c.expire}</b>.`;
+  return '';
+}
+
+function renderSynthesis(ar) {
+  const el = document.getElementById('synthPanel');
+  if (!el) return;
+  const syn = ar.synthesis;
+  if (!syn || (!syn.active && !(syn.justResolved && syn.justResolved.length))) {
+    el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--text3);font-size:12.5px;line-height:1.6;">🧩 Nothing to synthesise — no actionable candlestick signal is interacting with the current market structure. The raw pattern signals below stand on their own.</div>`;
+    return;
+  }
+  const sig = syn.active;
+  const dispCol = { retest:'var(--accent)', trap:'var(--purple)', reversal:'var(--green)', countertrend_noise:'var(--text3)', continuation: sig && sig.netBias > 0 ? 'var(--green)' : 'var(--red)' };
+  const stateStyle = { pending:['var(--accent)','PENDING'], confirmed:['var(--green)','CONFIRMED'], invalidated:['var(--purple)','FLIPPED'], expired:['var(--text3)','EXPIRED'] };
+  const biasTxt = b => b > 0 ? '<span style="color:var(--green)">Bullish</span>' : b < 0 ? '<span style="color:var(--red)">Bearish</span>' : '<span style="color:var(--text3)">Neutral</span>';
+
+  let html = '';
+  if (sig) {
+    const dc = dispCol[sig.disposition] || 'var(--accent)';
+    const [scol, slbl] = stateStyle[sig.state] || stateStyle.pending;
+    const conflict = sig.rawMicroBias != null && Math.sign(sig.rawMicroBias) !== Math.sign(sig.netBias || 0);
+    const priorTxt = syn.prior ? ` · <span style="color:var(--text3)">your log: this ${sig.macro.replace('_',' ')}·${sig.disposition} setup resolved bullish-side ${syn.prior.pct}% (n=${syn.prior.n})</span>` : '';
+    html += `<div style="border:1px solid ${dc};border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--card-shadow);">
+      <div style="background:linear-gradient(135deg,${dc}22,${dc}0d);border-bottom:1px solid var(--border);padding:13px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#fff;background:${dc};padding:3px 9px;border-radius:5px;text-transform:uppercase;">${sig.disposition.replace(/_/g,' ')}</span>
+        <div style="font-size:16px;font-weight:800;">${sig.label}</div>
+        <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.5px;color:#fff;background:${scol};padding:4px 10px;border-radius:20px;">${slbl}${sig.state === 'pending' && sig.confirm && sig.confirm.expire ? ' · T+' + sig.confirm.expire : ''}</span>
+      </div>
+      <div style="padding:14px 15px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:11px;">
+          <span style="font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 11px;">Macro: <b>${sig.macro.replace(/_/g,' ')}</b></span>
+          <span style="font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 11px;">Micro: <b>${sig.micro}</b></span>
+          <span style="font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 11px;">Net bias: <b>${biasTxt(sig.netBias)}</b></span>
+        </div>
+        ${conflict ? `<div style="background:rgba(245,158,11,0.10);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;margin-bottom:11px;font-size:12px;line-height:1.55;color:var(--text2);">⚖️ <b>Conflict resolved:</b> the raw <b>${sig.micro}</b> reads ${biasTxt(sig.rawMicroBias)}, but within a <b>${sig.macro.replace(/_/g,' ')}</b> structure it is re-contextualised as <b style="color:${dc}">${sig.label}</b> — net bias ${biasTxt(sig.netBias)}. The standalone buy/sell signal is <b>overridden by structure</b>.</div>` : ''}
+        <div style="font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:11px;">${sig.narrative}</div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.6;color:var(--text2);">
+          <span style="color:var(--text3);text-transform:uppercase;font-size:10px;letter-spacing:.5px;font-weight:700;">Confirmation gate</span><br>${_synthConfirmText(sig.confirm)}
+        </div>
+        <div style="margin-top:11px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:160px;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;"><div style="width:${sig.confidence}%;height:100%;background:${dc};"></div></div>
+          <span style="font-size:12px;font-weight:700;color:${dc};">${sig.confidence}% conviction</span>
+        </div>
+        <div style="font-size:10.5px;color:var(--text3);border-top:1px dashed var(--border);padding-top:8px;margin-top:10px;">Structure-first synthesis${priorTxt}. Not investment advice.</div>
+      </div>
+    </div>`;
+  }
+  if (syn.justResolved && syn.justResolved.length) {
+    html += `<div style="margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 13px;">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:7px;">✅ Just resolved (new bars confirmed prior signals)</div>
+      ${syn.justResolved.map(r => `<div style="font-size:12px;color:var(--text2);margin-bottom:4px;">• <b>${r.label}</b> → <b style="color:${r.state === 'confirmed' ? 'var(--green)' : r.state === 'invalidated' ? 'var(--purple)' : 'var(--text3)'}">${r.state}</b> (net ${r.netBias > 0 ? '🟢 bull' : r.netBias < 0 ? '🔴 bear' : '⚪ neutral'})</div>`).join('')}
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
 function renderChartPatterns(ar) {
   const el = document.getElementById('chartPatterns');
   if (!el) return;
@@ -4821,6 +5068,21 @@ async function runAnalysis() {
       });
     } catch(e) { chartPatterns = []; console.warn('pattern scan failed', e); }
 
+    // ── Signal synthesis: contextualise micro candle within macro structure ──
+    let synthesis = null;
+    try {
+      const _symU = (document.getElementById('stockSymbol').value.trim() || 'STOCK').toUpperCase();
+      const _volMa = calcSMA(data.map(b => b.volume || 0), 20);
+      const _cp = document.getElementById('currentPrice');
+      const _price = (_cp && parseFloat(_cp.value)) || closes[last];
+      const arForSynth = { symbol:_symU, data, patterns, chartPatterns, signals, currentPrice:_price };
+      const newSig = SBSynth.synthesize(arForSynth);
+      const { shard, resolved } = SBSynthStore.process(_symU, data, _volMa, newSig);
+      const active = newSig || (shard.pending.length ? shard.pending[shard.pending.length - 1] : null);
+      const prior = active ? SBSynthStore.priorFor(_symU, active.macro, active.disposition) : null;
+      synthesis = { active, prior, pending: shard.pending, justResolved: resolved, stats: shard.stats };
+    } catch(e) { synthesis = null; console.warn('synthesis failed', e); }
+
     const currentPrice = parseFloat(document.getElementById('currentPrice').value) || closes[last];
     const prevClose    = closes[last-1] || closes[last];
     const priceChg     = currentPrice - prevClose;
@@ -4828,7 +5090,7 @@ async function runAnalysis() {
 
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, breakout, backtest, chartPatterns, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, chartPatterns, synthesis, currentPrice, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -5025,6 +5287,9 @@ function renderResults() {
       <div class="pattern-action ${p.cls}">📌 ${p.action}</div></div>
     </div>`).join('')
   }</div>`;
+
+  // STRUCTURAL SYNTHESIS (macro × micro)
+  renderSynthesis(analysisResult);
 
   // CHART PATTERNS (multi-bar engine)
   renderChartPatterns(analysisResult);
