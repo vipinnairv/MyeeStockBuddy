@@ -4442,18 +4442,74 @@ window.SBPatternEngine = (function () {
     return card({ pattern:"Rising Trendline", signal, bias, stage, narrative, levels:{trendline:+lineNow.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
   }
   function detectFallingTrendline(ctx){
-    const {ph,last,price,H}=ctx; const res=bestBoundary(ph,H,true,3,1.5); if(!res) return null;
-    if(slopePct(res.slope,price)>-0.08) return null; const lineNow=res.slope*last+res.intercept; if(price<lineNow*1.003) return null;
-    const prevHigh=H[Math.max(...res.touches)]; let signal,stage,narrative;
-    if(price>prevHigh){signal="Previous High Breakout";stage="confirmed";narrative="Price has broken above the falling trendline and cleared the previous swing high, confirming strengthening momentum and opening the next bullish leg.";}
-    else {signal="Bullish Reversal";stage="confirmed";narrative="A falling trendline reflects sustained selling pressure through lower highs. The breakout above resistance indicates buyers are regaining control.";}
-    const ind=confluence(ctx,last); if(ind.includes("MACD golden crossover")) narrative+=" A MACD golden crossover supports the shift in momentum.";
-    const ftl0=Math.min(...res.touches);
+    const {ph,last,price,H,L,C,d}=ctx;
+    const res=bestBoundary(ph,H,true,3,1.5); if(!res) return null;
+    if(slopePct(res.slope,price)>-0.08) return null;
+
+    const lineAt = i => res.slope*i + res.intercept;
+    const t0=Math.min(...res.touches), tN=Math.max(...res.touches);
+
+    // 1. BODY INTEGRITY — a wick may pierce a resistance, a CLOSE above it means
+    //    the line was already broken and is no longer the valid boundary.
+    for(let i=t0;i<=tN;i++){ const ln=lineAt(i); if(ln>0 && C[i] > ln*1.002) return null; }
+
+    // 2. BREAKOUT ON A CLOSE, not an intraday poke through the line.
+    const lineNow=lineAt(last);
+    if(lineNow<=0 || C[last] <= lineNow*1.003) return null;
+
+    // 3. MAJOR SWING HIGH = highest high inside the pattern, not the last touch.
+    let swingIdx=t0; for(let i=t0;i<=tN;i++) if(H[i]>H[swingIdx]) swingIdx=i;
+    const prevHigh=H[swingIdx];
+
+    // 4. SMA20 AS A DYNAMIC BOUNDARY — breaking a trendline while still under a
+    //    falling 20-day average is a weak breakout, so it stays unconfirmed.
+    const ma20=sma(C,20), ma=ma20[last];
+    const aboveMA = !isFinite(ma) || C[last] > ma;
+    const maRising = isFinite(ma20[last-5]) && isFinite(ma) && ma > ma20[last-5];
+
+    // 5. MEASURED-MOVE TARGET, and levels that re-rank once the swing high goes.
+    let lo=Infinity; for(let i=t0;i<=tN;i++) lo=Math.min(lo,L[i]);
+    const height=Math.max(0, prevHigh-lo);
+    const clearedSwing = C[last] > prevHigh;
+    const target = clearedSwing ? +(prevHigh + height*0.618).toFixed(2) : +prevHigh.toFixed(2);
+
+    const ind=confluence(ctx,last);
+    const volOk = ind.includes("Volume expansion");
+
+    let signal,stage,narrative,polarity;
+    if(!aboveMA){
+      signal="On The Verge Of Breakout"; stage="anticipatory"; polarity="resistance";
+      narrative=`Price closed above the falling trendline at ${lineNow.toFixed(2)} but is still beneath its 20-day average — the breakout lacks trend support and is not yet reliable.`;
+    } else if(clearedSwing){
+      signal="Previous High Breakout"; stage=volOk?"confirmed":"confirmation_pending"; polarity="flipped_support";
+      narrative=`Price closed above the falling trendline and cleared the prior swing high at ${prevHigh.toFixed(2)}. That level and the broken trendline now act as support; the measured move projects ${target.toFixed(2)}.`;
+    } else {
+      signal="Bullish Reversal"; stage=volOk?"confirmed":"confirmation_pending"; polarity="flipped_support";
+      narrative=`A falling trendline capped price through successive lower highs. The close above it flips that line to support — the prior swing high at ${prevHigh.toFixed(2)} is the next hurdle.`;
+    }
+    if(ind.includes("MACD golden crossover")) narrative+=" A MACD golden crossover supports the shift in momentum.";
+    if(maRising && aboveMA) narrative+=" A rising 20-day average confirms the trend has turned.";
+    if(!volOk && stage==="confirmation_pending") narrative+=" Volume has not expanded, so treat it as pending until it does.";
+
+    // Once broken the line is drawn as support, not resistance.
+    const flipped = polarity==="flipped_support";
     const graphics={ lines:[
-      {points:[{time:ctx.d[ftl0].time,value:res.slope*ftl0+res.intercept},{time:ctx.d[last].time,value:res.slope*last+res.intercept}],color:"#ef5350",width:2,title:"Falling Resistance"},
-      {points:[{time:ctx.d[Math.max(...res.touches)].time,value:prevHigh},{time:ctx.d[last].time,value:prevHigh}],color:"#3b82f6",width:1,dashed:true,title:"Prev Swing High"},
-    ], markers:[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
-    return card({ pattern:"Falling Trendline", signal, bias:"bullish", stage, narrative, levels:{trendline:+lineNow.toFixed(2),prevSwingHigh:+prevHigh.toFixed(2),close:+price.toFixed(2)}, indicators:ind, components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
+      {points:[{time:d[t0].time,value:lineAt(t0)},{time:d[last].time,value:lineNow}],
+       color:flipped?"#26a69a":"#ef5350",width:2,title:flipped?"Trendline (now support)":"Falling Resistance"},
+      {points:[{time:d[swingIdx].time,value:prevHigh},{time:d[last].time,value:prevHigh}],
+       color:clearedSwing?"#26a69a":"#3b82f6",width:1,dashed:true,
+       title:clearedSwing?"Prev High (now support)":"Prev Swing High"},
+    ], markers:[{time:d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
+    if(clearedSwing && height>0)
+      graphics.lines.push({points:[{time:d[t0].time,value:target},{time:d[last].time,value:target}],
+        color:"#3b82f6",width:1,dashed:true,title:"Target"});
+
+    const levels={trendline:+lineNow.toFixed(2),prevSwingHigh:+prevHigh.toFixed(2),close:+C[last].toFixed(2)};
+    if(clearedSwing) levels.target=target;
+    if(isFinite(ma)) levels.sma20=+ma.toFixed(2);
+
+    return card({ pattern:"Falling Trendline", signal, bias:"bullish", stage, narrative, polarity, levels,
+      indicators:ind, components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
   }
   function detectDoubleBottom(ctx){
     const {pl,ph,last,price,L,H,C}=ctx; if(pl.length<2) return null;
