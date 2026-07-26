@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 
 <meta charset="UTF-8">
@@ -24,33 +24,37 @@
   --text: #e2e8f0;
   --text2: #94a3b8;
   --text3: #64748b;
-  /* MiyeeStock Buddy brand: indigo→violet. Deliberately not green or red so the
-     brand never competes with the bull/bear signal colours. */
-  --accent: #7c6cf5;
-  --accent2: #a78bfa;
-  --brand1: #6366f1;
-  --brand2: #a855f7;
+  /* MiyeeStock Buddy brand: amber + ocean blue. Deliberately not green or red
+     so the brand never competes with the bull/bear signal colours. */
+  --accent: #f59e0b;
+  --accent2: #fbbf24;
+  --brand1: #0891b2;
+  --brand2: #0369a1;
   --green: #10b981;
   --red: #ef4444;
   --blue: #3b82f6;
   --purple: #8b5cf6;
   --cyan: #06b6d4;
-  --glow: rgba(124,108,245,0.18);
+  --glow: rgba(245,158,11,0.18);
   --card-shadow: 0 4px 24px rgba(0,0,0,0.4);
   --radius: 16px;
   --radius-sm: 8px;
 }
 [data-theme="light"] {
-  --bg: #f0f4f8;
+  --bg: #f6f8fb;
   --surface: #ffffff;
-  --surface2: #f8fafc;
-  --border: #e2e8f0;
-  --border2: #cbd5e1;
-  --text: #0f172a;
-  --text2: #475569;
-  --text3: #94a3b8;
-  --glow: rgba(124,108,245,0.10);
-  --card-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --surface2: #eef4f8;
+  --border: #dbe4ec;
+  --border2: #b9c9d6;
+  --text: #0f1b2a;
+  --text2: #33495c;
+  --text3: #64748b;
+  --accent: #d97706;
+  --accent2: #f59e0b;
+  --brand1: #0e7490;
+  --brand2: #075985;
+  --glow: rgba(217,119,6,0.12);
+  --card-shadow: 0 4px 24px rgba(15,27,42,0.08);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;transition:background .3s,color .3s;}
@@ -312,7 +316,7 @@ canvas{max-width:100%;}
 .disc-checkbox-row label{font-size:13px;color:#94a3b8;line-height:1.5;cursor:pointer;}
 .disc-checkbox-row label b{color:#e2e8f0;}
 .disc-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
-.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
+.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#f59e0b,#0891b2);color:#fff;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
 .disc-btn-accept.enabled{opacity:1;pointer-events:all;}
 .disc-btn-accept.enabled:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(245,158,11,.4);}
 .disc-btn-decline{padding:14px 24px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;cursor:pointer;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.3);transition:all .2s;}
@@ -1078,6 +1082,7 @@ td.r{text-align:right}
   </div>
 </div>
 <style>
+html,body{overflow-x:hidden;}
 /* ═══ APP SWITCHER — MOBILE ═══ */
 @media(max-width:540px){
   #app-switcher { padding:0 8px; height:40px; }
@@ -1086,6 +1091,11 @@ td.r{text-align:right}
 }
 @media(max-width:380px){
   #btn-analyser span,#btn-portfolio span { display:none; }
+}
+/* Live Lookup fetch row — stack so the Fetch button is never squeezed off-screen */
+@media(max-width:640px){
+  .fetch-row { grid-template-columns:1fr !important; }
+  #fetchBtn { width:100%; }
 }
 /* Analyser header mobile */
 @media(max-width:600px){
@@ -1127,15 +1137,15 @@ td.r{text-align:right}
 <!-- MiyeeStock Buddy App Switcher -->
 <div id="app-switcher" style="position:fixed;top:0;left:0;right:0;height:44px;background:#0f172a;border-bottom:1px solid #1e293b;z-index:10000;display:flex;align-items:center;justify-content:space-between;padding:0 12px;box-shadow:0 2px 12px rgba(0,0,0,.4);">
   <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#a855f7);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(124,108,245,.45);">🐂</div>
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#0891b2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(245,158,11,.45);">🐂</div>
     <div class="as-brand-text">
-      <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.1;white-space:nowrap;">MiyeeStock <span style="color:#a78bfa">Buddy</span></div>
+      <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.1;white-space:nowrap;">MiyeeStock <span style="color:#fbbf24">Buddy</span></div>
       <div style="font-size:9px;color:rgba(255,255,255,.4);font-weight:400;letter-spacing:.3px">by Vipin Nair</div>
     </div>
   </div>
   <div style="display:flex;gap:6px;">
-    <button id="btn-analyser" onclick="switchApp('analyser')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;">&#128269; Stock Analyser</button>
-    <button id="btn-portfolio" onclick="switchApp('portfolio')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.15);transition:all .2s;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);">&#128188; Portfolio Manager</button>
+    <button id="btn-analyser" onclick="switchApp('analyser')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#f59e0b,#0891b2);color:#fff;">&#128269; <span>Stock Analyser</span></button>
+    <button id="btn-portfolio" onclick="switchApp('portfolio')" style="padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.15);transition:all .2s;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);">&#128188; <span>Portfolio Manager</span></button>
   </div>
 </div>
 <div style="height:44px;flex-shrink:0;"></div>
@@ -1155,7 +1165,7 @@ td.r{text-align:right}
       <span class="visitor-counter" id="visitorBadgeHeader" style="display:none;padding:4px 12px;font-size:11px;">👥 <span class="visitor-num" id="visitorNumHeader">—</span></span>
       <button class="mode-switch-btn" id="marketModeBtn" onclick="showPage('marketSelectorPage')" style="display:none;">🇮🇳 India</button>
       <span class="header-badge">EDUCATIONAL TOOL</span>
-      <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark</button>
+      <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
     </div>
   </div>
 </header>
@@ -1378,7 +1388,7 @@ td.r{text-align:right}
               <div id="symbolDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;z-index:200;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.3);"></div>
             </div>
           </div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr auto;">
+          <div class="form-grid fetch-row" style="grid-template-columns:1fr 1fr auto;">
             <div class="form-group">
               <label class="form-label">Resolved Symbol</label>
               <input class="form-input" id="resolvedSymbol" placeholder="Auto-filled from search" readonly style="background:var(--surface2);color:var(--accent);font-family:'JetBrains Mono',monospace;" />
@@ -2654,7 +2664,7 @@ td.r{text-align:right}
 // ============================================================
 // THEME TOGGLE
 // ============================================================
-let isDark = true;
+let isDark = false;
 function toggleTheme() {
   isDark = !isDark;
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -9394,7 +9404,7 @@ function switchApp(app) {
   var sP = document.getElementById('section-portfolio');
   var bA = document.getElementById('btn-analyser');
   var bP = document.getElementById('btn-portfolio');
-  var activeStyle  = 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;';
+  var activeStyle  = 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s;background:linear-gradient(135deg,#f59e0b,#0891b2);color:#fff;';
   var inactiveStyle= 'padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.15);transition:all .2s;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);';
   if (app === 'analyser') {
     sA.style.display = 'block';
