@@ -4437,7 +4437,9 @@ window.SBPatternEngine = (function () {
     else if(Math.abs(price-lineNow)/lineNow<0.02&&rsiRebound(ctx,last)){signal="Reversal From Support";bias="bullish";stage="confirmed";narrative="A reversal from the rising trendline support, with RSI turning up from the 30 level, suggests buying interest at support.";}
     else return null;
     const rtl0=Math.min(...res.touches);
-    const graphics={ lines:[{points:[{time:ctx.d[rtl0].time,value:res.slope*rtl0+res.intercept},{time:ctx.d[last].time,value:res.slope*last+res.intercept}],color:bias==="bearish"?"#ef5350":"#26a69a",width:2,title:"Trendline"}],
+    // Built from pivot LOWS with a positive slope, so it is a support line and is
+    // always drawn green as one — a breakdown changes the signal, not the geometry.
+    const graphics={ lines:[{points:[{time:ctx.d[rtl0].time,value:res.slope*rtl0+res.intercept},{time:ctx.d[last].time,value:res.slope*last+res.intercept}],color:"#26a69a",width:2,title:"Rising Support"}],
       markers:[{time:ctx.d[last].time,position:bias==="bearish"?"aboveBar":"belowBar",color:bias==="bearish"?"#ef5350":"#26a69a",shape:bias==="bearish"?"arrowDown":"arrowUp",text:signal}] };
     return card({ pattern:"Rising Trendline", signal, bias, stage, narrative, levels:{trendline:+lineNow.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:res.touches.length,geometryFit:+res.r2.toFixed(3)}, graphics });
   }
@@ -4457,9 +4459,12 @@ window.SBPatternEngine = (function () {
     const lineNow=lineAt(last);
     if(lineNow<=0 || C[last] <= lineNow*1.003) return null;
 
-    // 3. MAJOR SWING HIGH = highest high inside the pattern, not the last touch.
-    let swingIdx=t0; for(let i=t0;i<=tN;i++) if(H[i]>H[swingIdx]) swingIdx=i;
-    const prevHigh=H[swingIdx];
+    // 3. PREV SWING HIGH = the most recent swing high price must clear. The
+    //    pattern-wide maximum sits back at the pattern's origin and is NOT the
+    //    relevant local structure — anchoring there puts the level in empty space.
+    const priorPivots = ph.filter(p => p <= last-2);
+    const swingIdx = priorPivots.length ? priorPivots[priorPivots.length-1] : tN;
+    const prevHigh = H[swingIdx];
 
     // 4. SMA20 AS A DYNAMIC BOUNDARY — breaking a trendline while still under a
     //    falling 20-day average is a weak breakout, so it stays unconfirmed.
@@ -4491,14 +4496,15 @@ window.SBPatternEngine = (function () {
     if(maRising && aboveMA) narrative+=" A rising 20-day average confirms the trend has turned.";
     if(!volOk && stage==="confirmation_pending") narrative+=" Volume has not expanded, so treat it as pending until it does.";
 
-    // Once broken the line is drawn as support, not resistance.
-    const flipped = polarity==="flipped_support";
+    // GEOMETRY FIXES THE ROLE: this line is built from pivot HIGHS with a negative
+    // slope, so it is a resistance line and is always drawn red as one. That it may
+    // act as support after a break is stated in the narrative, never by recolouring
+    // it green — doing that made the overhead resistance appear to vanish.
     const graphics={ lines:[
       {points:[{time:d[t0].time,value:lineAt(t0)},{time:d[last].time,value:lineNow}],
-       color:flipped?"#26a69a":"#ef5350",width:2,title:flipped?"Trendline (now support)":"Falling Resistance"},
+       color:"#ef5350",width:2,title:"Falling Resistance"},
       {points:[{time:d[swingIdx].time,value:prevHigh},{time:d[last].time,value:prevHigh}],
-       color:clearedSwing?"#26a69a":"#3b82f6",width:1,dashed:true,
-       title:clearedSwing?"Prev High (now support)":"Prev Swing High"},
+       color:"#3b82f6",width:1,dashed:true,title:"Prev Swing High"},
     ], markers:[{time:d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
     if(clearedSwing && height>0)
       graphics.lines.push({points:[{time:d[t0].time,value:target},{time:d[last].time,value:target}],
