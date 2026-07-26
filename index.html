@@ -4478,8 +4478,18 @@ window.SBPatternEngine = (function () {
     const clearedSwing = C[last] > prevHigh;
     const target = clearedSwing ? +(prevHigh + height*0.618).toFixed(2) : +prevHigh.toFixed(2);
 
+    // BREAKOUT CANDLE = the first close that cleared the line after the pattern.
+    let boIdx=-1;
+    for(let i=tN;i<=last;i++){ const ln=lineAt(i); if(ln>0 && C[i]>ln*1.003){ boIdx=i; break; } }
+    if(boIdx<0) boIdx=last;
+
+    // VOLUME FILTER — the breakout candle must trade above its own 20-bar average
+    // volume. Without that the break is never promoted to "confirmed".
+    const boVolMa=ctx.volMa[boIdx], boVol=ctx.V[boIdx];
+    const volOk = isFinite(boVolMa) && boVolMa>0 && boVol>boVolMa;
+    const volX = volOk ? boVol/boVolMa : 0;
+
     const ind=confluence(ctx,last);
-    const volOk = ind.includes("Volume expansion");
 
     let signal,stage,narrative,polarity;
     if(!aboveMA){
@@ -4494,18 +4504,31 @@ window.SBPatternEngine = (function () {
     }
     if(ind.includes("MACD golden crossover")) narrative+=" A MACD golden crossover supports the shift in momentum.";
     if(maRising && aboveMA) narrative+=" A rising 20-day average confirms the trend has turned.";
-    if(!volOk && stage==="confirmation_pending") narrative+=" Volume has not expanded, so treat it as pending until it does.";
+    narrative += volOk
+      ? ` The breakout candle traded ${volX.toFixed(1)}× its 20-bar average volume, validating the move.`
+      : ` The breakout candle did not exceed its 20-bar average volume, so it stays unconfirmed until it does.`;
 
     // GEOMETRY FIXES THE ROLE: this line is built from pivot HIGHS with a negative
     // slope, so it is a resistance line and is always drawn red as one. That it may
     // act as support after a break is stated in the narrative, never by recolouring
     // it green — doing that made the overhead resistance appear to vanish.
+    // FLIP CONVERSION — the line stays RED where it capped price, then the segment
+    // from the breakout onward is redrawn GREEN as the retest zone. Both segments
+    // carry seg:true so the renderer keeps them as segments instead of extending
+    // each one across the whole chart.
     const graphics={ lines:[
-      {points:[{time:d[t0].time,value:lineAt(t0)},{time:d[last].time,value:lineNow}],
-       color:"#ef5350",width:2,title:"Falling Resistance"},
+      {points:[{time:d[t0].time,value:lineAt(t0)},{time:d[boIdx].time,value:lineAt(boIdx)}],
+       color:"#ef5350",width:2,seg:true,title:"Falling Resistance"},
       {points:[{time:d[swingIdx].time,value:prevHigh},{time:d[last].time,value:prevHigh}],
        color:"#3b82f6",width:1,dashed:true,title:"Prev Swing High"},
-    ], markers:[{time:d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal}] };
+    ], markers:[
+      {time:d[boIdx].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"},
+    ] };
+    if(boIdx<last)
+      graphics.lines.splice(1,0,{points:[{time:d[boIdx].time,value:lineAt(boIdx)},{time:d[last].time,value:lineNow}],
+        color:"#26a69a",width:2,seg:true,title:"Flipped Support (retest zone)"});
+    if(boIdx!==last)
+      graphics.markers.push({time:d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:signal});
     if(clearedSwing && height>0)
       graphics.lines.push({points:[{time:d[t0].time,value:target},{time:d[last].time,value:target}],
         color:"#3b82f6",width:1,dashed:true,title:"Target"});
@@ -5279,7 +5302,9 @@ function drawPatternChart(card) {
     // A two-point diagonal is a trendline: extend it across the whole chart the
     // way charting software does, clipped to the price band so a steep slope
     // cannot run off and blow out the scale.
-    if (pts.length === 2 && pts[1].time !== pts[0].time) {
+    // seg:true means the span itself is meaningful (e.g. the resistance half vs the
+    // flipped-support half of a broken trendline) — draw it as-is, never extend it.
+    if (pts.length === 2 && pts[1].time !== pts[0].time && !ln.seg) {
       const slope = (pts[1].value-pts[0].value)/(pts[1].time-pts[0].time);
       const at = t => pts[0].value + slope*(t-pts[0].time);
       let a = tFirst, b = tLast;
