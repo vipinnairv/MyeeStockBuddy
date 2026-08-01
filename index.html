@@ -3635,7 +3635,7 @@ async function fetchSymbolData() {
 
   // ── 2. Build live-fetch strategies ───────────────────────────────────────
   const to   = Math.floor(Date.now() / 1000);
-  const from = to - 400 * 24 * 3600; // ~13 months
+  const from = to - 1825 * 24 * 3600; // ~5 years, so the backtest reaches n>=30 triggers
   const enc  = encodeURIComponent;
 
   // BYOK keys
@@ -3651,7 +3651,7 @@ async function fetchSymbolData() {
   // India: exchange=NSE or BSE; US: no exchange param needed
   const tdExchange = isCrypto ? '' : (isUS ? '' : (exch === 'BSE' ? '&exchange=BSE' : '&exchange=NSE'));
   const tdSym      = isCrypto ? sym.replace('-USD','') + '/USD' : sym;
-  const tdUrl      = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(tdSym)}${tdExchange}&interval=1day&outputsize=365&format=JSON&apikey=${tdKey}`;
+  const tdUrl      = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(tdSym)}${tdExchange}&interval=1day&outputsize=1300&format=JSON&apikey=${tdKey}`;
 
   // FMP — direct CORS (US stocks only, no India/crypto in free tier)
   const fmpFrom = new Date(from*1000).toISOString().slice(0,10);
@@ -3719,7 +3719,7 @@ async function fetchSymbolData() {
           return { 'Date':fmt, 'Open Price':o.toFixed(2),
             'High Price':Math.max(h, o, adjC).toFixed(2), 'Low Price':Math.min(l, o, adjC).toFixed(2),
             'Close Price':adjC.toFixed(2), 'Total Traded Quantity':(+(v['6. volume']||0)).toString() };
-        }).filter(r => +r['Close Price'] > 0).slice(-400);
+        }).filter(r => +r['Close Price'] > 0).slice(-1300);
 
     } else if (strat.src === 'td') {
       // TwelveData time_series
@@ -3743,7 +3743,7 @@ async function fetchSymbolData() {
         const fmt = new Date(v.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
         return { 'Date':fmt, 'Open Price':(+v.open).toFixed(2), 'High Price':(+v.high).toFixed(2), 'Low Price':(+v.low).toFixed(2),
           'Close Price':(+v.adjClose||+v.close).toFixed(2), 'Total Traded Quantity':(+(v.volume||0)).toString() };
-      }).filter(r => +r['Close Price'] > 0).slice(-400);
+      }).filter(r => +r['Close Price'] > 0).slice(-1300);
 
     } else if (strat.src === 'yf') {
       // Yahoo Finance v8 chart JSON
@@ -4071,7 +4071,11 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
   const sarTrend = psar.trend[idx] ?? 0;
   const sarV     = psar.sar[idx] ?? c;
   const obvV     = obv[idx] ?? 0, obvPrev = obv[idx-5] ?? obvV;
-  const stV      = supertrend.trend[idx] ?? 0;
+  // Supertrend: derive direction strictly from price vs the ST line so the rule
+  // "Price > line = BULLISH" always holds (and export the real line for the UI,
+  // which previously showed the Parabolic SAR value by mistake).
+  const stLine   = supertrend.st[idx] ?? c;
+  const stV      = c > stLine ? 1 : -1;
   const willRV   = willR[idx] ?? -50;
   const mfiV     = mfi[idx] ?? 50;
   const emaBull  = emaCross.bullish;
@@ -4198,15 +4202,19 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
   const bullCount = sigs.filter(s => s.dir > 0).length;
   const bearCount = sigs.filter(s => s.dir < 0).length;
 
-  const getSignal = (bias) => {
-    const tBuy  = { swing:63, short:60, long:55 }[bias];
-    const tSell = { swing:37, short:40, long:45 }[bias];
-    if (score >= tBuy)  return 'BUY';
-    if (score <= tSell) return 'SELL';
-    return 'HOLD';
-  };
+  // ── ADX market-regime gate ────────────────────────────────────────────
+  // Below 20 the market is ranging; trend-following indicators (Supertrend,
+  // MA crosses, SAR) fire false signals, so the verdict is clamped to HOLD/CHOP
+  // and confidence capped, overriding the raw score.
+  const regime = adxV < 20 ? 'chop' : (adxV < 25 ? 'weak' : 'trend');
+  const isChop = regime === 'chop';
 
-  const conf = Math.min(100, Math.round(Math.abs(score - 50) * 2));
+  // Score → verdict:  0-35 SELL · 36-65 HOLD · 66-100 BUY  (unified thresholds).
+  const rawSignal = () => (score >= 66 ? 'BUY' : score <= 35 ? 'SELL' : 'HOLD');
+  const verdict   = isChop ? 'HOLD' : rawSignal();
+
+  let conf = Math.min(100, Math.round(Math.abs(score - 50) * 2));
+  if (isChop) conf = Math.min(conf, 25);   // ranging market → Low confidence
 
   // Key levels (50-bar lookback) + Fibonacci
   const safeSlice = arr => arr.slice(Math.max(0, idx-50), idx+1).filter(v => v > 0);
@@ -4220,21 +4228,32 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
     f618: (resist - diff * 0.618).toFixed(2),
     f786: (resist - diff * 0.786).toFixed(2),
   };
+  const f2 = v => (+v).toFixed(2);
 
-  const swingSL  = Math.max(c - atrV * 2, support * 0.99);
-  const swingTgt = c + atrV * 3;
-  const shortSL  = Math.max(c - atrV * 3, support * 0.98);
-  const shortTgt = c + atrV * 5;
-  const longSL   = support * 0.97;
-  const longTgt  = resist + diff * 0.618; // Fibonacci extension
-
-  const calcRR = (tgt, sl) => { const r = c - sl; return r > 0 ? ((tgt - c) / r).toFixed(1) : 'N/A'; };
-  const f2 = v => v.toFixed(2);
+  // ── Direction-aware Target / Stop-Loss ────────────────────────────────
+  // BUY/HOLD → Target above price, Stop below.  SELL → Target below, Stop above.
+  // RR is computed with the risk/reward legs on the correct side of price.
+  function mkLevels(sig, buySL, buyTgt, sellSL, sellTgt) {
+    const sl  = sig === 'SELL' ? sellSL  : buySL;
+    const tgt = sig === 'SELL' ? sellTgt : buyTgt;
+    const risk   = sig === 'SELL' ? (sl - c) : (c - sl);
+    const reward = sig === 'SELL' ? (c - tgt) : (tgt - c);
+    const rr = risk > 0 ? (reward / risk).toFixed(1) : 'N/A';
+    return { signal:sig, confidence:conf, target:f2(tgt), sl:f2(sl), rr };
+  }
+  const swing = mkLevels(verdict,
+    Math.max(c - atrV*2, support*0.99), c + atrV*3,             // BUY: sl below, tgt above
+    Math.min(c + atrV*2, resist*1.01),  c - atrV*3);            // SELL: sl above, tgt below
+  const short = mkLevels(verdict,
+    Math.max(c - atrV*3, support*0.98), c + atrV*5,
+    Math.min(c + atrV*3, resist*1.02),  c - atrV*5);
+  const long  = mkLevels(verdict,
+    support*0.97, resist + diff*0.618,                          // BUY: structural
+    resist*1.03,  Math.max(c*0.5, support - diff*0.618));       // SELL: mirror down
 
   return {
-    swing: { signal:getSignal('swing'), confidence:conf, target:f2(swingTgt), sl:f2(swingSL), rr:calcRR(swingTgt,swingSL) },
-    short: { signal:getSignal('short'), confidence:conf, target:f2(shortTgt), sl:f2(shortSL), rr:calcRR(shortTgt,shortSL) },
-    long:  { signal:getSignal('long'),  confidence:conf, target:f2(longTgt),  sl:f2(longSL),  rr:calcRR(longTgt,longSL) },
+    swing, short, long,
+    verdict, regime, isChop, adxGate:isChop,
     score, bullCount, bearCount,
     rsiV, macdV, sigV, histV, macdCrossUp, macdCrossDown,
     sma20v, sma50v, sma200v, bbD, atrV,
@@ -4242,7 +4261,7 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
     stochK: stochK.toFixed(1), stochD: stochD.toFixed(1), stochCrossUp, stochCrossDown,
     cciV: cciV.toFixed(1),
     adxV: adxV.toFixed(1), pDIV: pDIV.toFixed(1), mDIV: mDIV.toFixed(1),
-    sarV: f2(sarV), sarTrend, stV,
+    sarV: f2(sarV), sarTrend, stV, stLine: f2(stLine),
     willRV: willRV.toFixed(1), mfiV: mfiV.toFixed(1),
     emaBull, emaCrossUp, emaCrossDown, rsiDiv,
     entryIdeal: f2(c), entryAggressive: f2(c * 1.005), entryConservative: f2(c * 0.99),
@@ -5091,11 +5110,23 @@ function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0
   const atr = trCount > 0 ? trSum / trCount : 0;
   const currentRange = currentDay.high - currentDay.low;
   const isExpanding = currentRange > atr;
+
+  // Volume-spike filter — a breakout on above-average volume is far more likely
+  // to hold. Uses traded volume as a proxy; true NSE/BSE *delivery* % is not
+  // available from the free OHLCV feeds and needs a bhavcopy/BYOK source.
+  const volWin = priceData.slice(-(lookbackPeriod + 1), -1).map(d => d.volume || 0);
+  const avgVol = volWin.length ? volWin.reduce((a, v) => a + v, 0) / volWin.length : 0;
+  const curVol = currentDay.volume || 0;
+  const volSpikePct = avgVol > 0 ? ((curVol / avgVol) - 1) * 100 : 0;
+  const isVolSpike = avgVol > 0 && curVol >= 1.5 * avgVol;   // >=50% above 20-day average
+
   return {
-    isBreakout: isConsolidating && isBreakingOut && isExpanding,
-    isConsolidating, isBreakingOut, isExpanding,
+    // Breakout now requires a volume spike alongside the range/consolidation gates.
+    isBreakout: isConsolidating && isBreakingOut && isExpanding && isVolSpike,
+    isConsolidating, isBreakingOut, isExpanding, isVolSpike,
     consolidationPct, resistanceLevel: recentMax, supportLevel: recentMin,
-    currentClose: currentDay.close, currentRange, atr
+    currentClose: currentDay.close, currentRange, atr,
+    avgVol, curVol, volSpikePct
   };
 }
 
@@ -5821,7 +5852,7 @@ function renderResults() {
     { label:'RSI (14)',        value:signals.rsiV?.toFixed(1)||'--', sub:signals.rsiV<30?'⚡ Oversold':signals.rsiV>70?'🔥 Overbought':'— Neutral', cls:signals.rsiV<30?'up':signals.rsiV>70?'down':'neutral', color:'var(--blue)' },
     { label:'Stoch %K / %D',  value:`${signals.stochK} / ${signals.stochD}`, sub:signals.stochCrossUp?'🟢 Bull Cross':signals.stochCrossDown?'🔴 Bear Cross':parseFloat(signals.stochK)<20?'Oversold':parseFloat(signals.stochK)>80?'Overbought':'Neutral', cls:parseFloat(signals.stochK)<20?'up':parseFloat(signals.stochK)>80?'down':'neutral', color:'var(--cyan)' },
     { label:'ADX',             value:signals.adxV||'--', sub:parseFloat(signals.adxV)>40?'💪 Strong':parseFloat(signals.adxV)>25?'📈 Trending':'〰 Ranging', cls:parseFloat(signals.adxV)>25?'up':'neutral', color:'var(--purple)' },
-    { label:'Supertrend',      value:signals.stV===1?'BULLISH ▲':'BEARISH ▼', sub:`Line ₹${signals.sarV}`, cls:signals.stV===1?'up':'down', color:signals.stV===1?'var(--green)':'var(--red)' },
+    { label:'Supertrend',      value:signals.stV===1?'BULLISH ▲':'BEARISH ▼', sub:`Line ${CUR()}${signals.stLine}`, cls:signals.stV===1?'up':'down', color:signals.stV===1?'var(--green)':'var(--red)' },
     { label:'MFI (14)',        value:signals.mfiV||'--', sub:parseFloat(signals.mfiV)<=20?'⚡ Oversold':parseFloat(signals.mfiV)>=80?'🔥 Overbought':'— Neutral', cls:parseFloat(signals.mfiV)<=20?'up':parseFloat(signals.mfiV)>=80?'down':'neutral', color:'var(--accent)' },
     { label:'ATR (14)',        value:`${CUR()}${signals.atrV?.toFixed(0)||'--'}`, sub:`${((signals.atrV/currentPrice)*100).toFixed(1)}% daily range`, cls:'neutral', color:'var(--text3)' },
     { label:'Score',           value:`${signals.score.toFixed(0)}/100`, sub:`${signals.bullCount}↑ ${signals.bearCount}↓ · ${signals.bullCount+signals.bearCount} indicators`, cls:signals.score>=60?'up':signals.score<=40?'down':'neutral', color:signals.score>=60?'var(--green)':signals.score<=40?'var(--red)':'var(--accent)' },
@@ -5835,17 +5866,20 @@ function renderResults() {
 
   // VERDICT
   const sc = signals.score;
-  const oSig = signals.long.signal;
+  const oSig = signals.verdict;
+  const oLabel = signals.isChop ? 'HOLD · CHOP' : oSig;
   const oCol = oSig==='BUY'?'rgba(16,185,129,0.12)':oSig==='SELL'?'rgba(239,68,68,0.12)':'rgba(0,106,255,0.12)';
   const oBrd = oSig==='BUY'?'var(--green)':oSig==='SELL'?'var(--red)':'var(--accent)';
-  const vDesc = oSig==='BUY'
+  const vDesc = signals.isChop
+    ? `ADX is ${signals.adxV} — the market is ranging (below 20), where trend signals are unreliable. Verdict forced to HOLD and confidence capped regardless of the ${signals.bullCount} bullish / ${signals.bearCount} bearish split. Wait for a directional trend (ADX &gt; 25) before acting.`
+    : oSig==='BUY'
     ? `${signals.bullCount} of ${signals.bullCount+signals.bearCount} technical indicators are bullish. Price structure and momentum favour buyers. Look to enter on dips near support.`
     : oSig==='SELL'
     ? `${signals.bearCount} of ${signals.bullCount+signals.bearCount} technical indicators are bearish. Price structure is weak. Caution advised — exits or cash is the safer play.`
     : `Signals are evenly split — ${signals.bullCount} bullish and ${signals.bearCount} bearish. Wait for a decisive breakout in either direction before committing capital.`;
   document.getElementById('verdictBanner').innerHTML = `
     <div class="verdict-banner" style="background:${oCol};border:1px solid ${oBrd};">
-      <div class="verdict-signal ${oSig}">${oSig}</div>
+      <div class="verdict-signal ${oSig}">${oLabel}</div>
       <div class="verdict-meta">
         <div class="verdict-title">Overall Technical Verdict · Confidence ${signals.long.confidence}%</div>
         <div class="verdict-desc">${vDesc}</div>
@@ -5871,6 +5905,7 @@ function renderResults() {
           ${chk('Tight Range', bo.isConsolidating, `${(bo.consolidationPct*100).toFixed(1)}% (≤10%)`)}
           ${chk('Resistance Break', bo.isBreakingOut, `${CUR()}${bo.currentClose.toFixed(2)} vs ${CUR()}${bo.resistanceLevel.toFixed(2)}`)}
           ${chk('Range Expansion', bo.isExpanding, `${CUR()}${bo.currentRange.toFixed(2)} vs ATR ${CUR()}${bo.atr.toFixed(2)}`)}
+          ${chk('Volume Spike', bo.isVolSpike, `${bo.volSpikePct>=0?'+':''}${bo.volSpikePct.toFixed(0)}% vs 20-day avg (≥+50%)`)}
         </div>
         ${on?`<div style="margin-top:9px;font-size:12px;color:var(--text2);line-height:1.6;">Price cleared <b>${CUR()}${bo.resistanceLevel.toFixed(2)}</b> resistance on an expanding-range day — a momentum entry trigger. Invalidation: a close back below <b>${CUR()}${bo.supportLevel.toFixed(2)}</b> (consolidation floor).</div>`:`<div style="margin-top:9px;font-size:11.5px;color:var(--text3);">All three conditions must turn green for a valid breakout. Currently waiting.</div>`}
       </div>`;
