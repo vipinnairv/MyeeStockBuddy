@@ -1047,28 +1047,11 @@ td.r{text-align:right}
 </head>
 <body>
 
-<!-- Bull head logo mark. Angular/geometric rather than rounded so it reads as a
-     logo at 20px instead of a cartoon. Defined once, referenced everywhere. -->
+<!-- Charging-bull logo mark (user-supplied). Uses currentColor so each mount
+     tints it. Defined once, referenced everywhere via <use href="#ico-bull">. -->
 <svg width="0" height="0" style="position:absolute;pointer-events:none" aria-hidden="true" focusable="false">
   <defs>
-    <symbol id="ico-bull" viewBox="0 0 64 64">
-      <g fill="currentColor">
-        <!-- Horns sweep WIDE sideways first, then hook up to a point. Broad
-             upward shapes read as ears (donkey), a lateral span reads as horns. -->
-        <path d="M21,29 C12,29 5,26 2,19 C1,15 1,11 2,7 C5,12 8,17 13,20 C16,22 19,23 22,23 Z"/>
-        <path d="M43,29 C52,29 59,26 62,19 C63,15 63,11 62,7 C59,12 56,17 51,20 C48,22 45,23 42,23 Z"/>
-        <!-- Wide, blunt head: roughly as broad as it is tall, never elongated. -->
-        <path d="M20,24 C25,20 39,20 44,24 C47,28 47,34 45,39 C43,45 38,50 32,50 C26,50 21,45 19,39 C17,34 17,28 20,24 Z"/>
-        <!-- Broad muzzle -->
-        <ellipse cx="32" cy="43" rx="10" ry="7"/>
-      </g>
-      <g fill="rgba(0,0,0,.55)">
-        <path d="M23,29 L30,31.5 L23,34 Z"/>
-        <path d="M41,29 L34,31.5 L41,34 Z"/>
-        <ellipse cx="28.5" cy="44" rx="2.2" ry="1.6"/>
-        <ellipse cx="35.5" cy="44" rx="2.2" ry="1.6"/>
-      </g>
-    </symbol>
+    <symbol id="ico-bull" viewBox="0 0 463 463"><g fill="currentColor"><path d="M303.5,201.284h-32c-14.215,0-22.196,11.409-28.609,20.575c-3.929,5.617-7.992,11.425-11.391,11.425 s-7.462-5.808-11.391-11.425c-6.413-9.167-14.394-20.575-28.609-20.575h-32c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h32 c5.957,0,10.328,5.612,16.317,14.173c5.845,8.356,12.471,17.827,23.683,17.827s17.837-9.471,23.683-17.827 c5.989-8.562,10.36-14.173,16.317-14.173h32c4.142,0,7.5-3.358,7.5-7.5S307.642,201.284,303.5,201.284z"/><path d="M393.71,78.752c-19.089-10.832-37.119-21.062-43.557-33.43c-1.595-3.065-5.081-4.644-8.436-3.822 c-3.356,0.821-5.717,3.83-5.717,7.285c0,19.682,13.366,34.986,26.292,49.787c11.269,12.902,21.912,25.089,21.708,38.096 c-0.377,24.12-46.618,32.617-56.501,32.617c-0.19,0-0.376,0.014-0.562,0.028c-7.199-6.453-17.868-8.876-28.305-11.245 c-5.492-1.246-11.17-2.535-16.762-4.399c-5.734-1.911-10.591-4.341-15.288-6.691c-9.525-4.766-19.375-9.693-35.083-9.693 s-25.558,4.928-35.083,9.693c-4.697,2.35-9.554,4.78-15.288,6.691c-5.592,1.864-11.27,3.153-16.762,4.399 c-10.437,2.368-21.106,4.792-28.305,11.245c-0.186-0.014-0.372-0.028-0.562-0.028c-9.883,0-56.124-8.497-56.501-32.617 c-0.203-13.007,10.44-25.194,21.708-38.096C113.634,83.771,127,68.466,127,48.784c0-3.456-2.361-6.464-5.717-7.285 c-3.358-0.821-6.84,0.756-8.436,3.822C106.409,57.69,88.379,67.92,69.29,78.752C36.812,97.181,0,118.069,0,159.784 c0,25.216,16.564,48.449,47.901,67.187c22.422,13.407,48.117,21.983,65.885,25.914c-1.102,7.575-1.785,14.442-1.785,19.899 c0,30.031,30.353,49.932,48.487,61.822c3.631,2.38,7.931,5.201,10.294,7.104c-1.207,2.804-2.161,6.086-2.711,10.042 c-2.157,15.531,6.3,29.171,22.071,35.598c0.205,0.083,0.419,0.156,0.627,0.237c-0.395,1.52-0.785,3.265-1.084,5.143 c-1.422,8.931-0.054,15.953,4.066,20.871c10.284,12.274,22.265,7.705,29.422,4.974c3.088-1.178,6.004-2.291,8.327-2.291 s5.239,1.113,8.327,2.291c3.53,1.347,8.234,3.141,13.328,3.141c5.235,0,10.882-1.895,16.094-8.115 c4.121-4.917,5.489-11.939,4.066-20.871c-0.299-1.878-0.689-3.624-1.084-5.143c0.208-0.081,0.422-0.154,0.627-0.237 c15.771-6.426,24.228-20.066,22.071-35.598c-0.549-3.956-1.504-7.238-2.711-10.042c2.364-1.902,6.664-4.723,10.294-7.104 C320.647,322.717,351,302.816,351,272.784c0-5.457-0.684-12.323-1.785-19.899c17.768-3.931,43.462-12.507,65.885-25.914 C446.436,208.234,463,185.001,463,159.784C463,118.069,426.188,97.181,393.71,78.752z M55.599,214.097 C37.078,203.023,15,184.611,15,159.784c0-32.98,31.363-50.776,61.693-67.987c7.03-3.989,13.928-7.903,20.317-11.955 c-2.424,2.934-4.996,5.879-7.601,8.862c-12.636,14.468-25.702,29.429-25.409,48.197c0.517,33.1,44.529,44.258,64.06,46.779 c-0.658,2.948-1.442,6.367-2.31,10.154c-2.926,12.752-6.65,28.986-9.484,44.242C99.789,234.366,76.223,226.429,55.599,214.097z M257.751,403.968c-3.148,3.758-4.922,3.513-12.578,0.592c-4.025-1.536-8.587-3.276-13.673-3.276s-9.648,1.74-13.673,3.276 c-7.654,2.919-9.429,3.166-12.578-0.593c-1.844-2.201-1.151-8.41,0.216-13.337c0.576,0.023,1.152,0.044,1.726,0.044 c5.351,0,10.582-1.019,14.975-3.283c2.237,2.813,5.153,4.893,9.335,4.893c4.181,0,7.098-2.08,9.334-4.893 c4.393,2.264,9.624,3.283,14.975,3.283c0.577,0,1.155-0.021,1.733-0.044C258.924,395.607,259.554,401.816,257.751,403.968z M294.288,322.063c-4.354,2.855-7.974,5.228-10.798,7.442c-0.393-0.399-0.785-0.794-1.172-1.183 c-6.073-6.096-11.318-11.36-11.318-31.537c0-5.95,0.14-11.449,0.486-16.501c0.005,0,0.009,0.001,0.014,0.001 c12.403,0,22.124-3.453,28.892-10.263c8.849-8.904,10.356-21.039,10.583-29.737h0.525c4.142,0,7.5-3.358,7.5-7.5 s-3.358-7.5-7.5-7.5h-8c-41.746,0-47.5,34.364-47.5,71.5c0,26.374,8.701,35.107,15.692,42.124c4.414,4.431,7.33,7.357,8.379,14.908 c1.646,11.856-7.359,17.396-12.874,19.643c-7.263,2.958-14.929,2.781-19.132,0.785c2.366-4.147,4.377-5.96,7.434-5.96 c4.142,0,7.5-3.358,7.5-7.5s-3.358-7.5-7.5-7.5c-14.229,0-20.084,12.269-23.583,19.6c-0.13,0.273-0.271,0.567-0.417,0.872 c-0.146-0.305-0.287-0.599-0.417-0.872c-3.499-7.331-9.354-19.6-23.583-19.6c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5 c3.057,0,5.069,1.813,7.435,5.96c-4.203,1.996-11.87,2.174-19.132-0.785c-5.515-2.247-14.52-7.787-12.874-19.643 c1.049-7.55,3.965-10.477,8.379-14.908c6.991-7.017,15.692-15.75,15.692-42.124c0-37.136-5.754-71.5-47.5-71.5h-8 c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h0.525c0.228,8.698,1.735,20.833,10.583,29.737 c6.755,6.797,16.453,10.249,28.823,10.262c0.376,4.906,0.569,10.379,0.569,16.501c0,20.177-5.245,25.441-11.318,31.537 c-0.387,0.389-0.779,0.784-1.172,1.183c-2.824-2.213-6.444-4.587-10.798-7.442C152.102,311.172,127,294.714,127,272.784 c0-17.315,8.37-53.798,13.371-75.595c0.928-4.044,1.765-7.691,2.45-10.778c1.718-7.733,8.539-10.011,24.865-13.715 c5.574-1.265,11.892-2.699,18.186-4.796c6.747-2.249,12.331-5.042,17.257-7.507c9.054-4.53,16.206-8.108,28.372-8.108 s19.317,3.578,28.372,8.108c4.926,2.465,10.51,5.258,17.257,7.507c6.293,2.098,12.611,3.532,18.186,4.796 c16.326,3.705,23.146,5.982,24.865,13.715c0.686,3.086,1.522,6.734,2.45,10.778C327.63,218.987,336,255.469,336,272.784 C336,294.714,310.898,311.172,294.288,322.063z M273.494,265.223c3.081-13.845,9.587-22.13,22.45-24.334 c-0.256,6.245-1.4,13.738-6.191,18.558C286.224,262.999,280.745,264.924,273.494,265.223z M189.335,265.218 c-7.167-0.322-12.586-2.247-16.088-5.771c-4.818-4.848-5.947-12.399-6.194-18.666C178.067,242.417,185.617,248.52,189.335,265.218z M407.401,214.097c-20.623,12.332-44.19,20.269-60.667,23.98c-2.835-15.256-6.559-31.49-9.484-44.242 c-0.869-3.787-1.653-7.207-2.31-10.154c19.531-2.521,63.543-13.68,64.06-46.779c0.293-18.769-12.773-33.729-25.409-48.197 c-2.605-2.983-5.177-5.928-7.601-8.862c6.389,4.052,13.288,7.966,20.317,11.955c30.33,17.21,61.693,35.006,61.693,67.987 C448,184.611,425.922,203.023,407.401,214.097z"/></g></symbol>
   </defs>
 </svg>
 
@@ -1184,7 +1167,7 @@ html,body{overflow-x:hidden;}
 <!-- MiyeeStock Buddy App Switcher -->
 <div id="app-switcher" style="position:fixed;top:0;left:0;right:0;height:44px;background:#0f172a;border-bottom:1px solid #1e293b;z-index:10000;display:flex;align-items:center;justify-content:space-between;padding:0 12px;box-shadow:0 2px 12px rgba(0,0,0,.4);">
   <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#006aff,#0052cc);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,106,255,.45);"><svg viewBox="0 0 64 64" style="width:18px;height:18px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#006aff,#0052cc);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,106,255,.45);"><svg viewBox="0 0 463 463" style="width:18px;height:18px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
     <div class="as-brand-text">
       <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.1;white-space:nowrap;">MiyeeStock <span style="color:#fbbf24">Buddy</span></div>
       <div style="font-size:9px;color:rgba(255,255,255,.4);font-weight:400;letter-spacing:.3px">by Vipin Nair</div>
@@ -1202,7 +1185,7 @@ html,body{overflow-x:hidden;}
 <header class="app-header">
   <div class="header-inner">
     <div class="logo-area">
-      <span class="logo-icon" style="display:inline-flex"><svg viewBox="0 0 64 64" style="width:30px;height:30px;color:var(--brand1);display:block"><use href="#ico-bull"/></svg></span>
+      <span class="logo-icon" style="display:inline-flex"><svg viewBox="0 0 463 463" style="width:30px;height:30px;color:var(--brand1);display:block"><use href="#ico-bull"/></svg></span>
       <div class="logo-text">
         <span class="logo-title">MiyeeStock Buddy</span>
         <span class="logo-sub" id="marketSubtitle">by Vipin Nair · NSE/BSE Analysis</span>
@@ -1722,7 +1705,7 @@ html,body{overflow-x:hidden;}
   </div>
 
   <footer class="app-footer">
-    <div><svg viewBox="0 0 64 64" style="width:15px;height:15px;color:currentColor;display:inline-block;vertical-align:-2px;margin-right:5px"><use href="#ico-bull"/></svg>MiyeeStock Buddy · by Vipin Nair · Built with ❤️ for Indian &amp; US Markets</div>
+    <div><svg viewBox="0 0 463 463" style="width:15px;height:15px;color:currentColor;display:inline-block;vertical-align:-2px;margin-right:5px"><use href="#ico-bull"/></svg>MiyeeStock Buddy · by Vipin Nair · Built with ❤️ for Indian &amp; US Markets</div>
     <div class="footer-disclaimer">
       ⚠️ <strong>Disclaimer:</strong> Vipin Nair is NOT a SEBI Registered Investment Advisor. This tool is for educational purposes only. Recommendations and AI analysis may vary. Macro-economic and external factors also impact stock prices significantly. Always consult a registered advisor before investing.
       <br>📧 <a href="mailto:audit.vipin@gmail.com">audit.vipin@gmail.com</a>
@@ -1807,7 +1790,7 @@ html,body{overflow-x:hidden;}
 <!-- ═══ HEADER ═══ -->
 <div id="hdr">
   <div class="brand">
-    <div class="brand-mark" style="display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 64 64" style="width:22px;height:22px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
+    <div class="brand-mark" style="display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 463 463" style="width:22px;height:22px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
     <div>
       <div class="brand-name">MiyeeStock <span style="color:var(--P)">Buddy</span></div>
       <div class="brand-by">by Vipin Nair</div>
@@ -2654,7 +2637,7 @@ html,body{overflow-x:hidden;}
 <footer style="background:var(--NV);color:rgba(255,255,255,.65);padding:24px 20px;margin-top:8px">
   <div style="max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
     <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--P),#FF9A6C);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff"><svg viewBox="0 0 64 64" style="width:20px;height:20px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
+      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--P),#FF9A6C);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff"><svg viewBox="0 0 463 463" style="width:20px;height:20px;color:#fff;display:block"><use href="#ico-bull"/></svg></div>
       <div>
         <div style="font-size:13px;font-weight:700;color:#fff">MiyeeStock <span style="color:var(--P)">Buddy</span></div>
         <div style="font-size:10.5px;opacity:.5">by Vipin Nair · Personal Investment Tracker</div>
@@ -6323,8 +6306,16 @@ async function exportAnalysisPDF() {
     const aiHTML = (aiEl && aiTxt.trim().length > 60 && !/Choose an engine|Generate AI Insights/i.test(aiTxt))
       ? aiEl.innerHTML : '';
 
+    // 3b. Capture the Reality Check card from the live verdict banner (it is
+    //     computed inline at render time and not stored on analysisResult).
+    let realityHTML = '';
+    const vb = document.getElementById('verdictBanner');
+    if (vb) for (const ch of vb.children) {
+      if (ch.innerText && ch.innerText.includes('Reality Check')) { realityHTML = ch.outerHTML; break; }
+    }
+
     // 4. Compose + print.
-    const html = _buildReportHTML(analysisResult, mainImg, patImgs, aiHTML);
+    const html = _buildReportHTML(analysisResult, mainImg, patImgs, aiHTML, realityHTML);
     const ifr = document.createElement('iframe');
     ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
     document.body.appendChild(ifr);
@@ -6342,7 +6333,7 @@ async function exportAnalysisPDF() {
   }
 }
 
-function _buildReportHTML(ar, mainImg, patImgs, aiHTML) {
+function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
   const s = ar.signals, cur = ar.market === 'NYSE' || ar.market === 'NASDAQ' || ar.market === 'AMEX' ? '$' : '₹';
   const esc = v => (v==null?'':String(v));
   const sigCol = x => x==='BUY'?'#31a745':x==='SELL'?'#ff4f55':'#d97706';
@@ -6389,9 +6380,49 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML) {
   const syn = ar.synthesis && ar.synthesis.active ? ar.synthesis.active : null;
   const synHTML = syn ? `<div class="box"><b>${esc(syn.label)}</b> <span style="color:#8a9199">(${esc(syn.state)})</span><div class="pat-narr">${esc(syn.narrative)}</div></div>` : '';
 
+  // Entry / exit / stop-loss levels
+  const eeRows = [
+    ['🟢 Aggressive Entry', s.entryAggressive, 'Buy at market now'],
+    ['🟡 Ideal Entry', s.entryIdeal, 'Current price'],
+    ['🔵 Conservative Entry', s.entryConservative, 'On a ~1% dip'],
+    ['🛑 Swing Stop', s.swing.sl, '2× ATR structural stop'],
+    ['📍 Key Support', s.support, '20-day low'],
+    ['📍 Key Resistance', s.resist, '20-day high'],
+    ['🎯 Long-term Target', s.long.target, 'ATR / fib projection'],
+  ].map(r => `<tr><td>${r[0]}</td><td><b>${cur}${r[1]}</b></td><td style="color:#5c6368">${r[2]}</td></tr>`).join('');
+
+  // Fibonacci
+  const fb = s.fib || {};
+  const fibRows = ['f236','f382','f500','f618','f786'].map(k => fb[k]!=null
+    ? `<span class="chip">${k.replace('f','').replace(/^(\d)/,'0.$1').replace('0.786','61.8→78.6')} : <b>${cur}${fb[k]}</b></span>` : '').join(' ');
+  const fibClean = `<span class="chip">23.6%: <b>${cur}${fb.f236}</b></span> <span class="chip">38.2%: <b>${cur}${fb.f382}</b></span> <span class="chip">50%: <b>${cur}${fb.f500}</b></span> <span class="chip">61.8%: <b>${cur}${fb.f618}</b></span> <span class="chip">78.6%: <b>${cur}${fb.f786}</b></span>`;
+
+  // Breakout screener
+  const bo = ar.breakout;
+  const chk = ok => ok ? '<span style="color:#31a745">✔</span>' : '<span style="color:#8a9199">✘</span>';
+  const boHTML = bo && !bo.error ? `<div class="box">
+    <b style="color:${bo.isBreakout?'#31a745':'#5c6368'}">${bo.isBreakout?'🚀 Breakout confirmed':'🔍 No breakout — watching'}</b>
+    <table class="tbl" style="margin-top:5px"><tr><th>Condition</th><th>Status</th><th>Detail</th></tr>
+      <tr><td>Tight consolidation</td><td>${chk(bo.isConsolidating)}</td><td>${(bo.consolidationPct*100).toFixed(1)}% range (≤10%)</td></tr>
+      <tr><td>Resistance break</td><td>${chk(bo.isBreakingOut)}</td><td>${cur}${bo.currentClose.toFixed(2)} vs ${cur}${bo.resistanceLevel.toFixed(2)}</td></tr>
+      <tr><td>Range expansion</td><td>${chk(bo.isExpanding)}</td><td>${cur}${bo.currentRange.toFixed(2)} vs ATR ${cur}${bo.atr.toFixed(2)}</td></tr>
+      <tr><td>Volume spike</td><td>${chk(bo.isVolSpike)}</td><td>${bo.volSpikePct>=0?'+':''}${bo.volSpikePct.toFixed(0)}% vs 20-day avg (≥+50%)</td></tr>
+    </table></div>` : '<p class="muted">Breakout screener unavailable.</p>';
+
+  // Candlestick patterns
+  const candles = (ar.patterns || []).filter(p => p.name !== 'No Clear Pattern');
+  const candleHTML = candles.length ? candles.map(p => `<div class="box" style="margin:5px 0">
+      <b>${p.icon||''} ${esc(p.name)}</b> <span style="color:${p.cls==='bullish'?'#31a745':p.cls==='bearish'?'#ff4f55':'#d97706'}">${esc(p.signal)}</span>
+      <div class="pat-narr">${esc(p.desc)}</div><div style="color:#5c6368;font-size:9.5px">📌 ${esc(p.action)}</div></div>`).join('')
+    : '<p class="muted">No strong classical candlestick pattern on the latest candle.</p>';
+
+  const realitySection = realityHTML ? `<h2>Reality Check</h2><div class="reality-wrap">${realityHTML}</div>` : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(ar.company)} — Analysis Report</title>
 <style>
-  :root{--green:#31a745;--red:#ff4f55;--accent:#006aff;--text:#1e2732;--text2:#3d4852;--text3:#5c6368;--surface:#fff;--surface2:#f2f6fa;--border:#dbe4ec}
+  :root{--green:#31a745;--red:#ff4f55;--accent:#006aff;--text:#1e2732;--text2:#3d4852;--text3:#5c6368;--surface:#fff;--surface2:#f2f6fa;--border:#dbe4ec;--border2:#d4dbe4}
+  .reality-wrap{font-size:10.5px;break-inside:avoid}
+  .reality-wrap *{max-width:100%}
   *{box-sizing:border-box}
   body{font-family:Roboto,Arial,sans-serif;color:#1e2732;font-size:11px;line-height:1.45;margin:0;padding:0}
   /* Header/footer are tucked into the reserved @page margins with negative
@@ -6425,7 +6456,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML) {
   @page{size:A4;margin:16mm 12mm 14mm 12mm}
   @media print{ .pattern,.box,.tbl,img.chart{break-inside:avoid} body{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
 </style></head><body>
-  <div class="page-header"><span><b>🐂 MiyeeStock Buddy</b> · Technical Analysis Report</span><span>${esc(ar.company)} (${esc(ar.symbol)})</span></div>
+  <div class="page-header"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 463 463" width="16" height="16" style="fill:#117b3d"><path d="M303.5,201.284h-32c-14.215,0-22.196,11.409-28.609,20.575c-3.929,5.617-7.992,11.425-11.391,11.425 s-7.462-5.808-11.391-11.425c-6.413-9.167-14.394-20.575-28.609-20.575h-32c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h32 c5.957,0,10.328,5.612,16.317,14.173c5.845,8.356,12.471,17.827,23.683,17.827s17.837-9.471,23.683-17.827 c5.989-8.562,10.36-14.173,16.317-14.173h32c4.142,0,7.5-3.358,7.5-7.5S307.642,201.284,303.5,201.284z"/><path d="M393.71,78.752c-19.089-10.832-37.119-21.062-43.557-33.43c-1.595-3.065-5.081-4.644-8.436-3.822 c-3.356,0.821-5.717,3.83-5.717,7.285c0,19.682,13.366,34.986,26.292,49.787c11.269,12.902,21.912,25.089,21.708,38.096 c-0.377,24.12-46.618,32.617-56.501,32.617c-0.19,0-0.376,0.014-0.562,0.028c-7.199-6.453-17.868-8.876-28.305-11.245 c-5.492-1.246-11.17-2.535-16.762-4.399c-5.734-1.911-10.591-4.341-15.288-6.691c-9.525-4.766-19.375-9.693-35.083-9.693 s-25.558,4.928-35.083,9.693c-4.697,2.35-9.554,4.78-15.288,6.691c-5.592,1.864-11.27,3.153-16.762,4.399 c-10.437,2.368-21.106,4.792-28.305,11.245c-0.186-0.014-0.372-0.028-0.562-0.028c-9.883,0-56.124-8.497-56.501-32.617 c-0.203-13.007,10.44-25.194,21.708-38.096C113.634,83.771,127,68.466,127,48.784c0-3.456-2.361-6.464-5.717-7.285 c-3.358-0.821-6.84,0.756-8.436,3.822C106.409,57.69,88.379,67.92,69.29,78.752C36.812,97.181,0,118.069,0,159.784 c0,25.216,16.564,48.449,47.901,67.187c22.422,13.407,48.117,21.983,65.885,25.914c-1.102,7.575-1.785,14.442-1.785,19.899 c0,30.031,30.353,49.932,48.487,61.822c3.631,2.38,7.931,5.201,10.294,7.104c-1.207,2.804-2.161,6.086-2.711,10.042 c-2.157,15.531,6.3,29.171,22.071,35.598c0.205,0.083,0.419,0.156,0.627,0.237c-0.395,1.52-0.785,3.265-1.084,5.143 c-1.422,8.931-0.054,15.953,4.066,20.871c10.284,12.274,22.265,7.705,29.422,4.974c3.088-1.178,6.004-2.291,8.327-2.291 s5.239,1.113,8.327,2.291c3.53,1.347,8.234,3.141,13.328,3.141c5.235,0,10.882-1.895,16.094-8.115 c4.121-4.917,5.489-11.939,4.066-20.871c-0.299-1.878-0.689-3.624-1.084-5.143c0.208-0.081,0.422-0.154,0.627-0.237 c15.771-6.426,24.228-20.066,22.071-35.598c-0.549-3.956-1.504-7.238-2.711-10.042c2.364-1.902,6.664-4.723,10.294-7.104 C320.647,322.717,351,302.816,351,272.784c0-5.457-0.684-12.323-1.785-19.899c17.768-3.931,43.462-12.507,65.885-25.914 C446.436,208.234,463,185.001,463,159.784C463,118.069,426.188,97.181,393.71,78.752z M55.599,214.097 C37.078,203.023,15,184.611,15,159.784c0-32.98,31.363-50.776,61.693-67.987c7.03-3.989,13.928-7.903,20.317-11.955 c-2.424,2.934-4.996,5.879-7.601,8.862c-12.636,14.468-25.702,29.429-25.409,48.197c0.517,33.1,44.529,44.258,64.06,46.779 c-0.658,2.948-1.442,6.367-2.31,10.154c-2.926,12.752-6.65,28.986-9.484,44.242C99.789,234.366,76.223,226.429,55.599,214.097z M257.751,403.968c-3.148,3.758-4.922,3.513-12.578,0.592c-4.025-1.536-8.587-3.276-13.673-3.276s-9.648,1.74-13.673,3.276 c-7.654,2.919-9.429,3.166-12.578-0.593c-1.844-2.201-1.151-8.41,0.216-13.337c0.576,0.023,1.152,0.044,1.726,0.044 c5.351,0,10.582-1.019,14.975-3.283c2.237,2.813,5.153,4.893,9.335,4.893c4.181,0,7.098-2.08,9.334-4.893 c4.393,2.264,9.624,3.283,14.975,3.283c0.577,0,1.155-0.021,1.733-0.044C258.924,395.607,259.554,401.816,257.751,403.968z M294.288,322.063c-4.354,2.855-7.974,5.228-10.798,7.442c-0.393-0.399-0.785-0.794-1.172-1.183 c-6.073-6.096-11.318-11.36-11.318-31.537c0-5.95,0.14-11.449,0.486-16.501c0.005,0,0.009,0.001,0.014,0.001 c12.403,0,22.124-3.453,28.892-10.263c8.849-8.904,10.356-21.039,10.583-29.737h0.525c4.142,0,7.5-3.358,7.5-7.5 s-3.358-7.5-7.5-7.5h-8c-41.746,0-47.5,34.364-47.5,71.5c0,26.374,8.701,35.107,15.692,42.124c4.414,4.431,7.33,7.357,8.379,14.908 c1.646,11.856-7.359,17.396-12.874,19.643c-7.263,2.958-14.929,2.781-19.132,0.785c2.366-4.147,4.377-5.96,7.434-5.96 c4.142,0,7.5-3.358,7.5-7.5s-3.358-7.5-7.5-7.5c-14.229,0-20.084,12.269-23.583,19.6c-0.13,0.273-0.271,0.567-0.417,0.872 c-0.146-0.305-0.287-0.599-0.417-0.872c-3.499-7.331-9.354-19.6-23.583-19.6c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5 c3.057,0,5.069,1.813,7.435,5.96c-4.203,1.996-11.87,2.174-19.132-0.785c-5.515-2.247-14.52-7.787-12.874-19.643 c1.049-7.55,3.965-10.477,8.379-14.908c6.991-7.017,15.692-15.75,15.692-42.124c0-37.136-5.754-71.5-47.5-71.5h-8 c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h0.525c0.228,8.698,1.735,20.833,10.583,29.737 c6.755,6.797,16.453,10.249,28.823,10.262c0.376,4.906,0.569,10.379,0.569,16.501c0,20.177-5.245,25.441-11.318,31.537 c-0.387,0.389-0.779,0.784-1.172,1.183c-2.824-2.213-6.444-4.587-10.798-7.442C152.102,311.172,127,294.714,127,272.784 c0-17.315,8.37-53.798,13.371-75.595c0.928-4.044,1.765-7.691,2.45-10.778c1.718-7.733,8.539-10.011,24.865-13.715 c5.574-1.265,11.892-2.699,18.186-4.796c6.747-2.249,12.331-5.042,17.257-7.507c9.054-4.53,16.206-8.108,28.372-8.108 s19.317,3.578,28.372,8.108c4.926,2.465,10.51,5.258,17.257,7.507c6.293,2.098,12.611,3.532,18.186,4.796 c16.326,3.705,23.146,5.982,24.865,13.715c0.686,3.086,1.522,6.734,2.45,10.778C327.63,218.987,336,255.469,336,272.784 C336,294.714,310.898,311.172,294.288,322.063z M273.494,265.223c3.081-13.845,9.587-22.13,22.45-24.334 c-0.256,6.245-1.4,13.738-6.191,18.558C286.224,262.999,280.745,264.924,273.494,265.223z M189.335,265.218 c-7.167-0.322-12.586-2.247-16.088-5.771c-4.818-4.848-5.947-12.399-6.194-18.666C178.067,242.417,185.617,248.52,189.335,265.218z M407.401,214.097c-20.623,12.332-44.19,20.269-60.667,23.98c-2.835-15.256-6.559-31.49-9.484-44.242 c-0.869-3.787-1.653-7.207-2.31-10.154c19.531-2.521,63.543-13.68,64.06-46.779c0.293-18.769-12.773-33.729-25.409-48.197 c-2.605-2.983-5.177-5.928-7.601-8.862c6.389,4.052,13.288,7.966,20.317,11.955c30.33,17.21,61.693,35.006,61.693,67.987 C448,184.611,425.922,203.023,407.401,214.097z"/></svg><b>MiyeeStock Buddy</b> · Technical Analysis Report</span><span>${esc(ar.company)} (${esc(ar.symbol)})</span></div>
   <div class="page-footer"><span>Educational tool only — NOT investment advice. Consult a SEBI-registered advisor.</span><span>by Vipin Nair · ${now}</span></div>
   <main>
     <div class="cover">
@@ -6444,15 +6475,27 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML) {
     <table class="tbl"><tr><th>Horizon</th><th>Signal</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Conf</th></tr>${tf}</table>
     ${s.isChop?`<p class="muted">⚠️ ADX ${s.adxV} — ranging market; trend signals unreliable, verdict clamped to HOLD.</p>`:''}
 
+    ${realitySection}
+
+    <h2>Entry · Exit · Stop-Loss Levels</h2>
+    <table class="tbl"><tr><th>Level</th><th>Price</th><th>Notes</th></tr>${eeRows}</table>
+    <div style="margin-top:6px"><b style="font-size:10px;color:#5c6368">FIBONACCI RETRACEMENT</b><div class="chips" style="margin-top:3px">${fibClean}</div></div>
+
     <h2>Price Chart</h2>
     ${mainImg?`<img class="chart" src="${mainImg}">`:'<p class="muted">Chart image unavailable.</p>'}
 
     <h2>Technical Indicators (${s.bullCount}↑ / ${s.bearCount}↓)</h2>
     <table class="tbl"><tr><th>Indicator</th><th>Value</th><th>Reading</th></tr>${ind}</table>
 
+    <h2>Breakout Screener</h2>
+    ${boHTML}
+
     <h2>Chart Patterns &amp; Trend Structure</h2>
     ${patternsHTML}
     ${synHTML?`<h2>Structural Synthesis</h2>${synHTML}`:''}
+
+    <h2>Candlestick Pattern Signals</h2>
+    ${candleHTML}
 
     <h2>Signal Backtest (this stock's own history)</h2>
     ${btHTML}
