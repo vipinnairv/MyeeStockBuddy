@@ -5427,7 +5427,7 @@ function drawPatternChart(card) {
   chart.timeScale().fitContent();
   const ro = new ResizeObserver(()=>{ try{ chart.applyOptions({width:host.clientWidth}); }catch(e){} });
   ro.observe(host);
-  _patternChart = { remove(){ try{ro.disconnect();}catch(e){} try{chart.remove();}catch(e){} } };
+  _patternChart = { chart, remove(){ try{ro.disconnect();}catch(e){} try{chart.remove();}catch(e){} } };
 }
 
 function selectPattern(idx) {
@@ -6283,20 +6283,188 @@ function switchResTab(name, el) {
 // Export the complete analysis (every tab, charts, patterns) to PDF via the
 // browser's print-to-PDF. Offline, no library. Visits the chart tabs first so
 // the lazily-built lightweight-charts render before the print snapshot.
+// Compose a dedicated, print-ready report document (not the live page): charts
+// captured as images, header/footer on every page, disclaimer, and the AI report
+// if one was generated. Printed from a hidden iframe so the app UI is untouched.
 async function exportAnalysisPDF() {
   if (!analysisResult) { alert('Run an analysis first.'); return; }
-  const _sleep = ms => new Promise(r => setTimeout(r, ms));
+  const btn = document.querySelector('[onclick="exportAnalysisPDF()"]');
+  const btnTxt = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Building report…'; }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const prev = document.querySelector('.res-tab.active')?.getAttribute('data-rtab') || 'verdict';
-  document.body.classList.add('printing');
+
   try {
-    switchResTab('levels');   await _sleep(400);   // build candlestick + indicator chart
-    switchResTab('patterns'); await _sleep(400);   // build the pattern overlay chart
-    switchResTab(prev);       await _sleep(150);
-    window.print();
-  } finally {
-    document.body.classList.remove('printing');
+    // 1. Capture the main price chart as an image.
+    let mainImg = '';
+    switchResTab('levels'); await sleep(250);
+    currentChartType = 'candle';
+    try { buildChart('candle'); } catch(e){}
+    await sleep(550);
+    try { mainImg = mainChartInstance._lwMain.takeScreenshot().toDataURL('image/png'); } catch(e){}
+
+    // 2. Capture each pattern's overlay chart.
+    const cards = analysisResult.chartPatterns || [];
+    const patImgs = [];
+    if (cards.length) {
+      switchResTab('patterns'); await sleep(250);
+      for (let i = 0; i < cards.length; i++) {
+        try { selectPattern(i); } catch(e){}
+        await sleep(450);
+        try { patImgs[i] = _patternChart.chart.takeScreenshot().toDataURL('image/png'); }
+        catch(e){ patImgs[i] = ''; }
+      }
+    }
     switchResTab(prev);
+
+    // 3. Pull the AI report only if the user actually generated one.
+    const aiEl = document.getElementById('aiResponse');
+    const aiTxt = aiEl ? aiEl.innerText : '';
+    const aiHTML = (aiEl && aiTxt.trim().length > 60 && !/Choose an engine|Generate AI Insights/i.test(aiTxt))
+      ? aiEl.innerHTML : '';
+
+    // 4. Compose + print.
+    const html = _buildReportHTML(analysisResult, mainImg, patImgs, aiHTML);
+    const ifr = document.createElement('iframe');
+    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(ifr);
+    const doc = ifr.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    await sleep(500);           // let images/fonts settle
+    ifr.contentWindow.focus();
+    ifr.contentWindow.print();
+    setTimeout(() => ifr.remove(), 2000);
+  } catch (e) {
+    console.error('PDF export failed', e);
+    alert('Could not build the report: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btnTxt; }
   }
+}
+
+function _buildReportHTML(ar, mainImg, patImgs, aiHTML) {
+  const s = ar.signals, cur = ar.market === 'NYSE' || ar.market === 'NASDAQ' || ar.market === 'AMEX' ? '$' : '₹';
+  const esc = v => (v==null?'':String(v));
+  const sigCol = x => x==='BUY'?'#31a745':x==='SELL'?'#ff4f55':'#d97706';
+  const V = s.verdict, vCol = sigCol(V);
+  const now = new Date().toLocaleString('en-IN', { dateStyle:'medium', timeStyle:'short' });
+  const chg = ar.priceChg>=0?'+':'';
+
+  const tf = [['Swing (3–10D)',s.swing],['Short (1–3M)',s.short],['Long (6M–2Y)',s.long]].map(([lbl,t])=>
+    `<tr><td>${lbl}</td><td style="color:${sigCol(t.signal)};font-weight:600">${t.signal}</td><td>${cur}${t.target}</td><td>${cur}${t.sl}</td><td>1:${t.rr}</td><td>${t.confidence}%</td></tr>`).join('');
+
+  const ind = [
+    ['RSI (14)', s.rsiV?.toFixed?.(1) ?? s.rsiV, s.rsiV<30?'Oversold':s.rsiV>70?'Overbought':'Neutral'],
+    ['MACD', s.macdV?.toFixed?.(2), s.macdV>s.sigV?'Bullish':'Bearish'],
+    ['Stochastic %K/%D', `${s.stochK}/${s.stochD}`, s.stochCrossUp?'Bull cross':s.stochCrossDown?'Bear cross':'—'],
+    ['ADX', s.adxV, s.isChop?'Ranging (chop)':(+s.adxV>25?'Trending':'Weak')],
+    ['Supertrend', `${cur}${s.stLine}`, s.stV===1?'Bullish':'Bearish'],
+    ['Parabolic SAR', `${cur}${s.sarV}`, s.sarTrend===1?'Bullish':'Bearish'],
+    ['MFI (14)', s.mfiV, +s.mfiV<=20?'Oversold':+s.mfiV>=80?'Overbought':'Neutral'],
+    ['CCI (20)', s.cciV, +s.cciV<=-100?'Oversold':+s.cciV>=100?'Overbought':'Neutral'],
+    ['Williams %R', s.willRV, +s.willRV<=-80?'Oversold':+s.willRV>=-20?'Overbought':'Mid'],
+    ['SMA 20 / 50 / 200', `${cur}${s.sma20v?.toFixed?.(0)} / ${cur}${s.sma50v?.toFixed?.(0)} / ${cur}${s.sma200v?.toFixed?.(0)}`, ar.currentPrice>s.sma200v?'Above 200':'Below 200'],
+    ['ATR (14)', `${cur}${s.atrV?.toFixed?.(2)}`, `${((s.atrV/ar.currentPrice)*100).toFixed(1)}% daily`],
+    ['Support / Resistance', `${cur}${s.support} / ${cur}${s.resist}`, ''],
+  ].map(r=>`<tr><td>${r[0]}</td><td>${esc(r[1])}</td><td style="color:#5c6368">${r[2]}</td></tr>`).join('');
+
+  const patternsHTML = (ar.chartPatterns||[]).map((c,i)=>{
+    const bc = c.bias==='bullish'?'#31a745':c.bias==='bearish'?'#ff4f55':'#d97706';
+    const lv = Object.entries(c.levels||{}).map(([k,v])=>`<span class="chip">${k}: <b>${typeof v==='number'&&!['X','A','B','C','position'].includes(k)?cur:''}${v}</b></span>`).join(' ');
+    return `<div class="pattern">
+      <div class="pat-head"><span class="badge" style="background:${bc}">${esc(c.bias).toUpperCase()}</span>
+        <b>${esc(c.pattern)}</b> · ${esc(c.signal)} · <span style="color:${bc}">${c.confidence}%</span>
+        <span style="color:#8a9199;font-size:10px"> ${c.timeframe||''}${c._developing?' · developing':''}</span></div>
+      <div class="pat-narr">${esc(c.narrative)}</div>
+      <div class="chips">${lv}</div>
+      ${patImgs[i]?`<img class="pat-img" src="${patImgs[i]}">`:''}
+    </div>`;
+  }).join('') || '<p class="muted">No chart patterns detected on the current data.</p>';
+
+  const bt = ar.backtest;
+  const btHTML = bt && !bt.error ? `<table class="tbl"><tr><th>Setups (n)</th><th>Hit rate</th><th>Avg ${bt.horizon}-day</th><th>Best</th><th>Worst</th></tr>
+    <tr><td>${bt.count}</td><td>${bt.winRate.toFixed(0)}%</td><td>${bt.avgRet>=0?'+':''}${bt.avgRet.toFixed(1)}%</td><td>+${bt.best.toFixed(0)}%</td><td>${bt.worst.toFixed(0)}%</td></tr></table>`
+    : `<p class="muted">${bt?.error||'Backtest unavailable.'}</p>`;
+
+  const syn = ar.synthesis && ar.synthesis.active ? ar.synthesis.active : null;
+  const synHTML = syn ? `<div class="box"><b>${esc(syn.label)}</b> <span style="color:#8a9199">(${esc(syn.state)})</span><div class="pat-narr">${esc(syn.narrative)}</div></div>` : '';
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(ar.company)} — Analysis Report</title>
+<style>
+  :root{--green:#31a745;--red:#ff4f55;--accent:#006aff;--text:#1e2732;--text2:#3d4852;--text3:#5c6368;--surface:#fff;--surface2:#f2f6fa;--border:#dbe4ec}
+  *{box-sizing:border-box}
+  body{font-family:Roboto,Arial,sans-serif;color:#1e2732;font-size:11px;line-height:1.45;margin:0;padding:0}
+  /* Header/footer are tucked into the reserved @page margins with negative
+     offsets, so they repeat on every page without overlapping the content. */
+  .page-header{position:fixed;top:-13mm;left:0;right:0;height:9mm;display:flex;align-items:center;justify-content:space-between;
+    padding:0 12mm;border-bottom:2px solid #006aff;font-size:10px;color:#5c6368;background:#fff}
+  .page-header b{color:#006aff;font-size:12px}
+  .page-footer{position:fixed;bottom:-11mm;left:0;right:0;height:8mm;display:flex;align-items:center;justify-content:space-between;
+    padding:0 12mm;border-top:1px solid #dbe4ec;font-size:8.5px;color:#8a9199;background:#fff}
+  main{padding:0}
+  h2{font-size:14px;color:#006aff;border-bottom:1px solid #dbe4ec;padding-bottom:3px;margin:18px 0 8px;break-after:avoid}
+  h2:first-of-type{margin-top:4px}
+  .cover{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:8px 0 4px}
+  .cover .price{font-size:26px;font-weight:700}
+  .verdict{text-align:center;border:2px solid ${vCol};border-radius:8px;padding:10px 22px;min-width:140px}
+  .verdict .big{font-size:24px;font-weight:800;color:${vCol}}
+  .tbl{width:100%;border-collapse:collapse;margin:4px 0}
+  .tbl th,.tbl td{border:1px solid #dbe4ec;padding:4px 7px;text-align:left}
+  .tbl th{background:#f2f6fa;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;color:#5c6368}
+  img.chart{width:100%;border:1px solid #dbe4ec;border-radius:6px;margin:4px 0;break-inside:avoid}
+  .pattern{border:1px solid #dbe4ec;border-radius:6px;padding:8px 10px;margin:7px 0;break-inside:avoid}
+  .pat-head{font-size:12px;margin-bottom:3px}
+  .badge{color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;margin-right:5px}
+  .pat-narr{color:#3d4852;margin:3px 0}
+  .chips{margin-top:4px}.chip{display:inline-block;background:#f2f6fa;border:1px solid #dbe4ec;border-radius:4px;padding:1px 6px;margin:2px 3px 0 0;font-size:9.5px}
+  .pat-img{width:100%;border:1px solid #dbe4ec;border-radius:5px;margin-top:6px}
+  .box{background:#f2f6fa;border:1px solid #dbe4ec;border-radius:6px;padding:8px 10px;margin:6px 0;break-inside:avoid}
+  .muted{color:#8a9199}
+  .ai{border:1px solid #dbe4ec;border-radius:6px;padding:8px 10px}
+  .disc{margin-top:14px;padding:9px 11px;border:1px solid #ffd7b0;background:#fff7ef;border-radius:6px;font-size:9px;color:#7a5230;break-inside:avoid}
+  @page{size:A4;margin:16mm 12mm 14mm 12mm}
+  @media print{ .pattern,.box,.tbl,img.chart{break-inside:avoid} body{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
+</style></head><body>
+  <div class="page-header"><span><b>🐂 MiyeeStock Buddy</b> · Technical Analysis Report</span><span>${esc(ar.company)} (${esc(ar.symbol)})</span></div>
+  <div class="page-footer"><span>Educational tool only — NOT investment advice. Consult a SEBI-registered advisor.</span><span>by Vipin Nair · ${now}</span></div>
+  <main>
+    <div class="cover">
+      <div>
+        <div style="font-size:20px;font-weight:800">${esc(ar.company)}</div>
+        <div style="color:#5c6368">${esc(ar.symbol)} · ${esc(ar.market)} · Report generated ${now}</div>
+        <div class="price" style="margin-top:6px">${cur}${(+ar.currentPrice).toFixed(2)}
+          <span style="font-size:13px;color:${ar.priceChg>=0?'#31a745':'#ff4f55'}">${chg}${(+ar.priceChg).toFixed(2)} (${ar.pricePct}%)</span></div>
+      </div>
+      <div class="verdict"><div style="font-size:9px;color:#5c6368;text-transform:uppercase">Overall Verdict</div>
+        <div class="big">${s.isChop?'HOLD':V}</div>
+        <div style="font-size:9px;color:#5c6368">${s.isChop?'Ranging / Chop':''} Score ${s.score.toFixed(0)}/100 · ${s.long.confidence}% conf</div></div>
+    </div>
+
+    <h2>Signals by Timeframe</h2>
+    <table class="tbl"><tr><th>Horizon</th><th>Signal</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Conf</th></tr>${tf}</table>
+    ${s.isChop?`<p class="muted">⚠️ ADX ${s.adxV} — ranging market; trend signals unreliable, verdict clamped to HOLD.</p>`:''}
+
+    <h2>Price Chart</h2>
+    ${mainImg?`<img class="chart" src="${mainImg}">`:'<p class="muted">Chart image unavailable.</p>'}
+
+    <h2>Technical Indicators (${s.bullCount}↑ / ${s.bearCount}↓)</h2>
+    <table class="tbl"><tr><th>Indicator</th><th>Value</th><th>Reading</th></tr>${ind}</table>
+
+    <h2>Chart Patterns &amp; Trend Structure</h2>
+    ${patternsHTML}
+    ${synHTML?`<h2>Structural Synthesis</h2>${synHTML}`:''}
+
+    <h2>Signal Backtest (this stock's own history)</h2>
+    ${btHTML}
+
+    ${aiHTML?`<h2>AI Analyst Report</h2><div class="ai">${aiHTML}</div>`:''}
+
+    <div class="disc"><b>Disclaimer:</b> MiyeeStock Buddy and Vipin Nair are NOT SEBI-registered investment advisors.
+      This report is generated by rule-based and AI models for educational purposes only and does not account for news,
+      earnings, macro events or your personal circumstances. Past performance is not indicative of future results.
+      Confidence scores are structural ratings, not probabilities. Always consult a registered advisor before investing.</div>
+  </main>
+</body></html>`;
 }
 
 function buildChart(type) {
