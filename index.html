@@ -958,6 +958,18 @@ td.r{text-align:right}
   @page { margin:1.5cm; size:A4 landscape; }
   table { page-break-inside:avoid; }
   .chart-row { page-break-inside:avoid; }
+
+  /* ── Stock Analyser: print the FULL report, every tab expanded ── */
+  #app-switcher, .app-header, .res-tabs, .sticky-disclaimer,
+  #byokPanel, #screenerPanel, .no-print, .ai-engine-btn, .ai-mode-toggle,
+  #aiRunBtn, .chart-tabs { display:none !important; }
+  #section-analyser .res-tab-panel { display:block !important; page-break-inside:avoid; margin-bottom:14px; }
+  #section-analyser .kpi-card, #section-analyser .reco-card,
+  #section-analyser .ee-card, #section-analyser .pattern-card { box-shadow:none !important; break-inside:avoid; }
+  .section-header { break-after:avoid; }
+  /* keep the coloured verdict/pattern cards readable on paper */
+  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  body.printing { background:#fff !important; }
 }
 
 /* ═══ RESPONSIVE — COMPREHENSIVE MOBILE OVERHAUL ═══ */
@@ -1526,8 +1538,9 @@ html,body{overflow-x:hidden;}
           <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
           <p style="font-size:13px;color:var(--text3);" id="resultsSubtitle">Technical analysis complete</p>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" onclick="addToPortfolioFromAnalysis()" title="Add this stock to your portfolio">➕ Add to Portfolio</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;" class="no-print">
+          <button class="btn btn-primary btn-sm" onclick="exportAnalysisPDF()" title="Export the full analysis to PDF">⬇ Export PDF</button>
+          <button class="btn btn-secondary btn-sm" onclick="addToPortfolioFromAnalysis()" title="Add this stock to your portfolio">➕ Add to Portfolio</button>
           <button class="btn btn-outline btn-sm" onclick="resetApp()">🔄 New Analysis</button>
         </div>
       </div>
@@ -4384,10 +4397,11 @@ window.SBPatternEngine = (function () {
       const i=pivots[a], j=pivots[b]; if(j-i<5) continue;
       const slope=(values[j]-values[i])/(j-i), intercept=values[i]-slope*i;
       const touches=[]; let violated=false;
-      // Asymmetric tolerance: a resistance may be approached from BELOW and only
-      // pierced by a hair; the old symmetric test let a high sit tolPct ABOVE the
-      // line, so the line was drawn through the candles instead of along them.
-      const PIERCE=0.2;
+      // Asymmetric tolerance: the boundary is the anchor line through two real
+      // pivots (not a regression), so it already rides the highs/lows. Pivots may
+      // overshoot it by up to PIERCE% (normal wick noise) but not more — 0.2% was
+      // far too tight and rejected almost every real, slightly-noisy boundary.
+      const PIERCE=0.9;
       for(const p of pivots){ const line=slope*p+intercept; if(line<=0) continue; const dev=((values[p]-line)/line)*100;
         if((upper&&dev>PIERCE)||(!upper&&dev<-PIERCE)){violated=true;break;}
         if(upper? dev>=-tolPct : dev<=tolPct) touches.push(p); }
@@ -5677,7 +5691,7 @@ function renderChartPatterns(ar) {
   const top = cards[0];
   const bullN = cards.filter(c => c.bias === 'bullish').length, bearN = cards.filter(c => c.bias === 'bearish').length;
   const summary = `<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:12px;font-size:12.5px;color:var(--text2);line-height:1.6;">
-    <b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — strongest: <b style="color:${_PAT_BIAS_COL(top.bias)}">${top.pattern}</b> at <b>${top.confidence}%</b> · <b style="color:${_PAT_LVL_COL(top.confidence)}">${_PAT_LVL_WORD(top.confidence)} recommendation</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Select a pattern to draw it on the chart. Confidence is a structural rating, not a probability.</span></div>`;
+    ${top._developing ? '⏳ <b>Developing structure</b> — no high-confidence pattern yet, showing the nearest forming shape. ' : `<b>${cards.length}</b> chart pattern${cards.length > 1 ? 's' : ''} detected — `}strongest: <b style="color:${_PAT_BIAS_COL(top.bias)}">${top.pattern}</b> at <b>${top.confidence}%</b> · <b style="color:${_PAT_LVL_COL(top.confidence)}">${_PAT_LVL_WORD(top.confidence)} recommendation</b>.${bullN ? ` 🟢 ${bullN} bullish` : ''}${bearN ? ` 🔴 ${bearN} bearish` : ''}. <span style="color:var(--text3)">Select a pattern to draw it on the chart. Confidence is a structural rating, not a probability.</span></div>`;
   const tfTag = c => c.timeframe === '1 week' ? '<span style="opacity:.75;font-size:10px;"> ⬛W</span>' : '<span style="opacity:.6;font-size:10px;"> D</span>';
   const chips = `<div id="patternChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${cards.map((c,i) => `<button data-pidx="${i}" onclick="selectPattern(${i})" title="${c.timeframe} timeframe${c.mtfAgree?' · confirmed on both daily & weekly':''}" style="cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s;">${c.pattern} · ${c.confidence}%${tfTag(c)}${c.mtfAgree?' 🔗':''}</button>`).join('')}</div>`;
   const chart = `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:14px;">
@@ -5786,6 +5800,36 @@ async function runAnalysis() {
       const T = SBPatternEngine.OutcomeTracker;
       try { T.grade(_sym, _bars, 20); } catch(e) {}   // grade prior cards vs recent price
       chartPatterns = SBPatternEngine.scanMultiTimeframe(_bars, { symbol: _sym, minConfidence: 45 });
+      // The pattern detectors are event-gated (they fire only on a breakout /
+      // reversal). When none triggers, the stock is usually just ranging — so
+      // instead of an empty tab, always surface the trading range it sits in,
+      // with drawn support/resistance, marked as a developing structure.
+      if (!chartPatterns.length) {
+        try {
+          const d = _bars.slice(-150), H = d.map(b=>b.high), L = d.map(b=>b.low);
+          const piv = SBPatternEngine.findPivots(H, L);
+          if (piv.highs.length >= 2 && piv.lows.length >= 2) {
+            const hi = Math.max(...piv.highs.slice(-5).map(i=>H[i]));
+            const lo = Math.min(...piv.lows.slice(-5).map(i=>L[i]));
+            const price = d[d.length-1].close;
+            if (hi > lo) {
+              const pos = (price - lo) / (hi - lo) * 100;
+              const near = pos >= 66 ? 'Near Resistance' : pos <= 34 ? 'Near Support' : 'Mid-Range';
+              chartPatterns = [{
+                pattern:'Trading Range', signal:near, bias:'neutral', stage:'anticipatory',
+                timeframe:'1 day', confidence:42, _developing:true, symbol:_sym, triggerTs:(_bars.length?_bars[_bars.length-1].time:Math.floor(Date.now()/1000)),
+                narrative:`${_sym} has no active breakout pattern — it is ranging between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
+                levels:{ resistance:+hi.toFixed(2), support:+lo.toFixed(2), close:+price.toFixed(2), position:+pos.toFixed(0) },
+                indicators:[], components:{ touches:piv.highs.length+piv.lows.length, geometryFit:0.6 },
+                graphics:{ lines:[
+                  { points:[{time:d[0].time,value:hi},{time:d[d.length-1].time,value:hi}], color:'#ef5350', width:2, title:'Resistance' },
+                  { points:[{time:d[0].time,value:lo},{time:d[d.length-1].time,value:lo}], color:'#26a69a', width:2, title:'Support' },
+                ], markers:[] }
+              }];
+            }
+          }
+        } catch(e) {}
+      }
       const _lastTs = _bars.length ? _bars[_bars.length-1].time : Math.floor(Date.now()/1000);
       chartPatterns.forEach(c => {
         c.triggerTs = _lastTs;                                // bar the pattern was detected on
@@ -6233,6 +6277,25 @@ function switchResTab(name, el) {
   }
   if (name === 'patterns' && analysisResult && analysisResult.chartPatterns && analysisResult.chartPatterns.length) {
     setTimeout(() => { try { selectPattern(_selectedPatternIdx || 0); } catch(e){} }, 60);
+  }
+}
+
+// Export the complete analysis (every tab, charts, patterns) to PDF via the
+// browser's print-to-PDF. Offline, no library. Visits the chart tabs first so
+// the lazily-built lightweight-charts render before the print snapshot.
+async function exportAnalysisPDF() {
+  if (!analysisResult) { alert('Run an analysis first.'); return; }
+  const _sleep = ms => new Promise(r => setTimeout(r, ms));
+  const prev = document.querySelector('.res-tab.active')?.getAttribute('data-rtab') || 'verdict';
+  document.body.classList.add('printing');
+  try {
+    switchResTab('levels');   await _sleep(400);   // build candlestick + indicator chart
+    switchResTab('patterns'); await _sleep(400);   // build the pattern overlay chart
+    switchResTab(prev);       await _sleep(150);
+    window.print();
+  } finally {
+    document.body.classList.remove('printing');
+    switchResTab(prev);
   }
 }
 
