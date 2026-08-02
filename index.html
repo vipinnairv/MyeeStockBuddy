@@ -1373,6 +1373,7 @@ html,body{overflow-x:hidden;}
             <button class="btn btn-primary btn-sm" id="screenRunBtn" onclick="runScreener()">🔍 Run Screener</button>
           </div>
           <div id="screenStatus" style="margin-bottom:10px;"></div>
+          <div id="screenStageBoard" style="margin-bottom:14px;"></div>
           <div id="screenResults"></div>
           <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.5;">Scans 3 symbols at a time via public CORS proxies; cached results are reused for 6 h. Structural ratings, not investment advice.</div>
         </div>
@@ -1544,6 +1545,9 @@ html,body{overflow-x:hidden;}
 
       <!-- ===== VERDICT TAB (part 1) ===== -->
       <div class="res-tab-panel" data-rtab="verdict">
+      <!-- VCP / Base-breakout setup (O'Neil–Minervini method) -->
+      <div class="section-header"><span class="section-title">🚀 Base &amp; Breakout Setup</span><div class="section-line"></div></div>
+      <div id="vcpPanel" style="margin-bottom:24px;"></div>
       <!-- Fundamentals snapshot -->
       <div class="section-header"><span class="section-title">🏢 Fundamentals &amp; Context</span><div class="section-line"></div></div>
       <div id="fundamentalsPanel" style="margin-bottom:24px;"></div>
@@ -5112,6 +5116,78 @@ window.SBSynthStore = (function () {
 // ============================================================
 // BREAKOUT SCREENER — tight consolidation → resistance break → range expansion
 // ============================================================
+// ============================================================
+// VCP / BASE-BREAKOUT ENGINE (O'Neil–Minervini method)
+// ============================================================
+// Weighted trailing-return RS score (no universe needed). Rating 1-99.
+function computeRSscore(closes) {
+  const n = closes.length, c = closes[n-1];
+  const ret = bk => (n > bk && closes[n-1-bk] > 0) ? (c / closes[n-1-bk] - 1) : 0;
+  const raw = 0.4*ret(63) + 0.2*ret(126) + 0.2*ret(189) + 0.2*ret(252);   // 3/6/9/12-mo
+  return { raw:+raw.toFixed(3), rating: Math.round(Math.max(1, Math.min(99, 50 + raw*120))) };
+}
+
+// Detect the most recent Volatility Contraction Pattern base + its dials.
+function detectVCP(data) {
+  const n = data.length;
+  if (n < 60) return { ok:false, reason:'Need ~60+ trading days' };
+  const closes = data.map(d=>d.close), highs = data.map(d=>d.high), lows = data.map(d=>d.low);
+  const c = closes[n-1];
+  const sma50 = calcSMA(closes, 50), sma200 = calcSMA(closes, Math.min(200, n-1));
+  const s50 = sma50[n-1], s200 = sma200[n-1];
+  const hi252 = Math.max(...highs.slice(-252)), fromHigh = (hi252 - c) / hi252 * 100;
+  const leader = s50 && s200 && c > s50 && s50 > s200 && fromHigh <= 30;
+
+  // Base = window from its highest high (the pivot) to now.
+  const look = Math.min(80, n-1);
+  const win = data.slice(-look);
+  let pIdx = 0; for (let i=1;i<win.length;i++) if (win[i].high > win[pIdx].high) pIdx = i;
+  const pivot = win[pIdx].high;
+  const baseSeg = win.slice(pIdx);
+  const baseBars = baseSeg.length - 1;
+  const baseWk = +(baseBars/5).toFixed(1);
+  const baseLow = Math.min(...baseSeg.map(b=>b.low));
+  const depth = (pivot - baseLow) / pivot * 100;
+  const distUnderPivot = (pivot - c) / pivot * 100;
+
+  const half = Math.max(1, Math.floor(baseSeg.length/2));
+  const rng = a => a.length ? (Math.max(...a.map(b=>b.high)) - Math.min(...a.map(b=>b.low))) : 0;
+  const avg = a => a.length ? a.reduce((s,b)=>s+(b.volume||0),0)/a.length : 0;
+  const r1 = rng(baseSeg.slice(0,half)), r2 = rng(baseSeg.slice(half));
+  const tighten = r1 > 0 ? r2/r1 : 1;
+  const v1 = avg(baseSeg.slice(0,half)), v2 = avg(baseSeg.slice(half));
+  const dry = v1 > 0 ? v2/v1 : 1;
+
+  const checks = { leader, baseAge: baseWk>=3, depthOk: depth<=35, tightening: tighten<=0.9, volDryUp: dry<=0.9 };
+  const passCount = Object.values(checks).filter(Boolean).length;
+  const isVCP = checks.leader && checks.baseAge && checks.depthOk && checks.tightening && checks.volDryUp;
+  const squat = distUnderPivot > 12;                       // still coiling well under the pivot
+  const failedPoke = baseSeg.some(b => b.high > pivot*1.001 && b.close < pivot);
+
+  return { ok:true, isVCP, checks, passCount, squat, failedPoke,
+    pivot:+pivot.toFixed(2), baseLow:+baseLow.toFixed(2), baseWk, depth:+depth.toFixed(1),
+    tighten:+tighten.toFixed(2), dry:+dry.toFixed(2), distUnderPivot:+distUnderPivot.toFixed(1),
+    fromHigh:+fromHigh.toFixed(1), rs: computeRSscore(closes).rating,
+    pivotTime: Math.floor(data[n-look+pIdx].date.getTime()/1000),
+    baseStartTime: Math.floor(data[n-look+pIdx].date.getTime()/1000) };
+}
+
+// Forming → Fresh Breakout → Climbing → Played Out.
+function classifyStage(data, vcp) {
+  if (!vcp || !vcp.ok) return { stage:'unknown', label:'—' };
+  const n = data.length, c = data[n-1].close;
+  const above = c > vcp.pivot;
+  if (above) {
+    const priorBelow = data[Math.max(0,n-7)].close <= vcp.pivot;
+    let brokeAgo = 99; for (let i=n-1;i>=Math.max(0,n-6);i--) if (data[i].close > vcp.pivot) brokeAgo = n-1-i;
+    if (priorBelow && brokeAgo <= 5) return { stage:'fresh', label:'Fresh Breakout' };
+    return { stage:'climbing', label:'Climbing' };
+  }
+  if (vcp.isVCP) return { stage:'forming', label:'Forming' };
+  if (c < vcp.baseLow) return { stage:'played', label:'Played Out' };
+  return { stage:'watch', label:'No Setup' };
+}
+
 function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10, atrOverride = null) {
   if (!priceData || priceData.length < lookbackPeriod + 1) return { isBreakout:false, error:'Insufficient data' };
   const historicalData = priceData.slice(-(lookbackPeriod + 1), -1);
@@ -5225,6 +5301,85 @@ function _fmtCap(v, isIndia) {
   if (!v || v <= 0) return '--';
   if (isIndia) return v >= 1e12 ? '₹'+(v/1e12).toFixed(2)+' L Cr' : v >= 1e7 ? '₹'+(v/1e7).toFixed(0)+' Cr' : '₹'+(v/1e5).toFixed(0)+' L';
   return v >= 1e12 ? '$'+(v/1e12).toFixed(2)+'T' : v >= 1e9 ? '$'+(v/1e9).toFixed(2)+'B' : '$'+(v/1e6).toFixed(0)+'M';
+}
+
+const _STAGE_STYLE = {
+  forming:  ['#d97706','⏳','Forming','Coiling in a tight base under the pivot — waiting for a breakout.'],
+  fresh:    ['#31a745','🚀','Fresh Breakout','Cleared the pivot in the last few sessions — the setup just triggered.'],
+  climbing: ['#0891b2','📈','Climbing','Broke out earlier and still trending above the pivot.'],
+  played:   ['#ff4f55','📉','Played Out','Broke down below the base — the setup has failed or is exhausted.'],
+  watch:    ['#8a9199','👀','No Setup','No valid base right now — nothing actionable by this method.'],
+  unknown:  ['#8a9199','—','—','Insufficient data for a base read.'],
+};
+function renderVCP(ar) {
+  const el = document.getElementById('vcpPanel'); if (!el) return;
+  const v = ar.vcp, st = ar.stage || { stage:'unknown' };
+  if (!v || !v.ok) { el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--text3);font-size:12.5px;">🚀 ${v?.reason || 'Base read unavailable'}.</div>`; return; }
+  const cur = CUR();
+  const [scol, sicon, slabel, sdesc] = _STAGE_STYLE[st.stage] || _STAGE_STYLE.unknown;
+  const dial = (label, val, ok, tip) => `<div title="${tip}" style="background:var(--surface2);border:1px solid ${ok?'var(--green)':'var(--border)'};border-radius:8px;padding:9px 11px;">
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;">${label} ${ok?'✔':''}</div>
+    <div style="font-size:16px;font-weight:800;margin-top:2px;">${val}</div></div>`;
+  const rsCol = v.rs>=80?'var(--green)':v.rs>=60?'var(--accent)':'var(--text3)';
+  const flags = [v.squat?'<span style="font-size:10.5px;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:2px 8px;">⚑ squat (deep under pivot)</span>':'',
+                 v.failedPoke?'<span style="font-size:10.5px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);border-radius:12px;padding:2px 8px;">✕ failed poke</span>':''].filter(Boolean).join(' ');
+  el.innerHTML = `
+    <div style="border:1px solid ${scol};border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--card-shadow);">
+      <div style="background:linear-gradient(135deg,${scol}22,${scol}0d);border-bottom:1px solid var(--border);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:20px;">${sicon}</span>
+        <div><div style="font-size:15px;font-weight:800;color:${scol};">${slabel}</div><div style="font-size:11.5px;color:var(--text2);">${sdesc}</div></div>
+        <div style="margin-left:auto;text-align:right;"><div style="font-size:20px;font-weight:900;color:${rsCol};">RS ${v.rs}</div>
+          <div style="font-size:9.5px;color:var(--text3);text-transform:uppercase;">relative strength</div></div>
+      </div>
+      <div style="padding:13px 15px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;">
+          ${dial('Pivot (buy)', cur+v.pivot, false, 'The ceiling at the top of the base — a close above it triggers the breakout.')}
+          ${dial('Under pivot', v.distUnderPivot+'%', v.distUnderPivot<=5, 'How far price sits below the pivot right now.')}
+          ${dial('Base age', v.baseWk+' wk', v.checks.baseAge, 'A real base is 3+ weeks. Needs time to shake out weak holders.')}
+          ${dial('Base depth', v.depth+'%', v.checks.depthOk, 'Depth from pivot to base low. Shallower (≤35%, ideally ≤25%) is stronger.')}
+          ${dial('Tightening', v.tighten+'×', v.checks.tightening, '2nd-half swing ÷ 1st-half. ≤0.9 means the range is coiling tighter.')}
+          ${dial('Volume dry-up', v.dry+'×', v.checks.volDryUp, '2nd-half volume ÷ 1st-half. ≤0.9 means sellers are drying up.')}
+          ${dial('Leader (RS/MAs)', v.checks.leader?'Yes':'No', v.checks.leader, 'Above the 50 & 200-day lines and within 30% of its high before pausing.')}
+          ${dial('From 52w high', v.fromHigh+'%', v.fromHigh<=15, 'Distance below the 1-year high. Leaders stay near their highs.')}
+        </div>
+        ${flags?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">${flags}</div>`:''}
+        <div style="margin-top:10px;font-size:11.5px;color:var(--text2);line-height:1.55;">
+          ${v.isVCP ? `✅ <b>Valid VCP base</b> — ${v.passCount}/5 method checks pass. A decisive close above <b>${cur}${v.pivot}</b> completes the pattern.`
+                    : `⚠️ Not a textbook VCP yet — ${v.passCount}/5 checks pass. ${st.stage==='climbing'?'Already extended above the pivot.':st.stage==='played'?'Base has broken down.':'Needs a tighter, quieter base and clear leadership.'}`}
+        </div>
+        ${_vcpPlaybook(v, cur)}
+        <div style="margin-top:8px;font-size:10px;color:var(--text3);border-top:1px dashed var(--border);padding-top:7px;">O'Neil–Minervini base-breakout method. It's probabilities, not predictions — this style wins on ~1 in 3 trades; the edge is that winners dwarf the small, capped losses. RS is vs this stock's own trailing return, not the full market.</div>
+      </div>
+    </div>`;
+}
+
+// Trade-management playbook + position sizer (1.5% risk on an 8% stop).
+function _vcpPlaybook(v, cur) {
+  const entry = v.pivot, stop = +(entry * 0.92).toFixed(2), target = +(entry + (entry - v.baseLow)).toFixed(2);
+  const rr = (target - entry) / (entry - stop);
+  return `<div style="margin-top:11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 13px;">
+    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;">📋 Action Plan</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;">
+      <span>① Buy the breakout above <b>${cur}${entry}</b></span>
+      <span>② Safety net at <b style="color:var(--red)">${cur}${stop}</b> (−8%)</span>
+      <span>③ Move to breakeven once +${((entry-stop)/entry*200).toFixed(0)}%</span>
+      <span>④ Trail as it climbs · first target <b style="color:var(--green)">${cur}${target}</b> (1:${rr.toFixed(1)})</span>
+    </div>
+    <div style="margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
+      <label style="color:var(--text3);">Account size ${cur}<input id="vcpAcct" type="number" placeholder="100000" oninput="_vcpSize(${entry},${stop})" style="width:110px;padding:5px 8px;margin-left:4px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;"></label>
+      <span id="vcpSizeOut" style="color:var(--text3);">→ enter account size for a 1.5%-risk position</span>
+    </div>
+  </div>`;
+}
+function _vcpSize(entry, stop) {
+  const acct = parseFloat(document.getElementById('vcpAcct')?.value) || 0;
+  const out = document.getElementById('vcpSizeOut'); if (!out) return;
+  const riskPerShare = entry - stop;
+  if (acct <= 0 || riskPerShare <= 0) { out.textContent = '→ enter account size for a 1.5%-risk position'; return; }
+  const riskAmt = acct * 0.015;
+  const shares = Math.floor(riskAmt / riskPerShare);
+  const cost = shares * entry, cur = CUR();
+  out.innerHTML = `→ <b>${shares.toLocaleString('en-IN')} shares</b> (${cur}${cost.toLocaleString('en-IN',{maximumFractionDigits:0})} position) risks ${cur}${riskAmt.toLocaleString('en-IN',{maximumFractionDigits:0})} = 1.5% of capital`;
 }
 
 function renderFundamentals(ar) {
@@ -5519,11 +5674,13 @@ async function _screenFetchBars(sym, exch) {
 }
 
 let _screenAbort = false;
+let _screenVCP = [];
 async function runScreener() {
   const statusEl = document.getElementById('screenStatus');
   const resEl    = document.getElementById('screenResults');
   const btn      = document.getElementById('screenRunBtn');
   if (!statusEl || !resEl) return;
+  _screenVCP = [];
 
   const wl = screenGetWatchlist().map(s => {
     const [sym, exch] = String(s).split('|');
@@ -5556,12 +5713,15 @@ async function runScreener() {
           const bars = data.map(b => ({ time: Math.floor(b.date.getTime()/1000), open:b.open, high:b.high, low:b.low, close:b.close, volume:b.volume||0 }));
           const cards = SBPatternEngine.scanMultiTimeframe(bars, { symbol: t.sym, minConfidence: minConf });
           cards.forEach(c => found.push({ ...c, _sym: t.sym, _exch: t.exch, _src: t.src, _name: t.name || t.sym, _last: data[data.length-1].close }));
+          // VCP / stage board (BananaPatterns method)
+          try { const vcp = detectVCP(data); if (vcp.ok) _screenVCP.push({ sym:t.sym, exch:t.exch, src:t.src, last:data[data.length-1].close, vcp, stage:classifyStage(data,vcp).stage }); } catch(e){}
         } else failed++;
       } catch { failed++; }
       done++;
       statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);">
         <div style="flex:1;min-width:140px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;"><div style="width:${(done/targets.length*100).toFixed(0)}%;height:100%;background:var(--accent);transition:width .2s;"></div></div>
         <span>${done}/${targets.length} scanned · <b style="color:var(--accent)">${found.length}</b> patterns${failed?` · ${failed} unavailable`:''}</span></div>`;
+      renderStageBoard(_screenVCP);
       renderScreenResults(found);
     }
   }
@@ -5569,7 +5729,37 @@ async function runScreener() {
 
   btn.textContent = '🔍 Run Screener'; btn.onclick = runScreener;
   statusEl.innerHTML = `<div style="font-size:12.5px;color:var(--text2);">✅ Scanned <b>${done}</b> symbol${done===1?'':'s'} — found <b style="color:var(--accent)">${found.length}</b> pattern${found.length===1?'':'s'} at ≥${minConf}% confidence${failed?` · ${failed} could not be fetched`:''}.${_screenAbort?' <em>(stopped early)</em>':''}</div>`;
+  renderStageBoard(_screenVCP);
   renderScreenResults(found);
+}
+
+// BananaPatterns-style board: group scanned names by lifecycle stage.
+function renderStageBoard(list) {
+  const el = document.getElementById('screenStageBoard');
+  if (!el) return;
+  if (!list || !list.length) { el.innerHTML = ''; return; }
+  const order = ['fresh','forming','climbing','played'];
+  const groups = {}; order.forEach(k => groups[k] = []);
+  list.forEach(r => { if (groups[r.stage]) groups[r.stage].push(r); });
+  const cur = e => e === 'US' ? '$' : '₹';
+  const blocks = order.filter(k => groups[k].length).map(k => {
+    const [scol,sicon,slabel,sdesc] = _STAGE_STYLE[k];
+    const rows = groups[k].sort((a,b) => b.vcp.rs - a.vcp.rs).map(r => {
+      const v = r.vcp;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;">
+        <b style="min-width:96px;">${r.sym}</b>
+        <span style="color:${v.rs>=80?'var(--green)':v.rs>=60?'var(--accent)':'var(--text3)'};font-weight:700;">RS ${v.rs}</span>
+        <span style="color:var(--text3);">pivot ${cur(r.exch)}${v.pivot}</span>
+        <span style="color:var(--text3);">${v.distUnderPivot>0?v.distUnderPivot+'% under':Math.abs(v.distUnderPivot)+'% over'}</span>
+        <span style="color:var(--text3);">${v.baseWk}wk · ${v.tighten}× tight · ${v.dry}× vol</span>
+        <button onclick="screenOpen('${r.sym}','${r.exch}')" style="margin-left:auto;cursor:pointer;font-size:10.5px;padding:3px 9px;border-radius:5px;border:1px solid var(--accent);background:transparent;color:var(--accent);">Analyse</button>
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid ${scol};border-radius:10px;overflow:hidden;margin-bottom:10px;">
+      <div style="background:${scol}18;padding:7px 11px;font-weight:700;color:${scol};font-size:12.5px;">${sicon} ${slabel} <span style="color:var(--text3);font-weight:400;">· ${groups[k].length} · ${sdesc}</span></div>
+      ${rows}</div>`;
+  }).join('');
+  el.innerHTML = blocks ? `<div style="margin-bottom:6px;font-size:11px;color:var(--text3);">🍌 Base-breakout board — your scanned names by stage (O'Neil–Minervini method):</div>${blocks}` : '';
 }
 
 function renderScreenResults(found) {
@@ -5797,6 +5987,8 @@ async function runAnalysis() {
     const signals  = generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, last, extras);
     const patterns = detectPatterns(data, last);
     const breakout = analyzeBreakout(data, 20, 0.10, atr[last]);   // share the canonical Wilder ATR
+    const vcp = detectVCP(data);
+    const stage = classifyStage(data, vcp);
     const backtest = backtestVerdict(data, signals.long.signal, 10);
 
     // ── Chart pattern engine (multi-bar geometry + recommendation levels) ──
@@ -5871,7 +6063,7 @@ async function runAnalysis() {
 
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, breakout, backtest, chartPatterns, synthesis, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, chartPatterns, synthesis, vcp, stage, currentPrice, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -5905,7 +6097,9 @@ function renderResults() {
   document.getElementById('ingestionSection').style.display = 'none';
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsTitle').textContent = `${company} (${symbol})`;
-  document.getElementById('resultsSubtitle').textContent = `${market} · Analysis as of ${data[last].date.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
+  const _stg = analysisResult.stage, _ss = _STAGE_STYLE[_stg?.stage] || _STAGE_STYLE.unknown;
+  document.getElementById('resultsSubtitle').innerHTML = `${market} · Analysis as of ${data[last].date.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}` +
+    (_stg && _stg.stage!=='unknown' ? ` · <span style="background:${_ss[0]}22;color:${_ss[0]};font-weight:700;padding:2px 9px;border-radius:12px;font-size:11px;">${_ss[1]} ${_ss[2]}${analysisResult.vcp?.rs?' · RS '+analysisResult.vcp.rs:''}</span>` : '');
 
   // KPI Strip
   const kpis = [
@@ -6001,6 +6195,7 @@ function renderResults() {
     })()}`;
 
   // FUNDAMENTALS PANEL
+  renderVCP(analysisResult);
   renderFundamentals(analysisResult);
 
   // BACKTEST PANEL
@@ -6538,6 +6733,15 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
 
     <h2>Candlestick Pattern Signals</h2>
     ${candleHTML}
+
+    ${(function(){ const v=ar.vcp, st=ar.stage; if(!v||!v.ok) return '';
+      const ss=_STAGE_STYLE[st?.stage]||_STAGE_STYLE.unknown;
+      return `<h2>Base &amp; Breakout Setup</h2><div class="box">
+        <b style="color:${ss[0]}">${ss[1]} ${ss[2]}</b> · RS ${v.rs} · ${ss[3]}
+        <table class="tbl" style="margin-top:6px"><tr><th>Pivot</th><th>Under pivot</th><th>Base age</th><th>Depth</th><th>Tightening</th><th>Vol dry-up</th><th>Leader</th></tr>
+        <tr><td>${cur}${v.pivot}</td><td>${v.distUnderPivot}%</td><td>${v.baseWk}wk</td><td>${v.depth}%</td><td>${v.tighten}×</td><td>${v.dry}×</td><td>${v.checks.leader?'Yes':'No'}</td></tr></table>
+        <div style="font-size:10px;color:#5c6368;margin-top:5px">${v.isVCP?'Valid VCP base ('+v.passCount+'/5 checks). A close above the pivot completes it.':'Not a textbook VCP yet ('+v.passCount+'/5).'} O'Neil–Minervini method · RS vs own trailing return.</div></div>`;
+    })()}
 
     <h2>Signal Backtest (this stock's own history)</h2>
     ${btHTML}
