@@ -5889,6 +5889,13 @@ async function runAnalysis() {
 // ============================================================
 // RENDER RESULTS
 // ============================================================
+// Risk:Reward colour — flags poor structures (risk > reward) in red.
+function _rrColor(rr) {
+  const r = parseFloat(rr);
+  if (isNaN(r)) return 'var(--text3)';
+  return r >= 2 ? 'var(--green)' : r >= 1 ? 'var(--accent)' : 'var(--red)';
+}
+
 function renderResults() {
   const { signals, patterns, currentPrice, prevClose, priceChg, pricePct, data, symbol, company, market } = analysisResult;
   const last = data.length - 1;
@@ -5986,7 +5993,7 @@ function renderResults() {
       return `<div style="margin-top:12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);padding:13px 15px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:${flags.length?'10px':'8px'};flex-wrap:wrap;">
           <span style="font-size:16px;">🧭</span><b style="font-size:13.5px;">Reality Check</b>
-          <span style="margin-left:auto;font-size:11.5px;color:var(--text3);">Confidence <b style="color:${confColor}">${conf}% (${confWord})</b> · ${bc}/${tot} signals agree</span>
+          <span style="margin-left:auto;font-size:11.5px;color:var(--text3);">Confidence <b style="color:${confColor}">${conf}% (${confWord})</b> · ${Math.max(bc,brc)}/${tot} signals agree</span>
         </div>
         ${flags.map(f => `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:7px;font-size:12px;line-height:1.5;"><span>${f[0]}</span><div><b style="color:${f[3]}">${f[1]}.</b> <span style="color:var(--text2)">${f[2]}</span></div></div>`).join('') || '<div style="font-size:12px;color:var(--text2);">No major liquidity or positioning red flags — but the verdict still reflects price action only.</div>'}
         <div style="margin-top:9px;padding-top:9px;border-top:1px dashed var(--border2);font-size:11px;color:var(--text3);line-height:1.5;">⚠️ <b>Technicals only.</b> This reading ignores earnings, news, management quality, valuation and macro events — the factors that actually drive prices over time. Treat it as one input, never the whole decision.</div>
@@ -6012,7 +6019,14 @@ function renderResults() {
                        : 'RSI rolling below 55 while price is below its 50-day average (a momentum-down setup)';
     const correctTxt = up ? 'rose' : 'fell';
     const stat = (label, val, sub) => `<div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 13px;"><div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">${label}</div><div style="font-size:20px;font-weight:800;color:${sub?.col||'var(--text)'};margin-top:3px;">${val}</div>${sub?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${sub.txt}</div>`:''}</div>`;
-    elBT.innerHTML = `
+    // Backtest contradiction: verdict says one way, history typically moved the other.
+    const contradiction = (v === 'SELL' && bt.avgRet > 0) || (v === 'BUY' && bt.avgRet < 0);
+    const contraBanner = contradiction ? `
+      <div style="background:rgba(245,158,11,0.10);border-left:4px solid var(--accent);border-radius:0 8px 8px 0;padding:11px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;font-size:13px;color:var(--accent);">⚠️ Warning: Backtest Contradiction${v==='SELL'?' — possible Bear Trap':' — possible Bull Trap'}</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:3px;">The verdict is <b>${v}</b>, but on this stock's history this setup typically moved <b style="color:${bt.avgRet>=0?'var(--green)':'var(--red)'}">${bt.avgRet>=0?'+':''}${bt.avgRet.toFixed(1)}%</b> — the opposite direction. History contradicts the current technicals; proceed with caution.</div>
+      </div>` : '';
+    elBT.innerHTML = contraBanner + `
       <div style="background:${good?'rgba(16,185,129,0.06)':bad?'rgba(239,68,68,0.06)':'var(--surface2)'};border:1px solid ${col};border-radius:10px;padding:14px 16px;">
         <div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px;">
           Over the last <b>${(data.length/250).toFixed(1)} years</b> of <b>${analysisResult.company}</b>, today's <b style="color:${v==='BUY'?'var(--green)':v==='SELL'?'var(--red)':'var(--accent)'}">${v}</b>-aligned trigger (${trigTxt}) fired <b>${bt.count}</b> time${bt.count===1?'':'s'}. Here's what happened <b>${bt.horizon} trading days</b> later:
@@ -6043,7 +6057,7 @@ function renderResults() {
       <div class="reco-targets">
         <span>🎯 Target <b>${CUR()}${s.target}</b></span>
         <span>🛑 Stop Loss <b style="color:var(--red)">${CUR()}${s.sl}</b></span>
-        <span>⚖️ Risk:Reward <b>1:${s.rr}</b></span>
+        <span>⚖️ Risk:Reward <b style="color:${_rrColor(s.rr)}">1:${s.rr}</b>${parseFloat(s.rr)<1?' ⚠️':''}</span>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px;">${tf.why}</div>
     </div>`;
@@ -6369,7 +6383,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
   const chg = ar.priceChg>=0?'+':'';
 
   const tf = [['Swing (3–10D)',s.swing],['Short (1–3M)',s.short],['Long (6M–2Y)',s.long]].map(([lbl,t])=>
-    `<tr><td>${lbl}</td><td style="color:${sigCol(t.signal)};font-weight:600">${t.signal}</td><td>${cur}${t.target}</td><td>${cur}${t.sl}</td><td>1:${t.rr}</td><td>${t.confidence}%</td></tr>`).join('');
+    `<tr><td>${lbl}</td><td style="color:${sigCol(t.signal)};font-weight:600">${t.signal}</td><td>${cur}${t.target}</td><td>${cur}${t.sl}</td><td style="color:${_rrColor(t.rr)};font-weight:600">1:${t.rr}${parseFloat(t.rr)<1?' ⚠':''}</td><td>${t.confidence}%</td></tr>`).join('');
 
   const ind = [
     ['RSI (14)', s.rsiV?.toFixed?.(1) ?? s.rsiV, s.rsiV<30?'Oversold':s.rsiV>70?'Overbought':'Neutral'],
@@ -6400,7 +6414,8 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
   }).join('') || '<p class="muted">No chart patterns detected on the current data.</p>';
 
   const bt = ar.backtest;
-  const btHTML = bt && !bt.error ? `<table class="tbl"><tr><th>Setups (n)</th><th>Hit rate</th><th>Avg ${bt.horizon}-day</th><th>Best</th><th>Worst</th></tr>
+  const _btContra = bt && !bt.error && ((V === 'SELL' && bt.avgRet > 0) || (V === 'BUY' && bt.avgRet < 0));
+  const btHTML = bt && !bt.error ? `${_btContra?`<div style="background:#fff7ef;border-left:4px solid #d97706;padding:8px 11px;margin-bottom:6px;border-radius:0 4px 4px 0"><b style="color:#b45309">⚠ Backtest Contradiction${V==='SELL'?' — possible Bear Trap':' — possible Bull Trap'}.</b> Verdict is ${V} but this setup historically moved ${bt.avgRet>=0?'+':''}${bt.avgRet.toFixed(1)}% (opposite). Proceed with caution.</div>`:''}<table class="tbl"><tr><th>Setups (n)</th><th>Hit rate</th><th>Avg ${bt.horizon}-day</th><th>Best</th><th>Worst</th></tr>
     <tr><td>${bt.count}</td><td>${bt.winRate.toFixed(0)}%</td><td>${bt.avgRet>=0?'+':''}${bt.avgRet.toFixed(1)}%</td><td>+${bt.best.toFixed(0)}%</td><td>${bt.worst.toFixed(0)}%</td></tr></table>`
     : `<p class="muted">${bt?.error||'Backtest unavailable.'}</p>`;
 
@@ -6511,7 +6526,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
     <h2>Price Chart</h2>
     ${mainImg?`<img class="chart" src="${mainImg}">`:'<p class="muted">Chart image unavailable.</p>'}
 
-    <h2>Technical Indicators (${s.bullCount}↑ / ${s.bearCount}↓)</h2>
+    <h2>Technical Indicators (${s.bullCount} bullish, ${s.bearCount} bearish)</h2>
     <table class="tbl"><tr><th>Indicator</th><th>Value</th><th>Reading</th></tr>${ind}</table>
 
     <h2>Breakout Screener</h2>
