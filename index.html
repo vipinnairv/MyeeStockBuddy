@@ -3976,14 +3976,24 @@ function calcOBV(closes, volumes) {
 function calcSupertrend(data, period=10, multiplier=3) {
   const n=data.length; const atr=calcATR(data,period);
   const upper=Array(n).fill(null),lower=Array(n).fill(null),st=Array(n).fill(null),trend=Array(n).fill(1);
+  // Correct Wilder Supertrend. The prior bug ratcheted the bands one direction
+  // only (missing the "price closed beyond the prior band" reset), so a band
+  // could get stuck tens of % away from price (the impossible ₹420 line).
+  let pUpper=null, pLower=null, pST=null;
   for(let i=period;i<n;i++){
-    if(!atr[i])continue;
+    if(atr[i]==null) continue;
     const mid=(data[i].high+data[i].low)/2;
     const bu=mid+multiplier*atr[i], bl=mid-multiplier*atr[i];
-    upper[i]=(upper[i-1]!==null&&bu<upper[i-1])?bu:(upper[i-1]||bu);
-    lower[i]=(lower[i-1]!==null&&bl>lower[i-1])?bl:(lower[i-1]||bl);
-    st[i]=(st[i-1]===upper[i-1])?(data[i].close<=upper[i]?upper[i]:lower[i]):(data[i].close>=lower[i]?lower[i]:upper[i]);
-    trend[i]=data[i].close>st[i]?1:-1;
+    const pc=data[i-1].close;
+    const fUpper = pUpper==null ? bu : ((bu < pUpper || pc > pUpper) ? bu : pUpper);
+    const fLower = pLower==null ? bl : ((bl > pLower || pc < pLower) ? bl : pLower);
+    let curST;
+    if(pST==null)            curST = data[i].close <= fUpper ? fUpper : fLower;
+    else if(pST===pUpper)    curST = data[i].close <= fUpper ? fUpper : fLower;
+    else                     curST = data[i].close >= fLower ? fLower : fUpper;
+    upper[i]=fUpper; lower[i]=fLower; st[i]=curST;
+    trend[i]=data[i].close>curST?1:-1;
+    pUpper=fUpper; pLower=fLower; pST=curST;
   }
   return { st, trend };
 }
@@ -4191,6 +4201,20 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
   if (rsiDiv.bullDiv) sigs.push({ name:'RSIDiv', w:15, dir:1 });
   if (rsiDiv.bearDiv) sigs.push({ name:'RSIDiv', w:15, dir:-1 });
 
+  // ── ADX regime gate on oscillators ─────────────────────────────────────
+  // In a strong trend, oscillators stay embedded in oversold/overbought and
+  // produce false counter-trend signals. Mute them so an oversold RSI cannot
+  // buoy the score into a downtrend (or an overbought RSI into an uptrend).
+  const strongDown = adxV > 25 && mDIV > pDIV;
+  const strongUp   = adxV > 25 && pDIV > mDIV;
+  if (strongDown || strongUp) {
+    const OSC = new Set(['RSI','Stoch','WillR','MFI','CCI','BB']);
+    sigs.forEach(sig => {
+      if (!OSC.has(sig.name)) return;
+      if ((strongDown && sig.dir > 0) || (strongUp && sig.dir < 0)) { sig.dir = 0; sig.w = 0; sig.muted = true; }
+    });
+  }
+
   // Compute composite score 0-100
   let totalW = 0, bullW = 0;
   sigs.forEach(s => { if (s.w > 0) { totalW += s.w; if (s.dir > 0) bullW += s.w; } });
@@ -4237,12 +4261,14 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
     const rr = risk > 0 ? (reward / risk).toFixed(1) : 'N/A';
     return { signal:sig, confidence:conf, target:f2(tgt), sl:f2(sl), rr };
   }
+  // Strict ATR stops (no support/resistance clamp) so "2× ATR below entry"
+  // is exactly entry − 2·ATR, matching the label in the risk table.
   const swing = mkLevels(verdict,
-    Math.max(c - atrV*2, support*0.99), c + atrV*3,             // BUY: sl below, tgt above
-    Math.min(c + atrV*2, resist*1.01),  c - atrV*3);            // SELL: sl above, tgt below
+    c - atrV*2, c + atrV*3,     // BUY:  sl below, tgt above
+    c + atrV*2, c - atrV*3);    // SELL: sl above, tgt below
   const short = mkLevels(verdict,
-    Math.max(c - atrV*3, support*0.98), c + atrV*5,
-    Math.min(c + atrV*3, resist*1.02),  c - atrV*5);
+    c - atrV*3, c + atrV*5,
+    c + atrV*3, c - atrV*5);
   const long  = mkLevels(verdict,
     support*0.97, resist + diff*0.618,                          // BUY: structural
     resist*1.03,  Math.max(c*0.5, support - diff*0.618));       // SELL: mirror down
@@ -5086,7 +5112,7 @@ window.SBSynthStore = (function () {
 // ============================================================
 // BREAKOUT SCREENER — tight consolidation → resistance break → range expansion
 // ============================================================
-function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10) {
+function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0.10, atrOverride = null) {
   if (!priceData || priceData.length < lookbackPeriod + 1) return { isBreakout:false, error:'Insufficient data' };
   const historicalData = priceData.slice(-(lookbackPeriod + 1), -1);
   const currentDay = priceData[priceData.length - 1];
@@ -5104,7 +5130,8 @@ function analyzeBreakout(priceData, lookbackPeriod = 20, maxConsolidationPct = 0
       Math.abs(priceData[i].low  - priceData[i-1].close));
     trSum += tr; trCount++;
   }
-  const atr = trCount > 0 ? trSum / trCount : 0;
+  // Use the canonical (Wilder) ATR when provided so every panel shows one value.
+  const atr = (atrOverride != null && isFinite(atrOverride)) ? atrOverride : (trCount > 0 ? trSum / trCount : 0);
   const currentRange = currentDay.high - currentDay.low;
   const isExpanding = currentRange > atr;
 
@@ -5769,7 +5796,7 @@ async function runAnalysis() {
     const extras  = { stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv };
     const signals  = generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, last, extras);
     const patterns = detectPatterns(data, last);
-    const breakout = analyzeBreakout(data, 20, 0.10);
+    const breakout = analyzeBreakout(data, 20, 0.10, atr[last]);   // share the canonical Wilder ATR
     const backtest = backtestVerdict(data, signals.long.signal, 10);
 
     // ── Chart pattern engine (multi-bar geometry + recommendation levels) ──
@@ -7149,7 +7176,7 @@ function _renderAIJson(json, mode, engine) {
     ].map(([label, val, color]) => `
       <div class="ai-trade-cell">
         <div class="ai-trade-cell-label">${label}</div>
-        <div class="ai-trade-cell-val" style="color:${color};">${val || '—'}</div>
+        <div class="ai-trade-cell-val" style="color:${color};">${val==null||val===''?'—':(/^\s*[₹$]/.test(String(val))?val:CUR()+val)}</div>
       </div>`).join('')}
   </div>
 
