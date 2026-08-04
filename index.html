@@ -1113,6 +1113,11 @@ td.r{text-align:right}
 </div>
 <style>
 html,body{overflow-x:hidden;}
+.mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.mkt-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;box-shadow:var(--card-shadow);}
+.mkt-name{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.3px;}
+@keyframes mktPulse{0%,100%{opacity:1}50%{opacity:.35}}
+#mktLive{animation:mktPulse 1.6s infinite;}
 /* ═══ APP SWITCHER - MOBILE ═══ */
 @media(max-width:540px){
   #app-switcher { padding:0 8px; height:40px; }
@@ -1336,6 +1341,8 @@ html,body{overflow-x:hidden;}
   <div class="app-container">
     <!-- DATA INGESTION -->
     <div id="ingestionSection">
+      <!-- Opening market dashboard: live indices + pattern reads (India only) -->
+      <div id="marketDashboard" style="margin:8px 0 6px;"></div>
       <div style="text-align:center;padding:32px 0 24px;">
         <div style="display:inline-block;background:rgba(0,106,255,0.1);border:1px solid rgba(0,106,255,0.3);color:var(--accent);padding:4px 14px;border-radius:20px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">Step 1 of 3</div>
         <h2 style="font-family:'Calibri',serif;font-size:28px;font-weight:900;margin-bottom:6px;" id="ingestionTitle">Load Your Stock Data</h2>
@@ -2845,6 +2852,7 @@ function selectMarket(mode) {
   else setTimeout(() => _getFuse(prewarmDb, mode), 300);
 
   showPage('mainPage');
+  try { loadMarketDashboard(); } catch(e) {}   // opening market dashboard (India only)
   // Land ready to type - Live Symbol Lookup is the default tab.
   setTimeout(() => { const si=document.getElementById('symbolInput');
     if (si && document.getElementById('tabSymbol')?.classList.contains('active')) si.focus(); }, 120);
@@ -5301,6 +5309,101 @@ function _fmtCap(v, isIndia) {
   if (!v || v <= 0) return '--';
   if (isIndia) return v >= 1e12 ? '₹'+(v/1e12).toFixed(2)+' L Cr' : v >= 1e7 ? '₹'+(v/1e7).toFixed(0)+' Cr' : '₹'+(v/1e5).toFixed(0)+' L';
   return v >= 1e12 ? '$'+(v/1e12).toFixed(2)+'T' : v >= 1e9 ? '$'+(v/1e9).toFixed(2)+'B' : '$'+(v/1e6).toFixed(0)+'M';
+}
+
+// ============================================================
+// OPENING MARKET DASHBOARD — live indices + pattern reads
+// ============================================================
+const MKT_INDICES = [
+  ['NIFTY 50','^NSEI'], ['SENSEX','^BSESN'], ['BANK NIFTY','^NSEBANK'],
+  ['NIFTY IT','^CNXIT'], ['NIFTY AUTO','^CNXAUTO'], ['NIFTY PHARMA','^CNXPHARMA'],
+  ['NIFTY FMCG','^CNXFMCG'], ['NIFTY MIDCAP','^NSEMDCP50'], ['INDIA VIX','^INDIAVIX'],
+];
+let _mktTimer = null, _mktLoading = false;
+
+async function _fetchIndex(sym) {
+  const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1y&interval=1d';
+  const enc = encodeURIComponent;
+  const urls = [['https://api.allorigins.win/raw?url='+enc(yf),false], ['https://corsproxy.io/?'+enc(yf),false], ['https://api.allorigins.win/get?url='+enc(yf),true]];
+  for (const [u, wrap] of urls) {
+    try {
+      const ctrl = new AbortController(); const tm = setTimeout(()=>ctrl.abort(), 8000);
+      let res; try { res = await fetch(u,{signal:ctrl.signal}); } finally { clearTimeout(tm); }
+      if (!res.ok) continue;
+      let raw; if (wrap) { const o=await res.json(); const t=o.contents||o.body||''; if(!t) continue; raw = typeof t==='string'?JSON.parse(t):t; } else raw = await res.json();
+      const r = raw?.chart?.result?.[0]; if (!r) continue;
+      const m = r.meta||{}, q = r.indicators?.quote?.[0]||{}, ts = r.timestamp||[];
+      const rows = ts.map((t,i)=>({date:new Date(t*1000),open:q.open?.[i],high:q.high?.[i],low:q.low?.[i],close:q.close?.[i],volume:q.volume?.[i]||0})).filter(x=>x.close!=null);
+      if (rows.length < 30) continue;
+      // Day change from consecutive daily bars (meta.previousClose can be stale).
+      const lastC = rows[rows.length-1].close, prevC = rows[rows.length-2]?.close ?? lastC;
+      const price = m.regularMarketPrice ?? lastC;
+      // Market closed → live price == last bar, so compare to the prior bar.
+      // Intraday → live price differs from last bar, so compare to that last bar.
+      const prev = Math.abs(price - lastC) < lastC*0.0005 ? prevC : lastC;
+      return { price, prev, rows };
+    } catch(e) {}
+  }
+  return null;
+}
+
+function _indexRead(rows) {
+  const bars = rows.map(b=>({time:Math.floor(b.date.getTime()/1000),open:b.open,high:b.high,low:b.low,close:b.close,volume:b.volume||0}));
+  const closes = bars.map(b=>b.close), n = closes.length-1;
+  const s50 = calcSMA(closes,50), s200 = calcSMA(closes,200);
+  const c = closes[n];
+  const trend = (s50[n]&&s200[n]) ? (c>s50[n]&&s50[n]>s200[n]?'Uptrend':c<s50[n]&&s50[n]<s200[n]?'Downtrend':'Sideways') : 'Sideways';
+  let pattern = '';
+  try { const cards = SBPatternEngine.scanPatterns(bars,{minConfidence:45}); if (cards.length) pattern = cards[0].pattern; } catch(e) {}
+  return { trend, pattern };
+}
+
+function _sparkline(vals, color) {
+  if (!vals || vals.length < 2) return '';
+  const w=140,h=26,mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1;
+  const pts = vals.map((v,i)=>`${(i/(vals.length-1)*w).toFixed(1)},${(h-((v-mn)/rng)*h).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:26px;margin-top:5px;display:block;"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function renderIndexCards(data) {
+  const el = document.getElementById('marketDashboard'); if (!el) return;
+  const cards = MKT_INDICES.map(([name,sym]) => {
+    const d = data[sym];
+    if (!d) return `<div class="mkt-card" style="opacity:.5"><div class="mkt-name">${name}</div><div style="font-size:12px;color:var(--text3);margin-top:6px;">…</div></div>`;
+    const up = d.price >= d.prev, chg = d.price - d.prev, pct = d.prev ? chg/d.prev*100 : 0;
+    const isVix = sym === '^INDIAVIX';
+    const col = isVix ? (up?'var(--red)':'var(--green)') : (up?'var(--green)':'var(--red)'); // VIX up = fear
+    const rd = d.read || {};
+    return `<div class="mkt-card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+        <div class="mkt-name">${name}</div>
+        <div style="font-size:9.5px;color:${rd.trend==='Uptrend'?'var(--green)':rd.trend==='Downtrend'?'var(--red)':'var(--text3)'};font-weight:600;">${rd.trend||''}</div>
+      </div>
+      <div style="font-size:18px;font-weight:800;margin:2px 0;">${d.price.toLocaleString('en-IN',{maximumFractionDigits:2})}</div>
+      <div style="font-size:12px;font-weight:700;color:${col};">${up?'▲':'▼'} ${Math.abs(chg).toFixed(2)} (${pct>=0?'+':''}${pct.toFixed(2)}%)</div>
+      ${_sparkline(d.rows.slice(-40).map(r=>r.close), col)}
+      ${rd.pattern?`<div style="font-size:10px;color:var(--accent);margin-top:4px;">📐 ${rd.pattern}</div>`:''}
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:15px;font-weight:800;">📊 Market Dashboard <span id="mktLive" style="font-size:10px;color:var(--green);font-weight:600;">● LIVE</span></div>
+      <div style="font-size:11px;color:var(--text3);">Updated ${new Date().toLocaleTimeString('en-IN')} · <button onclick="loadMarketDashboard(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;">refresh</button></div>
+    </div><div class="mkt-grid">${cards}</div>`;
+}
+
+async function loadMarketDashboard(force) {
+  const el = document.getElementById('marketDashboard'); if (!el) return;
+  if (marketMode !== 'india') { el.style.display = 'none'; clearTimeout(_mktTimer); return; }
+  el.style.display = '';
+  if (_mktLoading) return; _mktLoading = true;
+  if (!el.innerHTML.trim()) el.innerHTML = '<div style="color:var(--text3);font-size:12.5px;padding:12px;">📊 Loading live market indices…</div>';
+  const data = {}, list = MKT_INDICES.slice();
+  async function worker() { while (list.length) { const [name,sym] = list.shift();
+    const d = await _fetchIndex(sym); if (d) { d.read = _indexRead(d.rows); data[sym] = d; renderIndexCards(data); } } }
+  await Promise.all(Array.from({length:3}, worker));
+  renderIndexCards(data);
+  _mktLoading = false;
+  clearTimeout(_mktTimer); _mktTimer = setTimeout(() => loadMarketDashboard(), 60000);  // refresh each minute
 }
 
 const _STAGE_STYLE = {
