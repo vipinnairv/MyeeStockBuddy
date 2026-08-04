@@ -1343,7 +1343,11 @@ html,body{overflow-x:hidden;}
     <div id="ingestionSection">
       <!-- Opening market dashboard: live indices + pattern reads (India only) -->
       <div id="marketDashboard" style="margin:8px 0 6px;"></div>
-      <div style="text-align:center;padding:32px 0 24px;">
+      <div style="border-top:1px dashed var(--border2);margin:20px 0 0;"></div>
+      <div style="background:rgba(0,106,255,0.06);border:1px solid rgba(0,106,255,0.25);border-radius:8px;padding:10px 14px;margin:16px 0 0;font-size:11.5px;color:var(--text2);line-height:1.5;">
+        ⚠️ <b>Before you analyse a stock:</b> everything below is an educational, rule-based &amp; AI technical read - <b>not investment advice</b>. It ignores news, earnings &amp; macro events. Vipin Nair is not a SEBI-registered advisor. Consult a registered advisor before trading.
+      </div>
+      <div style="text-align:center;padding:22px 0 24px;">
         <div style="display:inline-block;background:rgba(0,106,255,0.1);border:1px solid rgba(0,106,255,0.3);color:var(--accent);padding:4px 14px;border-radius:20px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">Step 1 of 3</div>
         <h2 style="font-family:'Calibri',serif;font-size:28px;font-weight:900;margin-bottom:6px;" id="ingestionTitle">Load Your Stock Data</h2>
         <p style="color:var(--text2);font-size:14px;" id="ingestionSubtitle">Upload NSE/BSE CSV files or enter a stock symbol for live analysis</p>
@@ -5374,7 +5378,7 @@ function renderIndexCards(data) {
     const isVix = sym === '^INDIAVIX';
     const col = isVix ? (up?'var(--red)':'var(--green)') : (up?'var(--green)':'var(--red)'); // VIX up = fear
     const rd = d.read || {};
-    return `<div class="mkt-card">
+    return `<div class="mkt-card" onclick="openIndexAnalysis('${sym}','${name}')" style="cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
         <div class="mkt-name">${name}</div>
         <div style="font-size:9.5px;color:${rd.trend==='Uptrend'?'var(--green)':rd.trend==='Downtrend'?'var(--red)':'var(--text3)'};font-weight:600;">${rd.trend||''}</div>
@@ -5383,12 +5387,101 @@ function renderIndexCards(data) {
       <div style="font-size:12px;font-weight:700;color:${col};">${up?'▲':'▼'} ${Math.abs(chg).toFixed(2)} (${pct>=0?'+':''}${pct.toFixed(2)}%)</div>
       ${_sparkline(d.rows.slice(-40).map(r=>r.close), col)}
       ${rd.pattern?`<div style="font-size:10px;color:var(--accent);margin-top:4px;">📐 ${rd.pattern}</div>`:''}
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">click for full chart analysis ›</div>
     </div>`;
   }).join('');
   el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;flex-wrap:wrap;gap:8px;">
       <div style="font-size:15px;font-weight:800;">📊 Market Dashboard <span id="mktLive" style="font-size:10px;color:var(--green);font-weight:600;">● LIVE</span></div>
       <div style="font-size:11px;color:var(--text3);">Updated ${new Date().toLocaleTimeString('en-IN')} · <button onclick="loadMarketDashboard(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;">refresh</button></div>
-    </div><div class="mkt-grid">${cards}</div>`;
+    </div><div class="mkt-grid">${cards}</div>
+    <div id="mktExtra" style="margin-top:14px;"></div>`;
+  renderMktExtra();
+}
+
+let _fiidiiData = null, _moversData = null;
+
+// FII/DII cash-market buy/sell (NSE, via corsproxy) + top gainers/losers basket.
+function renderMktExtra() {
+  const el = document.getElementById('mktExtra'); if (!el) return;
+  let html = '';
+  // ── FII / DII ──
+  if (_fiidiiData && _fiidiiData.length) {
+    const cell = r => { const net = +r.netValue; const c = net>=0?'var(--green)':'var(--red)';
+      return `<div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 12px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);">${r.category} <span style="color:var(--text3);font-weight:400;">· ${r.date}</span></div>
+        <div style="font-size:17px;font-weight:800;color:${c};margin:2px 0;">${net>=0?'▲ +':'▼ '}₹${Math.abs(net).toLocaleString('en-IN')} Cr</div>
+        <div style="font-size:10.5px;color:var(--text3);">Buy ₹${(+r.buyValue).toLocaleString('en-IN')} · Sell ₹${(+r.sellValue).toLocaleString('en-IN')} Cr</div></div>`; };
+    html += `<div style="font-size:13px;font-weight:800;margin-bottom:7px;">🏦 FII / DII Activity (cash market)</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">${_fiidiiData.map(cell).join('')}</div>
+      <div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Net = Buy − Sell. Positive = institutions net buyers that day. Source: NSE.</div>`;
+  }
+  // ── Gainers / Losers ──
+  if (_moversData && _moversData.length) {
+    const sorted = [..._moversData].sort((a,b)=>b.pct-a.pct);
+    const g = sorted.slice(0,5), l = sorted.slice(-5).reverse();
+    const row = m => `<div onclick="openBasketAnalysis('${m.sym}')" style="cursor:pointer;display:flex;justify-content:space-between;padding:5px 9px;border-bottom:1px solid var(--border);font-size:12px;">
+      <b>${m.sym}</b><span>₹${m.price.toLocaleString('en-IN',{maximumFractionDigits:2})}</span>
+      <span style="color:${m.pct>=0?'var(--green)':'var(--red)'};font-weight:700;min-width:56px;text-align:right;">${m.pct>=0?'+':''}${m.pct.toFixed(2)}%</span></div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:14px;">
+      <div style="border:1px solid var(--green);border-radius:9px;overflow:hidden;"><div style="background:rgba(49,167,69,.12);color:var(--green);font-weight:700;font-size:12.5px;padding:6px 10px;">🚀 Top Gainers</div>${g.map(row).join('')}</div>
+      <div style="border:1px solid var(--red);border-radius:9px;overflow:hidden;"><div style="background:rgba(255,79,85,.12);color:var(--red);font-weight:700;font-size:12.5px;padding:6px 10px;">📉 Top Losers</div>${l.map(row).join('')}</div>
+    </div><div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Movers among a large-cap basket (not the full market).</div>`;
+  }
+  el.innerHTML = html;
+}
+
+async function loadFIIDII() {
+  const yf = 'https://www.nseindia.com/api/fiidiiTradeReact';
+  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf), 'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]) {
+    try { const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
+      const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm);
+      const arr=JSON.parse(await res.text());
+      if (Array.isArray(arr) && arr.length) { _fiidiiData = arr; return; }
+    } catch(e) {}
+  }
+}
+
+const MOVERS_BASKET = ['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','SBIN','BHARTIARTL','ITC','LT','KOTAKBANK','HINDUNILVR','BAJFINANCE','AXISBANK','MARUTI','SUNPHARMA','TITAN','TATAMOTORS','WIPRO','ONGC','NTPC'];
+async function _fetchQuote(sym) {
+  const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym+'.NS')+'?range=5d&interval=1d';
+  for (const u of ['https://api.allorigins.win/raw?url='+encodeURIComponent(yf), 'https://corsproxy.io/?'+encodeURIComponent(yf)]) {
+    try { const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),7000);
+      const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!res.ok) continue;
+      const raw=await res.json(); const r=raw?.chart?.result?.[0]; if(!r) continue;
+      const m=r.meta||{}, cl=(r.indicators?.quote?.[0]?.close||[]).filter(x=>x!=null);
+      const lastC=cl[cl.length-1], prevC=cl[cl.length-2]??lastC, price=m.regularMarketPrice??lastC;
+      const prev=Math.abs(price-lastC)<lastC*0.0005?prevC:lastC;
+      if(price==null||!prev) continue;
+      return { sym, price, pct:(price-prev)/prev*100 };
+    } catch(e) {}
+  }
+  return null;
+}
+async function loadMovers() {
+  const out=[], list=MOVERS_BASKET.slice();
+  async function w(){ while(list.length){ const q=await _fetchQuote(list.shift()); if(q) { out.push(q); _moversData=out; renderMktExtra(); } } }
+  await Promise.all(Array.from({length:4}, w));
+  _moversData = out;
+}
+
+// Open the full chart analysis for an index using its already-fetched history.
+function openIndexAnalysis(sym, name) {
+  const d = (window._mktData||{})[sym]; if (!d) return;
+  parsedData = d.rows.map(r => ({
+    'Date': r.date.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-'),
+    'Open Price':(+r.open).toFixed(2), 'High Price':(+r.high).toFixed(2), 'Low Price':(+r.low).toFixed(2),
+    'Close Price':(+r.close).toFixed(2), 'Total Traded Quantity':String(r.volume||0) }));
+  document.getElementById('companyName').value = name;
+  document.getElementById('stockSymbol').value = name;
+  document.getElementById('currentPrice').value = (+d.price).toFixed(2);
+  if (document.getElementById('marketSelect')) document.getElementById('marketSelect').value = 'NSE';
+  try { runAnalysis(); setTimeout(()=>document.getElementById('resultsSection')?.scrollIntoView({behavior:'smooth',block:'start'}), 300); } catch(e){}
+}
+async function openBasketAnalysis(sym) {
+  if (typeof selectMarket==='function') { try { selectMarket('india'); } catch(e){} }
+  document.getElementById('symbolInput').value = sym;
+  document.getElementById('resolvedSymbol').value = sym;
+  try { await fetchSymbolData(); await runAnalysis(); document.getElementById('resultsSection')?.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
 }
 
 async function loadMarketDashboard(force) {
@@ -5398,10 +5491,14 @@ async function loadMarketDashboard(force) {
   if (_mktLoading) return; _mktLoading = true;
   if (!el.innerHTML.trim()) el.innerHTML = '<div style="color:var(--text3);font-size:12.5px;padding:12px;">📊 Loading live market indices…</div>';
   const data = {}, list = MKT_INDICES.slice();
+  window._mktData = data;
   async function worker() { while (list.length) { const [name,sym] = list.shift();
-    const d = await _fetchIndex(sym); if (d) { d.read = _indexRead(d.rows); data[sym] = d; renderIndexCards(data); } } }
+    const d = await _fetchIndex(sym); if (d) { d.read = _indexRead(d.rows); data[sym] = d; window._mktData = data; renderIndexCards(data); } } }
   await Promise.all(Array.from({length:3}, worker));
   renderIndexCards(data);
+  // FII/DII + gainers/losers in parallel (non-blocking for the index grid)
+  loadFIIDII().then(renderMktExtra).catch(()=>{});
+  loadMovers().then(renderMktExtra).catch(()=>{});
   _mktLoading = false;
   clearTimeout(_mktTimer); _mktTimer = setTimeout(() => loadMarketDashboard(), 60000);  // refresh each minute
 }
