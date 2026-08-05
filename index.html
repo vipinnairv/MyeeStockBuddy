@@ -1559,6 +1559,7 @@ html,body{overflow-x:hidden;}
       <!-- VCP / Base-breakout setup (O'Neil–Minervini method) -->
       <div class="section-header"><span class="section-title">🚀 Base &amp; Breakout Setup</span><div class="section-line"></div></div>
       <div id="vcpPanel" style="margin-bottom:24px;"></div>
+      <div id="riskPanel" style="margin-bottom:24px;"></div>
       <!-- Fundamentals snapshot -->
       <div class="section-header"><span class="section-title">🏢 Fundamentals &amp; Context</span><div class="section-line"></div></div>
       <div id="fundamentalsPanel" style="margin-bottom:24px;"></div>
@@ -3918,6 +3919,63 @@ function calcATR(data, period=14) {
   return tr.map((_, i) => i < period ? null : tr.slice(i-period+1, i+1).reduce((s,v)=>s+v,0)/period);
 }
 
+// ── RISK INDICATORS ─────────────────────────────────────────────────────────
+// All four hang off calcATR above so every panel in the app quotes one ATR value
+// rather than each computing its own and disagreeing at the second decimal.
+
+// Chandelier Exit (Chuck LeBeau). Hangs the stop off the HIGHEST HIGH reached
+// since the trend began, not off the entry price - so the stop ratchets up with
+// the trend but never tightens during a pullback. Long stop = HH(n) - mult*ATR.
+function calcChandelierExit(data, period=22, mult=3) {
+  const atr = calcATR(data, period);
+  return data.map((_, i) => {
+    if (i < period || atr[i] == null) return { long:null, short:null };
+    const win = data.slice(i-period+1, i+1);
+    const hh = Math.max(...win.map(r=>r.high)), ll = Math.min(...win.map(r=>r.low));
+    return { long: hh - mult*atr[i], short: ll + mult*atr[i] };
+  });
+}
+
+// ATR Trailing Stop: a true ratchet. The stop only ever moves in favour of the
+// position and flips side only when price CLOSES through it. That one-way rule is
+// what makes it a stop rather than just another band.
+function calcATRTrailingStop(data, period=14, mult=3) {
+  const atr = calcATR(data, period);
+  const out = new Array(data.length).fill(null);
+  let stop = null, dir = 1;
+  for (let i=0;i<data.length;i++) {
+    if (atr[i]==null) continue;
+    const c = data[i].close, gap = mult*atr[i];
+    if (stop==null) { dir=1; stop=c-gap; out[i]={stop,dir}; continue; }
+    if (dir===1) { stop=Math.max(stop,c-gap); if(c<stop){dir=-1;stop=c+gap;} }
+    else         { stop=Math.min(stop,c+gap); if(c>stop){dir= 1;stop=c-gap;} }
+    out[i] = { stop, dir };
+  }
+  return out;
+}
+
+// Ladder ATR: staged scale-out rungs at 1x/2x/3x ATR with the R multiple each one
+// represents, so "take some off at +2R" becomes an explicit price, not a feeling.
+function calcLadderATR(price, atrVal, dir=1, rungs=[1,2,3], stopMult=2) {
+  if (!isFinite(price)||!isFinite(atrVal)||atrVal<=0) return null;
+  const stop = dir>=0 ? price - stopMult*atrVal : price + stopMult*atrVal;
+  const risk = Math.abs(price - stop); if (risk<=0) return null;
+  return { stop:+stop.toFixed(2), risk:+risk.toFixed(2), atr:+atrVal.toFixed(2),
+    rungs: rungs.map(m => { const t = dir>=0 ? price+m*atrVal : price-m*atrVal;
+      return { mult:m, level:+t.toFixed(2), r:+(Math.abs(t-price)/risk).toFixed(2) }; }) };
+}
+
+// High/Low Bands (Donchian). Highest high and lowest low of the last N bars -
+// the classic Turtle breakout entry on the upper band, exit on the lower.
+function calcHighLowBands(data, period=20) {
+  return data.map((_, i) => {
+    if (i < period-1) return { upper:null, lower:null, mid:null };
+    const win = data.slice(i-period+1, i+1);
+    const upper = Math.max(...win.map(r=>r.high)), lower = Math.min(...win.map(r=>r.low));
+    return { upper, lower, mid:(upper+lower)/2 };
+  });
+}
+
 // Stochastic Oscillator %K and %D
 function calcStochastic(highs, lows, closes, kPeriod=14, dPeriod=3) {
   const pctK = closes.map((c, i) => {
@@ -5526,7 +5584,7 @@ function renderIndexCards(data) {
   renderMktExtra();
 }
 
-let _fiidiiData = null, _moversData = null;
+let _fiidiiData = null, _moversData = null, _moversLoading = false;
 
 // FII/DII cash-market buy/sell (NSE, via corsproxy) + top gainers/losers basket.
 function renderMktExtra() {
@@ -5544,16 +5602,35 @@ function renderMktExtra() {
       <div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Net = Buy − Sell. Positive = institutions net buyers that day. Source: NSE.</div>`;
   }
   // ── Gainers / Losers ──
-  if (_moversData && _moversData.length) {
+  if (_moversLoading && !(_moversData && _moversData.length)) {
+    // Skeleton rows, so a slow basket looks like it is loading rather than broken.
+    const sk = `<div style="padding:7px 11px;border-bottom:1px solid var(--border);">
+        <div style="height:11px;border-radius:4px;background:var(--surface2);animation:mktPulse 1.2s ease-in-out infinite;"></div></div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-top:14px;">
+      <div style="border:1px solid var(--border);border-radius:9px;overflow:hidden;"><div style="background:var(--surface2);font-weight:700;font-size:12.5px;padding:6px 11px;color:var(--text3);">Loading gainers…</div>${sk.repeat(5)}</div>
+      <div style="border:1px solid var(--border);border-radius:9px;overflow:hidden;"><div style="background:var(--surface2);font-weight:700;font-size:12.5px;padding:6px 11px;color:var(--text3);">Loading losers…</div>${sk.repeat(5)}</div></div>`;
+  } else if (_moversData && _moversData.length) {
     const sorted = [..._moversData].sort((a,b)=>b.pct-a.pct);
-    const g = sorted.slice(0,5), l = sorted.slice(-5).reverse();
-    const row = m => `<div onclick="openBasketAnalysis('${m.sym}')" style="cursor:pointer;display:flex;justify-content:space-between;padding:5px 9px;border-bottom:1px solid var(--border);font-size:12px;">
-      <b>${m.sym}</b><span>₹${m.price.toLocaleString('en-IN',{maximumFractionDigits:2})}</span>
-      <span style="color:${m.pct>=0?'var(--green)':'var(--red)'};font-weight:700;min-width:56px;text-align:right;">${m.pct>=0?'+':''}${m.pct.toFixed(2)}%</span></div>`;
-    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:14px;">
-      <div style="border:1px solid var(--green);border-radius:9px;overflow:hidden;"><div style="background:rgba(49,167,69,.12);color:var(--green);font-weight:700;font-size:12.5px;padding:6px 10px;">🚀 Top Gainers</div>${g.map(row).join('')}</div>
-      <div style="border:1px solid var(--red);border-radius:9px;overflow:hidden;"><div style="background:rgba(255,79,85,.12);color:var(--red);font-weight:700;font-size:12.5px;padding:6px 10px;">📉 Top Losers</div>${l.map(row).join('')}</div>
-    </div><div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Movers among a large-cap basket (not the full market).</div>`;
+    const n = Math.min(5, Math.floor(sorted.length/2)) || 1;
+    const g = sorted.slice(0,n), l = sorted.slice(-n).reverse();
+    // Fixed 4-column grid with tabular numerals. The old flex/space-between let
+    // every row pick its own column positions, so nothing lined up vertically.
+    const COLS = 'grid-template-columns:20px minmax(0,1fr) 92px 74px;';
+    const row = (m,i,lastRow) => `<div onclick="openBasketAnalysis('${m.sym}')" title="Analyse ${m.sym}"
+        style="cursor:pointer;display:grid;${COLS}align-items:center;gap:8px;padding:6px 11px;font-size:12px;${lastRow?'':'border-bottom:1px solid var(--border);'}">
+        <span style="color:var(--text3);font-size:10.5px;">${i+1}</span>
+        <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.sym}</b>
+        <span style="text-align:right;font-variant-numeric:tabular-nums;">₹${m.price.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${m.pct>=0?'var(--green)':'var(--red)'};">${m.pct>=0?'+':''}${m.pct.toFixed(2)}%</span></div>`;
+    const head = `<div style="display:grid;${COLS}gap:8px;padding:3px 11px 4px;font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);">
+        <span></span><span>Symbol</span><span style="text-align:right;">Price</span><span style="text-align:right;">Change</span></div>`;
+    const tbl = (title,col,bg,rows) => `<div style="border:1px solid ${col};border-radius:9px;overflow:hidden;">
+        <div style="background:${bg};color:${col};font-weight:700;font-size:12.5px;padding:6px 11px;">${title}</div>
+        ${head}${rows.map((m,i)=>row(m,i,i===rows.length-1)).join('')}</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-top:14px;">
+      ${tbl('🚀 Top Gainers','var(--green)','rgba(49,167,69,.12)',g)}
+      ${tbl('📉 Top Losers','var(--red)','rgba(255,79,85,.12)',l)}
+    </div><div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Movers among a ${MOVERS_BASKET.length}-stock large-cap basket (not the full market). ${_moversData.length} of ${MOVERS_BASKET.length} quotes loaded.</div>`;
   }
   el.innerHTML = html;
 }
@@ -5572,7 +5649,9 @@ async function loadFIIDII() {
 const MOVERS_BASKET = ['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','SBIN','BHARTIARTL','ITC','LT','KOTAKBANK','HINDUNILVR','BAJFINANCE','AXISBANK','MARUTI','SUNPHARMA','TITAN','TATAMOTORS','WIPRO','ONGC','NTPC'];
 async function _fetchQuote(sym) {
   const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym+'.NS')+'?range=5d&interval=1d';
-  for (const u of ['https://api.allorigins.win/raw?url='+encodeURIComponent(yf), 'https://corsproxy.io/?'+encodeURIComponent(yf)]) {
+  // corsproxy first: allorigins repeatedly timed out on these, which added ~7s of
+  // dead wait per symbol before the fallback even started.
+  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf), 'https://api.allorigins.win/raw?url='+encodeURIComponent(yf)]) {
     try { const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),7000);
       const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!res.ok) continue;
       const raw=await res.json(); const r=raw?.chart?.result?.[0]; if(!r) continue;
@@ -5585,11 +5664,54 @@ async function _fetchQuote(sym) {
   }
   return null;
 }
+// ONE batched request for the whole basket. The old path made 20 separate proxied
+// round-trips at concurrency 4 - that is what made gainers/losers crawl and show
+// up half-empty. Yahoo's spark endpoint returns close series for many symbols in
+// a single response.
+async function _fetchMoversBatch() {
+  const syms = MOVERS_BASKET.map(s=>s+'.NS').join(',');
+  const yf = 'https://query1.finance.yahoo.com/v8/finance/spark?symbols='+encodeURIComponent(syms)+'&range=5d&interval=1d';
+  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf),
+                   'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]) {
+    try {
+      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
+      const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!res.ok) continue;
+      const j=await res.json(); const out=[];
+      for (const k of Object.keys(j||{})) {
+        const e=j[k]; if(!e||!e.close) continue;
+        const cl=e.close.filter(x=>x!=null); if(cl.length<2) continue;
+        const price=cl[cl.length-1];
+        const prev=e.previousClose ?? e.chartPreviousClose ?? cl[cl.length-2];
+        if(!price||!prev) continue;
+        out.push({ sym:k.replace('.NS',''), price, pct:(price-prev)/prev*100 });
+      }
+      if (out.length >= 5) return out;
+    } catch(e) {}
+  }
+  return null;
+}
+
 async function loadMovers() {
-  const out=[], list=MOVERS_BASKET.slice();
-  async function w(){ while(list.length){ const q=await _fetchQuote(list.shift()); if(q) { out.push(q); _moversData=out; renderMktExtra(); } } }
-  await Promise.all(Array.from({length:4}, w));
-  _moversData = out;
+  // Session cache - the basket does not need refetching on every dashboard repaint.
+  try { const c=JSON.parse(sessionStorage.getItem('mvrCache')||'null');
+        if (c && Date.now()-c.t < 120000) { _moversData=c.d; renderMktExtra(); return; } } catch(e){}
+
+  _moversLoading = true; renderMktExtra();
+  const batch = await _fetchMoversBatch();
+  if (batch) _moversData = batch;
+  else {
+    // Fallback: per-symbol, wider concurrency, and repaints throttled to ~4/sec so
+    // 20 arrivals do not each trigger a full innerHTML rebuild of the panel.
+    const out=[], list=MOVERS_BASKET.slice(); let pend=null;
+    const paint=()=>{ if(pend) return; pend=setTimeout(()=>{ pend=null; _moversData=out.slice(); renderMktExtra(); },250); };
+    async function w(){ while(list.length){ const q=await _fetchQuote(list.shift()); if(q){ out.push(q); paint(); } } }
+    await Promise.all(Array.from({length:8}, w));
+    if(pend) clearTimeout(pend);
+    _moversData = out;
+  }
+  _moversLoading = false;
+  try { sessionStorage.setItem('mvrCache', JSON.stringify({t:Date.now(), d:_moversData})); } catch(e){}
+  renderMktExtra();
 }
 
 // Open the full chart analysis for an index using its already-fetched history.
@@ -5639,6 +5761,73 @@ const _STAGE_STYLE = {
   watch:    ['#8a9199','👀','No Setup','No valid base right now - nothing actionable by this method.'],
   unknown:  ['#8a9199','-','-','Insufficient data for a base read.'],
 };
+// Risk panel: four independent stop/target frameworks side by side. They will
+// not agree, and that is the point - the spread between them is the honest range
+// of "where this trade is wrong", not a single false-precision number.
+function renderRisk(ar) {
+  const el = document.getElementById('riskPanel'); if (!el) return;
+  const r = ar && ar.risk; if (!r) { el.innerHTML=''; return; }
+  const px = ar.currentPrice, long = r.dir >= 0;
+  const n  = v => (v==null||!isFinite(v)) ? '-' : '₹'+(+v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const away = v => (v==null||!isFinite(v)||!px) ? '' :
+    `<span style="color:var(--text3);font-size:10.5px;"> (${((v-px)/px*100>=0?'+':'')}${((v-px)/px*100).toFixed(1)}%)</span>`;
+
+  const chandLvl = long ? r.chandelier.long : r.chandelier.short;
+  const trail    = r.trailStop ? r.trailStop.stop : null;
+  const trailDir = r.trailStop ? r.trailStop.dir : null;
+
+  const box = (title, note, body) => `
+    <div style="flex:1 1 230px;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;">
+      <div style="font-size:12px;font-weight:800;margin-bottom:2px;">${title}</div>
+      <div style="font-size:10px;color:var(--text3);line-height:1.45;margin-bottom:8px;">${note}</div>
+      ${body}</div>`;
+  const big = (v, col) => `<div style="font-size:19px;font-weight:800;color:${col};font-variant-numeric:tabular-nums;">${n(v)}${away(v)}</div>`;
+
+  // Ladder rungs as a properly aligned 3-column grid.
+  const lad = r.ladder ? `
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:3px 10px;font-size:11.5px;font-variant-numeric:tabular-nums;">
+      <span style="color:var(--text3);">Stop</span>
+      <span style="text-align:right;font-weight:700;color:var(--red);">${n(r.ladder.stop)}</span>
+      <span style="color:var(--text3);text-align:right;">-1R</span>
+      ${r.ladder.rungs.map(g=>`
+        <span style="color:var(--text3);">T${g.mult} · ${g.mult}×ATR</span>
+        <span style="text-align:right;font-weight:700;color:var(--green);">${n(g.level)}</span>
+        <span style="color:var(--text3);text-align:right;">+${g.r}R</span>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:7px;">Risk / share ${n(r.ladder.risk)} · ATR ${n(r.ladder.atr)}</div>` : '<div style="font-size:11.5px;color:var(--text3);">Not enough data.</div>';
+
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 15px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+        <span style="font-size:14px;font-weight:800;">🛡️ Risk Indicators</span>
+        <span style="font-size:10.5px;padding:2px 8px;border-radius:99px;background:${long?'rgba(49,167,69,.14)':'rgba(255,79,85,.14)'};color:${long?'var(--green)':'var(--red)'};font-weight:700;">
+          ${long?'LONG':'SHORT'} framing</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text3);">Price ${n(px)} · ATR(14) ${n(r.atr)}</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--text3);margin-bottom:11px;">Four independent frameworks. Where they cluster is your real stop zone; where they diverge, the trade is ambiguous.</div>
+      <div style="display:flex;gap:11px;flex-wrap:wrap;">
+        ${box('Chandelier Exit <span style="font-weight:400;color:var(--text3)">22 · 3×</span>',
+              'Hangs off the highest high of the last 22 bars, so it ratchets with the trend and never tightens on a pullback.',
+              big(chandLvl, 'var(--red)'))}
+        ${box('ATR Trailing Stop <span style="font-weight:400;color:var(--text3)">14 · 3×</span>',
+              'One-way ratchet. Moves only in your favour; flips side only on a CLOSE through the level.',
+              big(trail, trailDir===1?'var(--green)':'var(--red)') +
+              (trailDir!=null?`<div style="font-size:10.5px;color:${trailDir===1?'var(--green)':'var(--red)'};font-weight:700;margin-top:2px;">Currently ${trailDir===1?'trailing a LONG':'trailing a SHORT'}</div>`:''))}
+        ${box('Ladder ATR <span style="font-weight:400;color:var(--text3)">1× / 2× / 3×</span>',
+              'Staged scale-outs with the R multiple each rung pays, so "trim at +2R" is a price, not a feeling.', lad)}
+        ${box('High/Low Bands <span style="font-weight:400;color:var(--text3)">Donchian 20</span>',
+              'Highest high / lowest low of 20 bars. Upper break is the Turtle entry, lower break the exit.',
+              `<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11.5px;font-variant-numeric:tabular-nums;">
+                 <span style="color:var(--text3);">Upper</span><span style="text-align:right;font-weight:700;color:var(--green);">${n(r.bands.upper)}${away(r.bands.upper)}</span>
+                 <span style="color:var(--text3);">Mid</span><span style="text-align:right;font-weight:700;">${n(r.bands.mid)}${away(r.bands.mid)}</span>
+                 <span style="color:var(--text3);">Lower</span><span style="text-align:right;font-weight:700;color:var(--red);">${n(r.bands.lower)}${away(r.bands.lower)}</span>
+               </div>`)}
+      </div>
+      <div style="margin-top:10px;padding-top:9px;border-top:1px dashed var(--border2);font-size:10.5px;color:var(--text3);line-height:1.5;">
+        ⚠️ Stops are computed from price volatility only. A gap through the level fills you worse than shown. Position size off the widest stop you would actually honour, not the tightest.</div>
+    </div>`;
+}
+
 function renderVCP(ar) {
   const el = document.getElementById('vcpPanel'); if (!el) return;
   const v = ar.vcp, st = ar.stage || { stage:'unknown' };
@@ -6322,6 +6511,20 @@ async function runAnalysis() {
     const breakout = analyzeBreakout(data, 20, 0.10, atr[last]);   // share the canonical Wilder ATR
     const vcp = detectVCP(data);
     const stage = classifyStage(data, vcp);
+
+    // ── Risk indicators. All four read the same `atr` series computed above, so
+    // the stop this panel shows and the stop the verdict shows cannot disagree.
+    const _chand = calcChandelierExit(data, 22, 3);
+    const _trail = calcATRTrailingStop(data, 14, 3);
+    const _hlb   = calcHighLowBands(data, 20);
+    const _rdir  = signals.long.signal === 'SELL' ? -1 : 1;
+    const risk = {
+      dir: _rdir, atr: atr[last],
+      chandelier: _chand[last] || { long:null, short:null },
+      trailStop:  _trail[last] || null,
+      bands:      _hlb[last]   || { upper:null, lower:null, mid:null },
+      ladder:     calcLadderATR(closes[last], atr[last], _rdir)
+    };
     const backtest = backtestVerdict(data, signals.long.signal, 10);
 
     // ── Chart pattern engine (multi-bar geometry + recommendation levels) ──
@@ -6396,7 +6599,7 @@ async function runAnalysis() {
 
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, breakout, backtest, chartPatterns, synthesis, vcp, stage, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, chartPatterns, synthesis, vcp, stage, risk, currentPrice, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -6529,6 +6732,7 @@ function renderResults() {
 
   // FUNDAMENTALS PANEL
   renderVCP(analysisResult);
+  renderRisk(analysisResult);
   renderFundamentals(analysisResult);
 
   // BACKTEST PANEL
