@@ -1118,6 +1118,17 @@ html,body{overflow-x:hidden;}
 .mkt-name{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.3px;}
 @keyframes mktPulse{0%,100%{opacity:1}50%{opacity:.35}}
 #mktLive{animation:mktPulse 1.6s infinite;}
+/* Ticker tape. Duplicated content + 50% translate = seamless loop. */
+@keyframes mktTicker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.mkt-tape{overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 0;margin-bottom:10px;position:relative;}
+.mkt-tape-inner{display:inline-flex;gap:26px;white-space:nowrap;animation:mktTicker 42s linear infinite;will-change:transform;}
+.mkt-tape:hover .mkt-tape-inner{animation-play-state:paused;}
+.mkt-tape-item{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;}
+@media(prefers-reduced-motion:reduce){.mkt-tape-inner{animation:none;}}
+/* Sector heatmap */
+.mkt-heat{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:7px;}
+.mkt-heat-cell{border-radius:8px;padding:9px 10px;cursor:pointer;border:1px solid transparent;transition:transform .12s;}
+.mkt-heat-cell:hover{transform:translateY(-2px);}
 /* ═══ APP SWITCHER - MOBILE ═══ */
 @media(max-width:540px){
   #app-switcher { padding:0 8px; height:40px; }
@@ -1497,9 +1508,11 @@ html,body{overflow-x:hidden;}
               <label class="form-label">Company Name</label>
               <input class="form-input" id="companyName" placeholder="e.g., BSE Limited" />
             </div>
-            <div class="form-group">
+            <div class="form-group" style="position:relative;">
               <label class="form-label">Symbol</label>
-              <input class="form-input" id="stockSymbol" placeholder="BSE" />
+              <input class="form-input" id="stockSymbol" placeholder="BSE" autocomplete="off"
+                     oninput="symSuggest(this.value)" onblur="setTimeout(hideSymSuggest,180)" />
+              <div id="symSuggestBox" style="display:none;position:absolute;z-index:60;left:0;right:0;top:100%;margin-top:3px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 8px 22px rgba(0,0,0,.18);max-height:260px;overflow-y:auto;"></div>
             </div>
             <div class="form-group">
               <label class="form-label" id="currentPriceLabel">Current Price (₹)</label>
@@ -1615,6 +1628,15 @@ html,body{overflow-x:hidden;}
                 <span style="color:#ef4444;font-size:10.5px;">Signal</span><span id="lw-tt-sig" style="color:#ef4444;font-weight:600;font-size:10.5px;"></span>
               </div>
             </div>
+            <!-- Toolbar: visible range + overlay toggles (buttons built in JS so
+                 their active state lives in one place) -->
+            <div style="display:flex;gap:6px;align-items:center;padding:6px 12px;background:rgba(19,23,34,0.92);border-bottom:1px solid #363c4e;flex-wrap:wrap;">
+              <span style="color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Range</span>
+              <div id="lwRangeBtns" style="display:flex;gap:4px;"></div>
+              <span style="width:1px;height:14px;background:#363c4e;margin:0 4px;"></span>
+              <span style="color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Overlays</span>
+              <div id="lwOverlayBtns" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+            </div>
             <!-- Legend bar -->
             <div style="display:flex;gap:14px;align-items:center;padding:7px 14px;background:rgba(19,23,34,0.75);font-size:11.5px;border-bottom:1px solid #363c4e;flex-wrap:wrap;">
               <span style="color:#26a69a;font-weight:700;">▲ Bull</span>
@@ -1625,6 +1647,14 @@ html,body{overflow-x:hidden;}
               <span style="color:rgba(255,255,255,.25);font-size:10px;margin-left:auto;">🖱 Scroll to zoom · Drag to pan</span>
             </div>
             <div id="lw-chart-main" style="height:420px;"></div>
+            <div style="padding:4px 12px;background:rgba(19,23,34,0.8);font-size:10px;color:#64748b;border-top:1px solid #363c4e;display:flex;gap:14px;align-items:center;">
+              <span style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">RSI (14)</span>
+              <span style="color:#a855f7;">── RSI</span>
+              <span style="color:rgba(239,83,80,.7);">╌ 70</span>
+              <span style="color:rgba(38,166,154,.7);">╌ 30</span>
+              <span id="lw-tt-rsi" style="margin-left:auto;color:#a855f7;font-weight:700;font-family:'JetBrains Mono',monospace;"></span>
+            </div>
+            <div id="lw-chart-rsi" style="height:110px;"></div>
             <div style="padding:4px 12px;background:rgba(19,23,34,0.8);font-size:10px;color:#64748b;border-top:1px solid #363c4e;display:flex;gap:14px;align-items:center;">
               <span style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">MACD (12,26,9)</span>
               <span style="color:#f59e0b;">── MACD</span>
@@ -5470,9 +5500,17 @@ async function fetchFundamentals(sym, exch, isUS, isCrypto) {
       const avSym = isUS ? sym : sym + (exch === 'BSE' ? '.BSE' : '.NSE');
       const r = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(avSym)}&apikey=${avKey}`);
       const j = await r.json();
-      if (j && j.Symbol) return { source:'Alpha Vantage', name:j.Name, sector:j.Sector, pe:+j.PERatio||null, eps:+j.EPS||null,
+      // One OVERVIEW call carries everything the scorecard needs - important,
+      // because the free Alpha Vantage tier allows only ~25 calls/day.
+      if (j && j.Symbol) return { source:'Alpha Vantage', name:j.Name, sector:j.Sector, industry:j.Industry,
+        pe:+j.PERatio||null, eps:+j.EPS||null,
         mktCap:+j.MarketCapitalization||null, divYield:(+j.DividendYield*100)||null, pb:+j.PriceToBookRatio||null,
-        roe:(+j.ReturnOnEquityTTM*100)||null, yrHi:+j['52WeekHigh']||null, yrLo:+j['52WeekLow']||null, beta:+j.Beta||null };
+        roe:(+j.ReturnOnEquityTTM*100)||null, yrHi:+j['52WeekHigh']||null, yrLo:+j['52WeekLow']||null, beta:+j.Beta||null,
+        peg:+j.PEGRatio||null, forwardPE:+j.ForwardPE||null, ps:+j.PriceToSalesRatioTTM||null,
+        evEbitda:+j.EVToEBITDA||null, roa:(+j.ReturnOnAssetsTTM*100)||null,
+        profitMargin:(+j.ProfitMargin*100)||null, opMargin:(+j.OperatingMarginTTM*100)||null,
+        revGrowth:(+j.QuarterlyRevenueGrowthYOY*100)||null, earnGrowth:(+j.QuarterlyEarningsGrowthYOY*100)||null,
+        bookValue:+j.BookValue||null, targetPrice:+j.AnalystTargetPrice||null, revenue:+j.RevenueTTM||null };
     } catch(e) {}
   }
   // 2. FMP - strong for US
@@ -5504,6 +5542,51 @@ function _fmtCap(v, isIndia) {
 // ============================================================
 // OPENING MARKET DASHBOARD — live indices + pattern reads
 // ============================================================
+// ── Symbol autocomplete ────────────────────────────────────────────────────
+// Yahoo's search endpoint is one of the few that still answers without a crumb
+// or API key, so this works out of the box. Debounced + cached to stay polite.
+let _symTimer = null, _symCache = {};
+function hideSymSuggest(){ const b=document.getElementById('symSuggestBox'); if(b) b.style.display='none'; }
+function pickSymbol(sym, name){
+  const s=document.getElementById('stockSymbol'); if(s) s.value=sym;
+  const c=document.getElementById('companyName'); if(c && name) c.value=name;
+  hideSymSuggest();
+}
+function symSuggest(q){
+  clearTimeout(_symTimer);
+  const box=document.getElementById('symSuggestBox'); if(!box) return;
+  q=(q||'').trim();
+  if(q.length<2){ hideSymSuggest(); return; }
+  _symTimer=setTimeout(async ()=>{
+    let list=_symCache[q.toLowerCase()];
+    if(!list){
+      const yf='https://query2.finance.yahoo.com/v1/finance/search?quotesCount=8&newsCount=0&q='+encodeURIComponent(q);
+      for(const u of ['https://corsproxy.io/?'+encodeURIComponent(yf),
+                      'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]){
+        try{ const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),6000);
+          const r=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!r.ok) continue;
+          const j=await r.json();
+          list=(j.quotes||[]).filter(x=>x.symbol&&(x.quoteType==='EQUITY'||x.quoteType==='INDEX'));
+          if(list){ _symCache[q.toLowerCase()]=list; break; }
+        }catch(e){}
+      }
+    }
+    if(!list||!list.length){ hideSymSuggest(); return; }
+    // Indian listings first - this app defaults to NSE/BSE.
+    const rank=x=>/\.NS$/.test(x.symbol)?0:/\.BO$/.test(x.symbol)?1:2;   // NSE, then BSE, then rest
+    box.innerHTML=list.slice().sort((a,b)=>rank(a)-rank(b)).slice(0,8).map(x=>{
+      const bare=x.symbol.replace(/\.(NS|BO)$/,'');
+      const nm=(x.shortname||x.longname||'').replace(/"/g,'&quot;');
+      return `<div onmousedown="pickSymbol('${bare}','${nm}')" style="padding:7px 11px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+        <b style="font-size:12px;min-width:74px;">${bare}</b>
+        <span style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${nm}</span>
+        <span style="font-size:9.5px;color:var(--text3);">${x.exchange||''}</span></div>`;
+    }).join('');
+    box.style.display='block';
+  }, 260);
+}
+
 const MKT_INDICES = [
   ['NIFTY 50','^NSEI'], ['SENSEX','^BSESN'], ['BANK NIFTY','^NSEBANK'],
   ['NIFTY IT','^CNXIT'], ['NIFTY AUTO','^CNXAUTO'], ['NIFTY PHARMA','^CNXPHARMA'],
@@ -5576,12 +5659,74 @@ function renderIndexCards(data) {
       <div style="font-size:9px;color:var(--text3);margin-top:4px;">click for full chart analysis ›</div>
     </div>`;
   }).join('');
-  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;flex-wrap:wrap;gap:8px;">
+  el.innerHTML = `${_tickerTape(data)}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;flex-wrap:wrap;gap:8px;">
       <div style="font-size:15px;font-weight:800;">📊 Market Dashboard <span id="mktLive" style="font-size:10px;color:var(--green);font-weight:600;">● LIVE</span></div>
       <div style="font-size:11px;color:var(--text3);">Updated ${new Date().toLocaleTimeString('en-IN')} · <button onclick="loadMarketDashboard(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;">refresh</button></div>
     </div><div class="mkt-grid">${cards}</div>
+    ${_sectorHeatmap(data)}
     <div id="mktExtra" style="margin-top:14px;"></div>`;
   renderMktExtra();
+}
+
+// Scrolling ticker tape of every index we already fetched. Pure presentation -
+// no extra network calls, and it pauses on hover so a value can be read.
+function _tickerTape(data) {
+  const items = MKT_INDICES.map(([name,sym]) => {
+    const d = data[sym]; if (!d) return '';
+    const pct = d.prev ? (d.price-d.prev)/d.prev*100 : 0;
+    const up = pct >= 0, isVix = sym === '^INDIAVIX';
+    const col = isVix ? (up?'var(--red)':'var(--green)') : (up?'var(--green)':'var(--red)');
+    return `<span class="mkt-tape-item"><span style="color:var(--text2);">${name}</span>
+      <span style="color:var(--text);">${d.price.toLocaleString('en-IN',{maximumFractionDigits:2})}</span>
+      <span style="color:${col};">${up?'▲':'▼'}${Math.abs(pct).toFixed(2)}%</span></span>`;
+  }).filter(Boolean).join('');
+  if (!items) return '';
+  // Content is repeated twice so the -50% keyframe wraps without a visible jump.
+  return `<div class="mkt-tape"><div class="mkt-tape-inner">${items}${items}</div></div>`;
+}
+
+// Sector heatmap. Colour intensity scales with the day move, capped at 2.5% so a
+// single outlier does not wash out every other tile.
+function _sectorHeatmap(data) {
+  const SECTORS = MKT_INDICES.filter(([n,s]) => s !== '^INDIAVIX');
+  const cells = SECTORS.map(([name,sym]) => {
+    const d = data[sym]; if (!d) return '';
+    const pct = d.prev ? (d.price-d.prev)/d.prev*100 : 0;
+    const a = Math.min(Math.abs(pct)/2.5, 1) * 0.55 + 0.08;
+    const bg = pct >= 0 ? `rgba(49,167,69,${a.toFixed(3)})` : `rgba(255,79,85,${a.toFixed(3)})`;
+    return `<div class="mkt-heat-cell" style="background:${bg};" onclick="openIndexAnalysis('${sym}','${name}')" title="Analyse ${name}">
+      <div style="font-size:10px;font-weight:700;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>
+      <div style="font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;">${pct>=0?'+':''}${pct.toFixed(2)}%</div></div>`;
+  }).filter(Boolean).join('');
+  if (!cells) return '';
+  return `<div style="margin-top:14px;">
+    <div style="font-size:13px;font-weight:800;margin-bottom:7px;">🔥 Sector Heatmap <span style="font-size:10px;color:var(--text3);font-weight:400;">· today's move, click to analyse</span></div>
+    <div class="mkt-heat">${cells}</div></div>`;
+}
+
+// Advance/decline breadth from the movers basket. Labelled with its real sample
+// size - this is basket breadth, not NSE-wide breadth, and should not be read as such.
+function _breadthBar() {
+  if (!_moversData || !_moversData.length) return '';
+  const adv = _moversData.filter(m=>m.pct>0).length;
+  const dec = _moversData.filter(m=>m.pct<0).length;
+  const unch = _moversData.length - adv - dec;
+  const tot = _moversData.length || 1;
+  const pa = adv/tot*100, pd = dec/tot*100, pu = unch/tot*100;
+  const ratio = dec ? (adv/dec).toFixed(2) : (adv?'∞':'0');
+  return `<div style="margin-top:14px;">
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:800;">⚖️ Breadth</span>
+      <span style="font-size:11px;color:var(--text3);">A/D ratio <b style="color:${adv>=dec?'var(--green)':'var(--red)'};">${ratio}</b></span>
+      <span style="margin-left:auto;font-size:10px;color:var(--text3);">${adv} adv · ${dec} decl · ${unch} unch of ${tot}</span>
+    </div>
+    <div style="display:flex;height:12px;border-radius:99px;overflow:hidden;border:1px solid var(--border);">
+      <div style="width:${pa}%;background:var(--green);"></div>
+      <div style="width:${pu}%;background:var(--surface2);"></div>
+      <div style="width:${pd}%;background:var(--red);"></div>
+    </div>
+    <div style="font-size:9.5px;color:var(--text3);margin-top:4px;">Breadth of the ${MOVERS_BASKET.length}-stock large-cap basket only, not the full NSE advance/decline line.</div></div>`;
 }
 
 let _fiidiiData = null, _moversData = null, _moversLoading = false;
@@ -5631,6 +5776,7 @@ function renderMktExtra() {
       ${tbl('🚀 Top Gainers','var(--green)','rgba(49,167,69,.12)',g)}
       ${tbl('📉 Top Losers','var(--red)','rgba(255,79,85,.12)',l)}
     </div><div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Movers among a ${MOVERS_BASKET.length}-stock large-cap basket (not the full market). ${_moversData.length} of ${MOVERS_BASKET.length} quotes loaded.</div>`;
+    html += _breadthBar();
   }
   el.innerHTML = html;
 }
@@ -5946,11 +6092,94 @@ function renderFundamentals(ar) {
     if (f.roe != null)     fc.push(cell('ROE', f.roe.toFixed(1)+'%', f.roe>15?'var(--green)':f.roe<5?'var(--red)':'var(--text)'));
     if (f.divYield != null)fc.push(cell('Div Yield', f.divYield.toFixed(2)+'%'));
     if (f.beta != null)    fc.push(cell('Beta', f.beta.toFixed(2), f.beta>1.3?'var(--red)':'var(--text)'));
+    if (f.peg != null)     fc.push(cell('PEG', f.peg.toFixed(2), f.peg>2?'var(--red)':f.peg<1?'var(--green)':'var(--text)'));
+    if (f.profitMargin!=null) fc.push(cell('Net Margin', f.profitMargin.toFixed(1)+'%', f.profitMargin>15?'var(--green)':f.profitMargin<3?'var(--red)':'var(--text)'));
+    if (f.revGrowth != null)  fc.push(cell('Rev Growth YoY', f.revGrowth.toFixed(1)+'%', f.revGrowth>10?'var(--green)':f.revGrowth<0?'var(--red)':'var(--text)'));
     row.innerHTML = `
-      ${f.sector ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">🏭 Sector: <b>${f.sector}</b></div>` : ''}
+      ${f.sector ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">🏭 Sector: <b>${f.sector}</b>${f.industry?` <span style="color:var(--text3);">· ${f.industry}</span>`:''}</div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">${fc.join('') || '<div style="font-size:12px;color:var(--text3);">No valuation fields returned for this symbol.</div>'}</div>
+      ${_fundScorecardHTML(f, ar)}
       <div style="font-size:10.5px;color:var(--text3);margin-top:7px;">Valuation via ${f.source}. Fundamentals update slowly - verify against the latest filing.</div>`;
   }).catch(()=>{});
+}
+
+// ── FUNDAMENTAL SCORECARD ──────────────────────────────────────────────────
+// Four independent pillars, each scored 0-100 from ONLY the metrics actually
+// returned. A pillar with no data reports "no data" and is dropped from the
+// composite rather than scored a neutral 50 - inventing a number for a missing
+// input is worse than admitting the gap.
+function scoreFundamentals(f) {
+  if (!f) return null;
+  // band(v, best, worst) -> 0..100 linear + clamped. Direction comes from which
+  // of best/worst is larger, so "lower is better" metrics work unchanged.
+  const band = (v, best, worst) => {
+    if (v == null || !isFinite(v)) return null;
+    return Math.max(0, Math.min(1, (v - worst) / (best - worst))) * 100;
+  };
+  const avg = a => { const v = a.filter(x => x != null); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+
+  const pillars = {
+    Quality:   avg([ band(f.roe,30,2), band(f.roa,15,0), band(f.profitMargin,25,0), band(f.opMargin,30,0) ]),
+    Valuation: avg([ band(f.pe,10,60), band(f.pb,1,10), band(f.peg,0.8,3), band(f.evEbitda,6,25), band(f.ps,1,12) ]),
+    Growth:    avg([ band(f.revGrowth,25,-10), band(f.earnGrowth,30,-20) ]),
+    Income:    avg([ band(f.divYield,4,0) ])
+  };
+  const W = { Quality:0.35, Valuation:0.30, Growth:0.28, Income:0.07 };
+  let num=0, den=0;
+  Object.keys(pillars).forEach(k => { if (pillars[k]!=null) { num += pillars[k]*W[k]; den += W[k]; } });
+  const composite = den ? num/den : null;
+  const grade = composite==null ? '-' : composite>=80?'A':composite>=65?'B':composite>=50?'C':composite>=35?'D':'E';
+  return { pillars, composite, grade, coverage:den };
+}
+
+function _fundScorecardHTML(f, ar) {
+  const sc = scoreFundamentals(f);
+  if (!sc || sc.composite == null) return '';
+  const col = v => v>=70?'var(--green)':v>=45?'var(--accent)':'var(--red)';
+  const bar = (k,v) => `<div style="margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+        <span style="color:var(--text2);font-weight:600;">${k}</span>
+        <span style="font-weight:700;color:${v==null?'var(--text3)':col(v)};font-variant-numeric:tabular-nums;">${v==null?'no data':v.toFixed(0)}</span></div>
+      <div style="height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;">
+        ${v==null?'':`<div style="width:${v.toFixed(0)}%;height:100%;background:${col(v)};"></div>`}</div></div>`;
+
+  // Technical vs fundamental agreement - the genuinely useful part.
+  const tech = ar && ar.signals && ar.signals.long ? ar.signals.long.signal : null;
+  let verdict = '';
+  if (tech) {
+    const fBull = sc.composite>=60, fBear = sc.composite<45;
+    const tBull = tech==='BUY', tBear = tech==='SELL';
+    let msg, c;
+    if (tBull && fBull)      { msg=`Technicals and fundamentals agree: the trend is constructive and the business scores ${sc.grade}.`; c='var(--green)'; }
+    else if (tBear && fBear) { msg=`Both weak: price trend is negative and fundamentals score ${sc.grade}. The least ambiguous case.`; c='var(--red)'; }
+    else if (tBull && fBear) { msg=`Conflict: price is rising while fundamentals score ${sc.grade}. That is a momentum or story move, not a value one - size it accordingly.`; c='var(--accent)'; }
+    else if (tBear && fBull) { msg=`Conflict: fundamentals score ${sc.grade} but price is falling. Either the market sees something not yet in the numbers, or this is where value buyers look.`; c='var(--accent)'; }
+    else                     { msg=`Technical verdict is ${tech} while fundamentals score ${sc.grade} (${sc.composite.toFixed(0)}/100). No strong agreement either way.`; c='var(--text2)'; }
+    verdict = `<div style="margin-top:10px;padding:9px 11px;border-left:3px solid ${c};background:var(--surface2);border-radius:0 7px 7px 0;font-size:11.5px;line-height:1.5;color:var(--text2);">
+      <b style="color:${c};">Technicals vs Fundamentals.</b> ${msg}</div>`;
+  }
+
+  const missing = Object.keys(sc.pillars).filter(k => sc.pillars[k]==null);
+  // Coverage gate. A grade built on one or two pillars is not a grade - e.g. a
+  // stock with only P/E and P/B would otherwise show a confident "A" while
+  // Quality and Growth are entirely unknown. Below half coverage we withhold the
+  // letter and say so, but still show the pillars that do have data.
+  const thin = sc.coverage < 0.5;
+  return `<div style="margin-top:13px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 13px;">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:800;">🧮 Fundamental Scorecard</span>
+      ${thin
+        ? `<span style="font-size:11.5px;font-weight:700;color:var(--accent);">Insufficient data for a grade</span>`
+        : `<span style="font-size:20px;font-weight:800;color:${col(sc.composite)};">${sc.grade}</span>
+           <span style="font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;">${sc.composite.toFixed(0)}/100</span>`}
+      <span style="margin-left:auto;font-size:10px;color:${thin?'var(--accent)':'var(--text3)'};">${(sc.coverage*100).toFixed(0)}% pillar coverage</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 16px;">
+      ${Object.keys(sc.pillars).map(k=>bar(k,sc.pillars[k])).join('')}</div>
+    ${thin ? '' : verdict}
+    ${missing.length?`<div style="font-size:10px;color:var(--text3);margin-top:7px;">No data for: ${missing.join(', ')}. These pillars are excluded from the composite, not scored as neutral.</div>`:''}
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;">Relative bands, not analyst opinions. A high grade is not a recommendation, and a single bad quarter can move several pillars.</div>
+  </div>`;
 }
 
 var _patternChart = null;
@@ -7310,6 +7539,7 @@ function buildChart(type) {
     const bdC    = isDark ? '#363c4e' : '#e2e8f0';
 
     const mainEl = document.getElementById('lw-chart-main');
+    const rsiEl  = document.getElementById('lw-chart-rsi');
     const macdEl = document.getElementById('lw-chart-macd');
 
     const commonOpts = (showTime) => ({
@@ -7322,6 +7552,7 @@ function buildChart(type) {
     });
 
     const lwMain = LightweightCharts.createChart(mainEl, { ...commonOpts(false), width:mainEl.clientWidth, height:mainEl.clientHeight });
+    const lwRsi  = LightweightCharts.createChart(rsiEl,  { ...commonOpts(false), width:rsiEl.clientWidth,  height:rsiEl.clientHeight });
     const lwMacd = LightweightCharts.createChart(macdEl, { ...commonOpts(true),  width:macdEl.clientWidth, height:macdEl.clientHeight });
 
     // ── Candlestick series ────────────────────────────────────────────────────
@@ -7330,8 +7561,9 @@ function buildChart(type) {
       wickUpColor:'#26a69a', wickDownColor:'#ef5350',
     });
 
-    // Load last 120 candles (for scroll history), but default view shows last 60
-    const sl = Math.max(0, data.length - 120);
+    // Load up to 750 bars so the 1M..MAX range buttons have real history to show.
+    // The default VIEW is still a recent window, set by applyRange() below.
+    const sl = Math.max(0, data.length - 750);
     const sd = data.slice(sl);
 
     const toTs = d => Math.floor(d.date.getTime() / 1000);
@@ -7360,6 +7592,48 @@ function buildChart(type) {
     s20s.setData(sd.map((d,i) => { const v=sma20[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
     s50s.setData(sd.map((d,i) => { const v=sma50[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
 
+    // ── SMA200 + Bollinger ───────────────────────────────────────────────────
+    const s200s = mkLine('#a855f7', 1.5);
+    s200s.setData(sd.map((d,i) => { const v=sma200[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    const bbU = mkLine('rgba(148,163,184,.5)', 1), bbL = mkLine('rgba(148,163,184,.5)', 1);
+    if (Array.isArray(bb)) {
+      bbU.setData(sd.map((d,i)=>{ const v=bb[sl+i]; return v&&v.upper!=null?{time:toTs(d),value:v.upper}:null; }).filter(Boolean));
+      bbL.setData(sd.map((d,i)=>{ const v=bb[sl+i]; return v&&v.lower!=null?{time:toTs(d),value:v.lower}:null; }).filter(Boolean));
+    }
+
+    // ── Risk overlays. Same series the Risk panel reports, drawn on price so you
+    // can watch price approach the stop instead of reading it as a number. ────
+    const _chand = calcChandelierExit(data, 22, 3);
+    const _trail = calcATRTrailingStop(data, 14, 3);
+    const _hlb   = calcHighLowBands(data, 20);
+    const _long  = !(analysisResult.risk && analysisResult.risk.dir < 0);
+    const chandS = mkLine('#ef4444', 1.5);
+    const trailS = mkLine('#22c55e', 1.5);
+    const donU   = mkLine('rgba(59,130,246,.65)', 1), donL = mkLine('rgba(59,130,246,.65)', 1);
+    chandS.setData(sd.map((d,i)=>{ const v=_chand[sl+i]; const x=v&&(_long?v.long:v.short); return x!=null?{time:toTs(d),value:x}:null; }).filter(Boolean));
+    trailS.setData(sd.map((d,i)=>{ const v=_trail[sl+i]; return v&&v.stop!=null?{time:toTs(d),value:v.stop}:null; }).filter(Boolean));
+    donU.setData(sd.map((d,i)=>{ const v=_hlb[sl+i]; return v&&v.upper!=null?{time:toTs(d),value:v.upper}:null; }).filter(Boolean));
+    donL.setData(sd.map((d,i)=>{ const v=_hlb[sl+i]; return v&&v.lower!=null?{time:toTs(d),value:v.lower}:null; }).filter(Boolean));
+
+    // Ladder rungs + stop as labelled horizontal price lines.
+    if (analysisResult.risk && analysisResult.risk.ladder) {
+      const _L = analysisResult.risk.ladder;
+      const _add = (price,color,title,dashed) => { try { candleSeries.createPriceLine({ price, color, lineWidth:1,
+        lineStyle: dashed?LightweightCharts.LineStyle.Dashed:LightweightCharts.LineStyle.Dotted,
+        axisLabelVisible:true, title }); } catch(e){} };
+      _add(_L.stop, '#ef4444', 'STOP', false);
+      _L.rungs.forEach(r => _add(r.level, '#22c55e', 'T'+r.mult+' +'+r.r+'R', true));
+    }
+
+    // ── RSI pane ─────────────────────────────────────────────────────────────
+    const rsiSeries = lwRsi.addLineSeries({ color:'#a855f7', lineWidth:1.6, priceLineVisible:false, lastValueVisible:true });
+    rsiSeries.setData(sd.map((d,i)=>{ const v=rsi[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    try { lwRsi.priceScale('right').applyOptions({ scaleMargins:{top:0.08,bottom:0.08} }); } catch(e){}
+    [[70,'rgba(239,83,80,.6)'],[50,'rgba(148,163,184,.3)'],[30,'rgba(38,166,154,.6)']].forEach(pc => {
+      try { rsiSeries.createPriceLine({ price:pc[0], color:pc[1], lineWidth:1,
+        lineStyle:LightweightCharts.LineStyle.Dashed, axisLabelVisible:true, title:'' }); } catch(e){}
+    });
+
     // ── MACD histogram ────────────────────────────────────────────────────────
     const histSeries = lwMacd.addHistogramSeries({
       color:'#26a69a', priceScaleId:'right',
@@ -7382,8 +7656,12 @@ function buildChart(type) {
 
     // ── Sync scroll/zoom between panes ────────────────────────────────────────
     let _sync = false;
-    lwMain.timeScale().subscribeVisibleLogicalRangeChange(r => { if(_sync||!r)return;_sync=true;lwMacd.timeScale().setVisibleLogicalRange(r);_sync=false; });
-    lwMacd.timeScale().subscribeVisibleLogicalRangeChange(r => { if(_sync||!r)return;_sync=true;lwMain.timeScale().setVisibleLogicalRange(r);_sync=false; });
+    const _panes = [lwMain, lwRsi, lwMacd];
+    _panes.forEach(src => src.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (_sync || !r) return; _sync = true;
+      _panes.forEach(dst => { if (dst !== src) { try { dst.timeScale().setVisibleLogicalRange(r); } catch(e){} } });
+      _sync = false;
+    }));
 
     // ── Crosshair tooltip ─────────────────────────────────────────────────────
     const tt = document.getElementById('lw-tooltip');
@@ -7415,41 +7693,67 @@ function buildChart(type) {
       _id('lw-tt-sig').textContent  = sl2 ? sl2.value.toFixed(4) : '-';
     });
 
+    lwRsi.subscribeCrosshairMove(p => {
+      const v = p.seriesData.get(rsiSeries); const el = _id('lw-tt-rsi');
+      if (el) el.textContent = v ? v.value.toFixed(1) : '';
+    });
+
+    // ── Toolbar: overlay toggles + visible-range presets ─────────────────────
+    const _btn = (label, on) => `<button data-k="${label}" style="cursor:pointer;border:1px solid ${on?'#3b82f6':'#363c4e'};`
+      + `background:${on?'rgba(59,130,246,.18)':'transparent'};color:${on?'#93c5fd':'#94a3b8'};`
+      + `font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;">${label}</button>`;
+
+    const OVERLAYS = { 'SMA200':{s:[s200s],on:true}, 'BB':{s:[bbU,bbL],on:false},
+      'Chandelier':{s:[chandS],on:true}, 'ATR Stop':{s:[trailS],on:true}, 'Donchian':{s:[donU,donL],on:false} };
+    const obEl = _id('lwOverlayBtns');
+    const paintOverlays = () => {
+      if (!obEl) return;
+      obEl.innerHTML = Object.keys(OVERLAYS).map(k => _btn(k, OVERLAYS[k].on)).join('');
+      Object.keys(OVERLAYS).forEach(k => OVERLAYS[k].s.forEach(s => { try { s.applyOptions({visible:OVERLAYS[k].on}); } catch(e){} }));
+      obEl.querySelectorAll('button').forEach(b => b.onclick = () => { OVERLAYS[b.dataset.k].on = !OVERLAYS[b.dataset.k].on; paintOverlays(); });
+    };
+    paintOverlays();
+
+    const RANGES = {'1M':22,'3M':66,'6M':126,'1Y':252,'MAX':sd.length};
+    const rbEl = _id('lwRangeBtns');
+    let _activeRange = '3M';
+    const paintRanges = () => {
+      if (!rbEl) return;
+      rbEl.innerHTML = Object.keys(RANGES).map(k => _btn(k, k===_activeRange)).join('');
+      rbEl.querySelectorAll('button').forEach(b => b.onclick = () => applyRange(b.dataset.k));
+    };
+    const applyRange = (k) => {
+      _activeRange = k;
+      const n = Math.min(RANGES[k], sd.length);
+      const r = { from: sd.length - n - 0.5, to: sd.length - 0.5 };
+      _panes.forEach(c => { try { c.timeScale().setVisibleLogicalRange(r); } catch(e){} });
+      paintRanges();
+    };
+    paintRanges();
+
     // ── Responsive resize ─────────────────────────────────────────────────────
     const _lwResizeObs = new ResizeObserver(() => {
       lwMain.applyOptions({ width: mainEl.clientWidth });
+      lwRsi.applyOptions({ width: rsiEl.clientWidth });
       lwMacd.applyOptions({ width: macdEl.clientWidth });
     });
     _lwResizeObs.observe(mainEl);
 
-    // Show last 60 candles by default (TradingView-like zoom level)
     lwMain.timeScale().fitContent();
-    setTimeout(() => {
-      const total = sd.length;
-      const visible = Math.min(60, total);
-      lwMain.timeScale().setVisibleLogicalRange({ from: total - visible - 0.5, to: total - 0.5 });
-      lwMacd.timeScale().setVisibleLogicalRange({ from: total - visible - 0.5, to: total - 0.5 });
-    }, 50);
+    setTimeout(() => applyRange('3M'), 50);
 
     mainChartInstance = {
-      _lwMain: lwMain, _lwMacd: lwMacd, _obs: _lwResizeObs,
+      _lwMain: lwMain, _lwRsi: lwRsi, _lwMacd: lwMacd, _obs: _lwResizeObs,
       destroy() {
         try { _lwResizeObs.disconnect(); } catch(e) {}
         try { lwMain.remove(); } catch(e) {}
+        try { lwRsi.remove(); } catch(e) {}
         try { lwMacd.remove(); } catch(e) {}
         document.getElementById('lw-container').style.display = 'none';
         document.getElementById('mainChart').parentElement.style.display = 'block';
         document.getElementById('lw-tooltip').style.display = 'none';
       },
-      resetZoom() {
-        lwMain.timeScale().fitContent();
-        setTimeout(() => {
-          const total = sd.length;
-          const visible = Math.min(60, total);
-          lwMain.timeScale().setVisibleLogicalRange({ from: total - visible - 0.5, to: total - 0.5 });
-          lwMacd.timeScale().setVisibleLogicalRange({ from: total - visible - 0.5, to: total - 0.5 });
-        }, 50);
-      }
+      resetZoom() { applyRange('3M'); }
     };
 
     const interp = CHART_INTERPRET['candle'];
