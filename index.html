@@ -4394,7 +4394,11 @@ let selectedEngine = 'builtin';
 window.SBPatternEngine = (function () {
   const TIMEFRAME_WEIGHT = { "30 mins":0.45,"1 hour":0.55,"2 hours":0.65,"4 hours":0.80,"1 day":0.95,"1 week":1.00 };
   const STAGE_MULTIPLIER = { confirmed:1.0, confirmation_pending:0.85, anticipatory:0.65 };
-  const WEIGHTS = { geometryFit:0.35, touchCount:0.20, volume:0.15, confluence:0.15, timeframe:0.10, maturity:0.05 };
+  // Geometry is only ~40% of what a real screen grades. freshness (has it fired
+  // recently) and actionable (is there still room to the target) are what turn a
+  // shape into a screen hit. Weights sum to 1.00.
+  const WEIGHTS = { geometryFit:0.26, touchCount:0.14, volume:0.16, confluence:0.10,
+                    timeframe:0.07, maturity:0.05, freshness:0.12, actionable:0.10 };
 
   function ema(values, span){ const a=2/(span+1); const out=[values[0]]; for(let i=1;i<values.length;i++) out.push(values[i]*a+out[i-1]*(1-a)); return out; }
   function rsi(closes, period=14){ const out=new Array(closes.length).fill(50); let ag=0,al=0; for(let i=1;i<closes.length;i++){ const d=closes[i]-closes[i-1]; const g=Math.max(d,0),l=Math.max(-d,0); if(i<=period){ag+=g/period;al+=l/period;} else {ag=(ag*(period-1)+g)/period;al=(al*(period-1)+l)/period;} out[i]=al===0?100:100-100/(1+ag/al);} return out; }
@@ -4431,6 +4435,11 @@ window.SBPatternEngine = (function () {
         if((upper&&dev>PIERCE)||(!upper&&dev<-PIERCE)){violated=true;break;}
         if(upper? dev>=-tolPct : dev<=tolPct) touches.push(p); }
       if(violated||touches.length<minPts) continue;
+      // CONTACT QUALITY: a boundary whose touches all sit inside one tight cluster
+      // is a local curve-fit, not a structural line - it only looks impressive
+      // because it gets extended across the whole chart. Require real separation
+      // between the first and last contact.
+      if(touches[touches.length-1]-touches[0] < 15) continue;
       const fit=fitLine(touches,touches.map(p=>values[p])); const score=touches.length*1000+fit.r2;
       // Keep the ANCHOR line, not the regression. A least-squares fit runs through
       // the middle of the touches, so it cuts across the highs/lows instead of
@@ -4816,12 +4825,120 @@ window.SBPatternEngine = (function () {
       indicators:confluence(ctx,last), components:{touches:2,geometryFit:0.9}, graphics });
   }
 
+  // ===========================================================================
+  // SCREENER-GRADE QUALIFICATION
+  // Real scanners (MarketSmith, Chartink, Trendlyne, TradingView screeners) never
+  // rank a setup on geometry alone. Geometry only proves "a shape exists". A
+  // tradable hit also needs:
+  //   EVENT         - the bar the level was actually crossed (the trigger)
+  //   PARTICIPATION - volume on THAT bar vs its 50-bar average
+  //   CONTEXT       - a prior move to continue, or one to reverse
+  //   ACTIONABILITY - still fresh, and not already extended past the entry
+  //   RISK          - a defined invalidation level and an R:R worth taking
+  // This layer adds all of that without touching the 16 geometry detectors.
+  // ===========================================================================
+  const primaryLevel = c => { const L=c.levels||{};
+    return L.trendline ?? L.neckline ?? L.resistance ?? L.support ?? L.level ??
+           L.rim ?? L.prevSwingHigh ?? L.prior52wHigh ?? null; };
+
+  // The bar the signal actually fired on: the most recent close that crossed the
+  // pattern's key level in the signal's direction. A shape that broke out 30 bars
+  // ago is history, not a screen hit - and today's scan should say so.
+  function findTrigger(c, ctx){
+    const {C,last}=ctx; const lvl=primaryLevel(c);
+    if(lvl==null||!isFinite(lvl)) return {bar:last,barsAgo:null,found:false};
+    const up=c.bias==="bullish";
+    for(let i=last;i>=Math.max(1,last-60);i--){
+      const now = up ? C[i]>lvl   : C[i]<lvl;
+      const pre = up ? C[i-1]<=lvl : C[i-1]>=lvl;
+      if(now&&pre) return {bar:i,barsAgo:last-i,found:true};
+    }
+    return {bar:last,barsAgo:null,found:false};
+  }
+
+  // Volume on the trigger bar vs its trailing 50-bar average. This is the single
+  // most common confirmation filter in real breakout screens (IBD wants >=1.4x).
+  function triggerVolume(ctx, bar){
+    const {V}=ctx; let sum=0,n=0;
+    for(let i=Math.max(0,bar-49);i<=bar;i++) if(isFinite(V[i])){sum+=V[i];n++;}
+    const avg=n?sum/n:0;
+    return (avg>0&&isFinite(V[bar])) ? +(V[bar]/avg).toFixed(2) : null;
+  }
+
+  // The move INTO the pattern. Continuation setups need a pole to continue;
+  // reversal setups need a prior move worth reversing.
+  function priorTrend(ctx, bar, look=40){
+    const {C}=ctx; const a=Math.max(0,bar-look);
+    if(a>=bar||!C[a]) return 0;
+    return +(((C[bar]-C[a])/C[a])*100).toFixed(1);
+  }
+
+  // Attach the qualification block to a card. Everything here is derived, so it
+  // works for every detector including ones added later.
+  function qualify(c, ctx){
+    const {C,H,L,last,price}=ctx;
+    const lvl=primaryLevel(c), up=c.bias==="bullish";
+    const t=findTrigger(c,ctx);
+    const volumeRatio=triggerVolume(ctx,t.bar);
+    const prior=priorTrend(ctx,t.bar);
+    // How far price has already run past the entry. IBD's "extended" rule: past
+    // ~5% beyond the pivot, breakout entries stop paying for their risk.
+    const extensionPct=(lvl!=null&&isFinite(lvl)&&lvl>0)
+      ? +((((price-lvl)/lvl)*100)*(up?1:-1)).toFixed(2) : null;
+
+    // Invalidation: the swing that must hold for the pattern to still be true.
+    const w=[Math.max(0,t.bar-10),t.bar+1];
+    const swingLo=Math.min(...L.slice(w[0],w[1])), swingHi=Math.max(...H.slice(w[0],w[1]));
+    const base=(lvl!=null&&isFinite(lvl))?lvl:price;
+    const invalidation=+(up?Math.min(swingLo,base*0.97):Math.max(swingHi,base*1.03)).toFixed(2);
+    const tgt=(c.levels||{}).target ?? (c.levels||{}).target1 ?? null;
+    const risk=Math.abs(price-invalidation);
+    const rr=(tgt!=null&&isFinite(tgt)&&risk>0)?+(Math.abs(tgt-price)/risk).toFixed(2):null;
+
+    const flags=[];
+    if(t.found&&t.barsAgo>10)                    flags.push(`Stale: triggered ${t.barsAgo} bars ago`);
+    if(extensionPct!=null&&extensionPct>5)       flags.push(`Extended ${extensionPct.toFixed(1)}% past entry`);
+    if(c.stage==="confirmed"&&volumeRatio!=null&&volumeRatio<1)
+                                                 flags.push(`Unconfirmed by volume (${volumeRatio}x avg)`);
+    if(up&&prior<-15)                            flags.push("No prior uptrend to continue");
+    if(!up&&prior>15)                            flags.push("No prior downtrend to continue");
+    if(rr!=null&&rr<1)                           flags.push(`Poor risk:reward (${rr}:1)`);
+    if((c.components.touches??0)<3)              flags.push("Only 2 contact points");
+
+    c.quality={ triggerBar:t.bar, barsAgo:t.barsAgo, triggered:t.found, volumeRatio,
+                priorTrendPct:prior, extensionPct, invalidation, rr, flags };
+    c.triggerTs=(ctx.d[t.bar]||{}).time ?? null;
+    return c;
+  }
+
   function scoreCard(c, timeframe){
-    const geo=c.components.geometryFit??0.7; const touches=Math.min((c.components.touches??2)/5,1);
-    const vol=c.indicators.includes("Volume expansion")?1.0:0.35; const conf=Math.min(c.indicators.filter(i=>i!=="Volume expansion").length/2,1);
-    const tfw=TIMEFRAME_WEIGHT[timeframe]??0.7; const maturity=c.stage==="confirmed"?1.0:0.6;
-    const raw=WEIGHTS.geometryFit*geo+WEIGHTS.touchCount*touches+WEIGHTS.volume*vol+WEIGHTS.confluence*conf+WEIGHTS.timeframe*tfw+WEIGHTS.maturity*maturity;
-    let score=100*raw*(STAGE_MULTIPLIER[c.stage]??0.8); if(!c.indicators.length) score=Math.min(score,65); return +score.toFixed(1);
+    const q=c.quality||{};
+    const geo=c.components.geometryFit??0.7;
+    const touches=Math.min((c.components.touches??2)/5,1);
+    // Volume graded continuously off the TRIGGER bar rather than as a binary tag:
+    // 0.7x avg scores 0, 1.8x avg scores 1.
+    const vol = q.volumeRatio==null
+      ? (c.indicators.includes("Volume expansion")?1.0:0.35)
+      : Math.max(0,Math.min(1,(q.volumeRatio-0.7)/1.1));
+    const conf=Math.min(c.indicators.filter(i=>i!=="Volume expansion").length/2,1);
+    const tfw=TIMEFRAME_WEIGHT[timeframe]??0.7;
+    const maturity=c.stage==="confirmed"?1.0:0.6;
+    // A signal decays as it ages: fired today = 1.0, 10 bars ago = 0.5, 20+ = 0.
+    const fresh=q.barsAgo==null?0.75:Math.max(0,1-q.barsAgo/20);
+    // Actionability: room left between price and the entry. <=1% past = full
+    // credit, 10%+ past = none.
+    const act=q.extensionPct==null?0.75:Math.max(0,Math.min(1,1-(q.extensionPct-1)/9));
+    const raw = WEIGHTS.geometryFit*geo + WEIGHTS.touchCount*touches + WEIGHTS.volume*vol
+              + WEIGHTS.confluence*conf + WEIGHTS.timeframe*tfw + WEIGHTS.maturity*maturity
+              + WEIGHTS.freshness*fresh + WEIGHTS.actionable*act;
+    let score=100*raw*(STAGE_MULTIPLIER[c.stage]??0.8);
+    if(!c.indicators.length) score=Math.min(score,65);
+    score -= 5*(q.flags?q.flags.length:0);
+    // Hard ceilings mirroring the rules real screens enforce as filters, not scores.
+    if(q.barsAgo!=null&&q.barsAgo>20)             score=Math.min(score,45);
+    if(q.extensionPct!=null&&q.extensionPct>8)    score=Math.min(score,50);
+    if(q.rr!=null&&q.rr<1)                        score=Math.min(score,55);
+    return +Math.max(0,Math.min(100,score)).toFixed(1);
   }
   const FAMILY={ "Horizontal Trendline":"level","Horizontal Channel":"level","Rectangle Pattern":"level",
     "52-Week Breakout":"extreme","52-Week Breakdown":"extreme",
@@ -4830,9 +4947,18 @@ window.SBPatternEngine = (function () {
     "Double Bottom":"reversal","Cup & Handle":"reversal","Double Top":"reversal","Head & Shoulders":"reversal",
     "Bullish Gartley":"harmonic" };
   function dedupe(cards){
-    const specific=new Set(["reversal","diagonal","harmonic"]); const seen=new Set(); let hasSpecific=false; const out=[];
-    for(const c of cards){ const f=FAMILY[c.pattern]??c.pattern; if(seen.has(f)) continue; if(f==="level"&&hasSpecific) continue; if(specific.has(f)) hasSpecific=true; seen.add(f); out.push(c); }
-    return out;
+    const specific=new Set(["reversal","diagonal","harmonic"]);
+    const hasSpecific=cards.some(c=>specific.has(FAMILY[c.pattern]??c.pattern));
+    const best=new Map();
+    for(const c of cards){
+      const f=FAMILY[c.pattern]??c.pattern;
+      if(f==="level"&&hasSpecific) continue;   // a generic range never beats a real shape
+      // Within a family keep the STRONGEST card, not merely the one whose detector
+      // ran first - a stale 2-touch triangle should not outrank a fresh 4-touch wedge.
+      const cur=best.get(f);
+      if(!cur||c.confidence>cur.confidence) best.set(f,c);
+    }
+    return [...best.values()];
   }
   function scanPatterns(bars, opts={}){
     const { symbol="", timeframe="4 hours", minConfidence=45, lookback=150 }=opts;
@@ -4847,7 +4973,9 @@ window.SBPatternEngine = (function () {
       detectRisingWedge, detectFallingTrendline, detectRisingTrendline,
       detect52WeekBreakout, detect52WeekBreakdown, detectHorizontalTrendline, detectRectangle, detectHorizontalChannel ];
     let cards=[]; detectors.forEach((fn,rank)=>{ let r=null; try{r=fn(ctx);}catch(e){r=null;} if(r){r._priority=rank;cards.push(r);} });
-    cards.forEach(c=>{ c.symbol=symbol; c.timeframe=timeframe; c.confidence=scoreCard(c,timeframe); });
+    cards.forEach(c=>{ c.symbol=symbol; c.timeframe=timeframe;
+      try{ qualify(c,ctx); }catch(e){}          // event/volume/freshness/risk block
+      c.confidence=scoreCard(c,timeframe); });
     cards=cards.filter(c=>c.confidence>=minConfidence); cards.sort((a,b)=>a._priority-b._priority); cards=dedupe(cards); cards.sort((a,b)=>b.confidence-a.confidence); cards.forEach(c=>delete c._priority);
     return cards;
   }
