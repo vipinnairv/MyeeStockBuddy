@@ -7615,18 +7615,47 @@ function buildChart(type) {
 
     const toTs = d => Math.floor(d.date.getTime() / 1000);
 
+    // lightweight-charts requires STRICTLY ascending, unique, valid timestamps.
+    // A single bad or duplicate date makes setData reject the whole series, which
+    // renders as a completely blank pane with working axes and price labels - very
+    // hard to tell apart from a layout bug. Build one clean index list up front and
+    // drive every series off it so a bad bar can never blank the chart.
+    const rows = [];
+    let _dropped = 0, _prevTs = -Infinity;
+    for (let i = 0; i < sd.length; i++) {
+      const dt = sd[i] && sd[i].date;
+      const ok = (dt instanceof Date) && !isNaN(dt.getTime()) &&
+                 isFinite(sd[i].open) && isFinite(sd[i].high) &&
+                 isFinite(sd[i].low)  && isFinite(sd[i].close);
+      if (!ok) { _dropped++; continue; }
+      const ts = Math.floor(dt.getTime()/1000);
+      if (ts <= _prevTs) { _dropped++; continue; }   // duplicate or out-of-order
+      _prevTs = ts; rows.push(i);
+    }
+
     // Every series MUST span the same index domain as the candles. Dropping
     // leading nulls with .filter() shortened RSI/MACD/SMA200 (SMA200 lost 199 of
     // 300 points), and because a logical range is per-series, one range applied
     // to all panes landed past the end of the shorter ones and blanked the chart.
     // A whitespace point - {time} with no value - holds the index and draws
     // nothing, keeping every pane index-aligned.
-    const seriesBy = fn => sd.map((d,i) => {
-      const v = fn(i);
-      return (v == null || !isFinite(v)) ? { time:toTs(d) } : { time:toTs(d), value:v };
+    const seriesBy = fn => rows.map(i => {
+      const v = fn(i), t = toTs(sd[i]);
+      return (v == null || !isFinite(v)) ? { time:t } : { time:t, value:v };
     });
 
-    candleSeries.setData(sd.map(d => ({ time:toTs(d), open:d.open, high:d.high, low:d.low, close:d.close })));
+    candleSeries.setData(rows.map(i => { const d = sd[i];
+      return { time:toTs(d), open:d.open, high:d.high, low:d.low, close:d.close }; }));
+
+    // If nothing plotted, say so where the user is actually looking rather than
+    // leaving an empty box.
+    if (!rows.length) {
+      mainEl.insertAdjacentHTML('beforeend',
+        `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+          text-align:center;padding:20px;font-size:13px;color:#ef5350;background:rgba(19,23,34,.85);z-index:50;">
+          Could not plot this data: no bars with a valid, ascending date were found
+          (${sd.length} bar${sd.length===1?'':'s'} received). Re-run the analysis or try another symbol.</div>`);
+    }
 
     // ── Volume overlay (bottom 20% of main pane, semi-transparent) ───────────
     const volSeries = lwMain.addHistogramSeries({
@@ -7635,8 +7664,8 @@ function buildChart(type) {
       priceScaleId: 'vol',
     });
     lwMain.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, drawTicks: false, borderVisible: false, visible: false });
-    volSeries.setData(sd.map((d,i) => {
-      const v = data[sl+i].volume;
+    volSeries.setData(rows.map(i => {
+      const d = sd[i], v = data[sl+i].volume;
       if (v == null || !isFinite(v)) return { time: toTs(d) };
       return { time: toTs(d), value: v, color: d.close >= d.open ? 'rgba(38,166,154,0.25)' : 'rgba(239,83,80,0.25)' };
     }));
@@ -7659,7 +7688,7 @@ function buildChart(type) {
     const s200Ready = closes.length > 200;
     const s200Pts   = s200Ready ? closes.length - 200 : 0;
     const s200s = mkLine('#a855f7', 1.5);
-    s200s.setData(s200Ready ? seriesBy(i => sma200[sl+i]) : sd.map(d => ({ time:toTs(d) })));
+    s200s.setData(s200Ready ? seriesBy(i => sma200[sl+i]) : rows.map(i => ({ time:toTs(sd[i]) })));
     const _s200Leg = document.getElementById('lw-legend-sma200');
     if (_s200Leg) {
       _s200Leg.textContent = !s200Ready ? `── SMA 200 · needs 200+ bars (have ${closes.length})`
@@ -7713,10 +7742,10 @@ function buildChart(type) {
       priceFormat:{type:'price',precision:4,minMove:0.0001},
       scaleMargins:{top:0.1, bottom:0.1},
     });
-    histSeries.setData(sd.map((d,i) => {
+    histSeries.setData(rows.map(i => {
       const v = macd.histogram[sl+i];
-      if (v == null || !isFinite(v)) return { time:toTs(d) };
-      return { time:toTs(d), value:v, color: v>=0 ? 'rgba(38,166,154,0.65)' : 'rgba(239,83,80,0.65)' };
+      if (v == null || !isFinite(v)) return { time:toTs(sd[i]) };
+      return { time:toTs(sd[i]), value:v, color: v>=0 ? 'rgba(38,166,154,0.65)' : 'rgba(239,83,80,0.65)' };
     }));
 
     // ── MACD line ─────────────────────────────────────────────────────────────
@@ -7787,7 +7816,7 @@ function buildChart(type) {
     };
     paintOverlays();
 
-    const RANGES = {'1M':22,'3M':66,'6M':126,'1Y':252,'MAX':sd.length};
+    const RANGES = {'1M':22,'3M':66,'6M':126,'1Y':252,'MAX':rows.length};
     const rbEl = _id('lwRangeBtns');
     let _activeRange = '3M';
     const paintRanges = () => {
@@ -7797,23 +7826,54 @@ function buildChart(type) {
     };
     const applyRange = (k) => {
       _activeRange = k;
-      const n = Math.min(RANGES[k], sd.length);
-      const r = { from: sd.length - n - 0.5, to: sd.length - 0.5 };
+      const n = Math.min(RANGES[k], rows.length);
+      const r = { from: rows.length - n - 0.5, to: rows.length - 0.5 };
       _panes.forEach(c => { try { c.timeScale().setVisibleLogicalRange(r); } catch(e){} });
       paintRanges();
     };
     paintRanges();
 
     // ── Responsive resize ─────────────────────────────────────────────────────
+    let _lastW = mainEl.clientWidth;
     const _lwResizeObs = new ResizeObserver(() => {
-      lwMain.applyOptions({ width: mainEl.clientWidth });
-      lwRsi.applyOptions({ width: rsiEl.clientWidth });
-      lwMacd.applyOptions({ width: macdEl.clientWidth });
+      const w = mainEl.clientWidth;
+      // resize(w,h) so a pane that laid out at zero height recovers, not just width.
+      try {
+        lwMain.resize(w, mainEl.clientHeight);
+        lwRsi.resize(rsiEl.clientWidth, rsiEl.clientHeight);
+        lwMacd.resize(macdEl.clientWidth, macdEl.clientHeight);
+      } catch(e) {}
+      // The chart often gets built while its tab panel is still display:none, so
+      // it lays out at width 0. Once real width arrives, re-apply the range -
+      // without this the panes keep the degenerate layout and read as empty.
+      if (_lastW === 0 && w > 0) { try { applyWhenReady(); } catch(e){} }
+      _lastW = w;
     });
     _lwResizeObs.observe(mainEl);
 
-    lwMain.timeScale().fitContent();
-    setTimeout(() => applyRange('3M'), 50);
+    // The chart is usually constructed while its tab panel is still display:none,
+    // so it lays out at width 0 and lightweight-charts ends up with NO visible
+    // range - which paints a completely blank pane even though the series hold
+    // every bar. Applying the range on a fixed timer raced that. Instead, wait
+    // until the container actually has width, then size and range all three panes.
+    // NOTE: resize(w,h) - not applyOptions({width}). The chart is created with
+    // height: mainEl.clientHeight, which is 0 while the panel is hidden, so the
+    // plot canvas ends up ~2px tall. Fixing only the width leaves that collapsed
+    // height in place: axes and price labels still paint (separate canvases) while
+    // the plot area stays empty. That is the blank-chart bug.
+    const applyWhenReady = (tries = 60) => {
+      const w = mainEl.clientWidth, h = mainEl.clientHeight;
+      if (w > 0 && h > 0) {
+        lwMain.resize(w, h);
+        lwRsi.resize(rsiEl.clientWidth, rsiEl.clientHeight);
+        lwMacd.resize(macdEl.clientWidth, macdEl.clientHeight);
+        lwMain.timeScale().fitContent();
+        applyRange(_activeRange);
+        return;
+      }
+      if (tries > 0) setTimeout(() => applyWhenReady(tries - 1), 100);
+    };
+    applyWhenReady();
 
     mainChartInstance = {
       _lwMain: lwMain, _lwRsi: lwRsi, _lwMacd: lwMacd, _obs: _lwResizeObs,
