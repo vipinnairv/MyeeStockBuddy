@@ -1662,6 +1662,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
               <span style="color:#ef5350;font-weight:700;">▼ Bear</span>
               <span style="color:#f59e0b;font-weight:600;">── SMA 20</span>
               <span style="color:#3b82f6;font-weight:600;">── SMA 50</span>
+              <span id="lw-legend-sma200" style="color:#a855f7;font-weight:600;">── SMA 200</span>
               <span style="color:rgba(59,130,246,0.6);">■ Vol</span>
               <span style="color:rgba(255,255,255,.25);font-size:10px;margin-left:auto;">🖱 Scroll to zoom · Drag to pan</span>
             </div>
@@ -7650,8 +7651,23 @@ function buildChart(type) {
     s50s.setData(seriesBy(i => sma50[sl+i]));
 
     // ── SMA200 + Bollinger ───────────────────────────────────────────────────
+    // sma200 is built as calcSMA(closes, Math.min(200, closes.length-1)), so with
+    // under ~201 bars the period silently collapses (SMA149, SMA179...) while
+    // still being labelled "SMA 200". Worse, it then yields only ~2 points - a
+    // stub at the right edge that looks like nothing rendered at all. Draw it
+    // only when a TRUE 200-period average exists, and say why when it does not.
+    const s200Ready = closes.length > 200;
+    const s200Pts   = s200Ready ? closes.length - 200 : 0;
     const s200s = mkLine('#a855f7', 1.5);
-    s200s.setData(seriesBy(i => sma200[sl+i]));
+    s200s.setData(s200Ready ? seriesBy(i => sma200[sl+i]) : sd.map(d => ({ time:toTs(d) })));
+    const _s200Leg = document.getElementById('lw-legend-sma200');
+    if (_s200Leg) {
+      _s200Leg.textContent = !s200Ready ? `── SMA 200 · needs 200+ bars (have ${closes.length})`
+                           : s200Pts < 20 ? `── SMA 200 · only ${s200Pts} bars long`
+                           : '── SMA 200';
+      _s200Leg.style.opacity = s200Ready ? '1' : '.45';
+      _s200Leg.title = s200Ready ? '' : 'A 200-day average needs more than 200 bars of history. Not drawn rather than shown at a shorter period.';
+    }
     const bbU = mkLine('rgba(148,163,184,.5)', 1), bbL = mkLine('rgba(148,163,184,.5)', 1);
     if (Array.isArray(bb)) {
       bbU.setData(seriesBy(i => { const v=bb[sl+i]; return v ? v.upper : null; }));
@@ -7760,7 +7776,7 @@ function buildChart(type) {
       + `background:${on?'rgba(59,130,246,.18)':'transparent'};color:${on?'#93c5fd':'#94a3b8'};`
       + `font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;">${label}</button>`;
 
-    const OVERLAYS = { 'SMA200':{s:[s200s],on:true}, 'BB':{s:[bbU,bbL],on:false},
+    const OVERLAYS = { 'SMA200':{s:[s200s],on:s200Ready}, 'BB':{s:[bbU,bbL],on:false},
       'Chandelier':{s:[chandS],on:true}, 'ATR Stop':{s:[trailS],on:true}, 'Donchian':{s:[donU,donL],on:false} };
     const obEl = _id('lwOverlayBtns');
     const paintOverlays = () => {
@@ -7801,6 +7817,10 @@ function buildChart(type) {
 
     mainChartInstance = {
       _lwMain: lwMain, _lwRsi: lwRsi, _lwMacd: lwMacd, _obs: _lwResizeObs,
+      // Overlay handles, so the series can be inspected or toggled from outside.
+      _series: { candle:candleSeries, vol:volSeries, sma20:s20s, sma50:s50s, sma200:s200s,
+                 bbUpper:bbU, bbLower:bbL, chandelier:chandS, atrStop:trailS,
+                 donchianUpper:donU, donchianLower:donL, rsi:rsiSeries },
       destroy() {
         try { _lwResizeObs.disconnect(); } catch(e) {}
         try { lwMain.remove(); } catch(e) {}
