@@ -1118,6 +1118,25 @@ html,body{overflow-x:hidden;}
 .mkt-name{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.3px;}
 @keyframes mktPulse{0%,100%{opacity:1}50%{opacity:.35}}
 #mktLive{animation:mktPulse 1.6s infinite;}
+/* ═══ TIER-3 POLISH ═══
+   Tabular numerals app-wide. Applied via one inherited rule rather than editing
+   hundreds of inline styles: digits then occupy equal width, so prices and
+   percentages line up column-to-column and stop "jittering" as values refresh.
+   Text is unaffected - this only changes digit advance width. */
+body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+/* Freshness badge - states plainly that bars are end-of-day, not live ticks. */
+.data-fresh{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;
+  padding:2px 8px;border-radius:99px;background:var(--surface2);color:var(--text3);
+  border:1px solid var(--border);white-space:nowrap;}
+.data-fresh b{color:var(--text2);font-weight:700;}
+/* Density: dense numeric panels get tighter leading so more fits without shrinking type. */
+.mkt-card, .mkt-heat-cell{line-height:1.35;}
+/* Dark theme sits on near-black surfaces; soften pure-white text and hard borders. */
+[data-theme="dark"] .mkt-tape{background:rgba(255,255,255,.02);}
+[data-theme="dark"] .data-fresh{background:rgba(255,255,255,.04);}
 /* Ticker tape. Duplicated content + 50% translate = seamless loop. */
 @keyframes mktTicker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .mkt-tape{overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 0;margin-bottom:10px;position:relative;}
@@ -5659,14 +5678,28 @@ function renderIndexCards(data) {
       <div style="font-size:9px;color:var(--text3);margin-top:4px;">click for full chart analysis ›</div>
     </div>`;
   }).join('');
+  const _st = _mktStatus();
   el.innerHTML = `${_tickerTape(data)}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;flex-wrap:wrap;gap:8px;">
-      <div style="font-size:15px;font-weight:800;">📊 Market Dashboard <span id="mktLive" style="font-size:10px;color:var(--green);font-weight:600;">● LIVE</span></div>
-      <div style="font-size:11px;color:var(--text3);">Updated ${new Date().toLocaleTimeString('en-IN')} · <button onclick="loadMarketDashboard(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;">refresh</button></div>
+      <div style="font-size:15px;font-weight:800;">📊 Market Dashboard <span id="mktLive" style="font-size:10px;color:${_st.color};font-weight:600;${_st.open?'':'animation:none;'}">● ${_st.label}</span></div>
+      <div style="font-size:11px;color:var(--text3);">Updated ${new Date().toLocaleTimeString('en-IN')} · quotes delayed ~15 min · <button onclick="loadMarketDashboard(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;">refresh</button></div>
     </div><div class="mkt-grid">${cards}</div>
     ${_sectorHeatmap(data)}
     <div id="mktExtra" style="margin-top:14px;"></div>`;
   renderMktExtra();
+}
+
+// NSE cash session is 09:15-15:30 IST, Mon-Fri. Computed in Asia/Kolkata rather
+// than local time so the badge is correct for a user sitting anywhere. This does
+// not account for trading holidays, so treat CLOSED as reliable and OPEN as
+// "scheduled to be open".
+function _mktStatus() {
+  try {
+    const ist = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+    const day = ist.getDay(), mins = ist.getHours()*60 + ist.getMinutes();
+    const open = day>=1 && day<=5 && mins>=555 && mins<=930;
+    return { open, label: open?'MARKET OPEN':'MARKET CLOSED', color: open?'var(--green)':'var(--text3)' };
+  } catch(e) { return { open:false, label:'MARKET CLOSED', color:'var(--text3)' }; }
 }
 
 // Scrolling ticker tape of every index we already fetched. Pure presentation -
@@ -5907,6 +5940,19 @@ const _STAGE_STYLE = {
   watch:    ['#8a9199','👀','No Setup','No valid base right now - nothing actionable by this method.'],
   unknown:  ['#8a9199','-','-','Insufficient data for a base read.'],
 };
+// Data freshness badge. This app charts end-of-day bars, not live ticks. Saying
+// so plainly matters more than looking real-time: a stale close presented as
+// "live" is exactly the kind of thing someone would trade on by mistake.
+function _freshBadge(lastDate) {
+  if (!(lastDate instanceof Date) || isNaN(lastDate.getTime())) return '';
+  const days = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+  const d = lastDate.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const col = days <= 1 ? 'var(--green)' : days <= 4 ? 'var(--accent)' : 'var(--red)';
+  const age = days <= 0 ? 'today' : days === 1 ? '1 day old' : days + ' days old';
+  return `<span class="data-fresh" title="End-of-day closes, not live intraday ticks">`
+       + `<span style="color:${col};">●</span> EOD data · <b>${d}</b> · ${age}</span>`;
+}
+
 // Risk panel: four independent stop/target frameworks side by side. They will
 // not agree, and that is the point - the spread between them is the honest range
 // of "where this trade is wrong", not a single false-precision number.
@@ -6863,7 +6909,7 @@ function renderResults() {
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsTitle').textContent = `${company} (${symbol})`;
   const _stg = analysisResult.stage, _ss = _STAGE_STYLE[_stg?.stage] || _STAGE_STYLE.unknown;
-  document.getElementById('resultsSubtitle').innerHTML = `${market} · Analysis as of ${data[last].date.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}` +
+  document.getElementById('resultsSubtitle').innerHTML = `${market} · ` + _freshBadge(data[last].date) +
     (_stg && _stg.stage!=='unknown' ? ` · <span style="background:${_ss[0]}22;color:${_ss[0]};font-weight:700;padding:2px 9px;border-radius:12px;font-size:11px;">${_ss[1]} ${_ss[2]}${analysisResult.vcp?.rs?' · RS '+analysisResult.vcp.rs:''}</span>` : '');
 
   // KPI Strip
@@ -7568,6 +7614,17 @@ function buildChart(type) {
 
     const toTs = d => Math.floor(d.date.getTime() / 1000);
 
+    // Every series MUST span the same index domain as the candles. Dropping
+    // leading nulls with .filter() shortened RSI/MACD/SMA200 (SMA200 lost 199 of
+    // 300 points), and because a logical range is per-series, one range applied
+    // to all panes landed past the end of the shorter ones and blanked the chart.
+    // A whitespace point - {time} with no value - holds the index and draws
+    // nothing, keeping every pane index-aligned.
+    const seriesBy = fn => sd.map((d,i) => {
+      const v = fn(i);
+      return (v == null || !isFinite(v)) ? { time:toTs(d) } : { time:toTs(d), value:v };
+    });
+
     candleSeries.setData(sd.map(d => ({ time:toTs(d), open:d.open, high:d.high, low:d.low, close:d.close })));
 
     // ── Volume overlay (bottom 20% of main pane, semi-transparent) ───────────
@@ -7579,9 +7636,9 @@ function buildChart(type) {
     lwMain.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, drawTicks: false, borderVisible: false, visible: false });
     volSeries.setData(sd.map((d,i) => {
       const v = data[sl+i].volume;
-      if (!v && v !== 0) return null;
+      if (v == null || !isFinite(v)) return { time: toTs(d) };
       return { time: toTs(d), value: v, color: d.close >= d.open ? 'rgba(38,166,154,0.25)' : 'rgba(239,83,80,0.25)' };
-    }).filter(Boolean));
+    }));
 
     // ── SMA overlays ─────────────────────────────────────────────────────────
     const mkLine = (color, width=1.5) => lwMain.addLineSeries({ color, lineWidth:width, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
@@ -7589,16 +7646,16 @@ function buildChart(type) {
     const s20s = mkLine('#f59e0b', 1.5);
     const s50s = mkLine('#3b82f6', 1.5);
 
-    s20s.setData(sd.map((d,i) => { const v=sma20[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
-    s50s.setData(sd.map((d,i) => { const v=sma50[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    s20s.setData(seriesBy(i => sma20[sl+i]));
+    s50s.setData(seriesBy(i => sma50[sl+i]));
 
     // ── SMA200 + Bollinger ───────────────────────────────────────────────────
     const s200s = mkLine('#a855f7', 1.5);
-    s200s.setData(sd.map((d,i) => { const v=sma200[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    s200s.setData(seriesBy(i => sma200[sl+i]));
     const bbU = mkLine('rgba(148,163,184,.5)', 1), bbL = mkLine('rgba(148,163,184,.5)', 1);
     if (Array.isArray(bb)) {
-      bbU.setData(sd.map((d,i)=>{ const v=bb[sl+i]; return v&&v.upper!=null?{time:toTs(d),value:v.upper}:null; }).filter(Boolean));
-      bbL.setData(sd.map((d,i)=>{ const v=bb[sl+i]; return v&&v.lower!=null?{time:toTs(d),value:v.lower}:null; }).filter(Boolean));
+      bbU.setData(seriesBy(i => { const v=bb[sl+i]; return v ? v.upper : null; }));
+      bbL.setData(seriesBy(i => { const v=bb[sl+i]; return v ? v.lower : null; }));
     }
 
     // ── Risk overlays. Same series the Risk panel reports, drawn on price so you
@@ -7610,10 +7667,10 @@ function buildChart(type) {
     const chandS = mkLine('#ef4444', 1.5);
     const trailS = mkLine('#22c55e', 1.5);
     const donU   = mkLine('rgba(59,130,246,.65)', 1), donL = mkLine('rgba(59,130,246,.65)', 1);
-    chandS.setData(sd.map((d,i)=>{ const v=_chand[sl+i]; const x=v&&(_long?v.long:v.short); return x!=null?{time:toTs(d),value:x}:null; }).filter(Boolean));
-    trailS.setData(sd.map((d,i)=>{ const v=_trail[sl+i]; return v&&v.stop!=null?{time:toTs(d),value:v.stop}:null; }).filter(Boolean));
-    donU.setData(sd.map((d,i)=>{ const v=_hlb[sl+i]; return v&&v.upper!=null?{time:toTs(d),value:v.upper}:null; }).filter(Boolean));
-    donL.setData(sd.map((d,i)=>{ const v=_hlb[sl+i]; return v&&v.lower!=null?{time:toTs(d),value:v.lower}:null; }).filter(Boolean));
+    chandS.setData(seriesBy(i => { const v=_chand[sl+i]; return v ? (_long?v.long:v.short) : null; }));
+    trailS.setData(seriesBy(i => { const v=_trail[sl+i]; return v ? v.stop : null; }));
+    donU.setData(seriesBy(i => { const v=_hlb[sl+i]; return v ? v.upper : null; }));
+    donL.setData(seriesBy(i => { const v=_hlb[sl+i]; return v ? v.lower : null; }));
 
     // Ladder rungs + stop as labelled horizontal price lines.
     if (analysisResult.risk && analysisResult.risk.ladder) {
@@ -7627,7 +7684,7 @@ function buildChart(type) {
 
     // ── RSI pane ─────────────────────────────────────────────────────────────
     const rsiSeries = lwRsi.addLineSeries({ color:'#a855f7', lineWidth:1.6, priceLineVisible:false, lastValueVisible:true });
-    rsiSeries.setData(sd.map((d,i)=>{ const v=rsi[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    rsiSeries.setData(seriesBy(i => rsi[sl+i]));
     try { lwRsi.priceScale('right').applyOptions({ scaleMargins:{top:0.08,bottom:0.08} }); } catch(e){}
     [[70,'rgba(239,83,80,.6)'],[50,'rgba(148,163,184,.3)'],[30,'rgba(38,166,154,.6)']].forEach(pc => {
       try { rsiSeries.createPriceLine({ price:pc[0], color:pc[1], lineWidth:1,
@@ -7642,17 +7699,17 @@ function buildChart(type) {
     });
     histSeries.setData(sd.map((d,i) => {
       const v = macd.histogram[sl+i];
-      if (v == null) return null;
+      if (v == null || !isFinite(v)) return { time:toTs(d) };
       return { time:toTs(d), value:v, color: v>=0 ? 'rgba(38,166,154,0.65)' : 'rgba(239,83,80,0.65)' };
-    }).filter(Boolean));
+    }));
 
     // ── MACD line ─────────────────────────────────────────────────────────────
     const macdLineSeries = lwMacd.addLineSeries({ color:'#f59e0b', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
-    macdLineSeries.setData(sd.map((d,i) => { const v=macd.macdLine[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    macdLineSeries.setData(seriesBy(i => macd.macdLine[sl+i]));
 
     // ── Signal line ───────────────────────────────────────────────────────────
     const signalSeries = lwMacd.addLineSeries({ color:'#ef4444', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
-    signalSeries.setData(sd.map((d,i) => { const v=macd.signalLine[sl+i]; return v!=null?{time:toTs(d),value:v}:null; }).filter(Boolean));
+    signalSeries.setData(seriesBy(i => macd.signalLine[sl+i]));
 
     // ── Sync scroll/zoom between panes ────────────────────────────────────────
     let _sync = false;
