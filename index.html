@@ -5759,11 +5759,16 @@ function drawPatternChart(card) {
     if (pts.length === 2 && pts[1].time !== pts[0].time && !ln.seg) {
       const slope = (pts[1].value-pts[0].value)/(pts[1].time-pts[0].time);
       const at = t => pts[0].value + slope*(t-pts[0].time);
-      let a = tFirst, b = tLast;
+      // Anchor the LEFT end at the first real pivot - never project a trendline
+      // backward into pre-history. A rising line extended left keeps dropping
+      // until it hits the bottom of the price band, producing a "floating" left
+      // endpoint that sits far below the actual candles (the anchor-point bug).
+      // We only extend FORWARD, clipped to the band so a steep slope can't blow
+      // out the scale.
+      let a = Math.min(pts[0].time, pts[1].time), b = tLast;
       if (slope !== 0) {
         const t1 = pts[0].time + (clipLo-pts[0].value)/slope;
         const t2 = pts[0].time + (clipHi-pts[0].value)/slope;
-        a = Math.max(a, Math.min(t1,t2));
         b = Math.min(b, Math.max(t1,t2));
       }
       if (b > a) {
