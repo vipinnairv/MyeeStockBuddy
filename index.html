@@ -171,6 +171,32 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .upload-icon{font-size:40px;margin-bottom:12px;}
 .upload-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px;}
 .upload-hint{font-size:13px;color:var(--text3);}
+/* ── Stock search (replaces the CSV-upload / lookup tabs) ── */
+.stock-search{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--border);border-radius:16px;padding:22px;}
+.stock-search-head{margin-bottom:16px;}
+.stock-search-title{font-size:20px;font-weight:900;letter-spacing:-.3px;}
+.stock-search-sub{font-size:12.5px;color:var(--text3);margin-top:4px;line-height:1.5;}
+.stock-search-box{position:relative;}
+.stock-search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:18px;opacity:.7;pointer-events:none;}
+.stock-search-input{width:100%;height:56px;padding:0 18px 0 46px;font-size:16px;border:2px solid var(--border2);border-radius:12px;background:var(--bg);color:var(--text);font-family:inherit;transition:border-color .15s,box-shadow .15s;}
+.stock-search-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--glow);}
+.stock-search-input::placeholder{color:var(--text3);}
+.stock-search-dd{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:12px;z-index:200;max-height:320px;overflow-y:auto;box-shadow:0 14px 34px rgba(0,0,0,.28);}
+.stock-search-row{display:flex;gap:10px;align-items:flex-end;margin-top:14px;flex-wrap:wrap;}
+.stock-resolved{flex:1;min-width:170px;}
+.stock-resolved-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:4px;font-weight:700;}
+.stock-resolved-val{width:100%;height:44px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--accent);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;}
+@media(max-width:560px){.stock-search-row{flex-direction:column;align-items:stretch;}.stock-search-row>*{max-width:none!important;width:100%;min-width:0;}}
+/* ── Live "graph moving" fetch animation (replaces the Racing-sources text) ── */
+.fetch-anim{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;}
+.fetch-chart{flex-shrink:0;width:104px;height:38px;overflow:hidden;border-radius:6px;}
+@keyframes fetchSlide{from{transform:translateX(0)}to{transform:translateX(-104px)}}
+.fetch-scroll{animation:fetchSlide 1.05s linear infinite;}
+.fetch-line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+@keyframes fetchDots{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.fetch-dot{animation:fetchDots 1.2s infinite;}
+.fetch-dot:nth-child(2){animation-delay:.15s}
+.fetch-dot:nth-child(3){animation-delay:.3s}
 .file-list{margin-top:16px;display:flex;flex-direction:column;gap:8px;}
 .file-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-size:13px;}
 .file-item-info{display:flex;align-items:center;gap:8px;color:var(--text2);}
@@ -1380,7 +1406,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       <div style="text-align:center;padding:22px 0 24px;">
         <div style="display:inline-block;background:rgba(0,106,255,0.1);border:1px solid rgba(0,106,255,0.3);color:var(--accent);padding:4px 14px;border-radius:20px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">Step 1 of 3</div>
         <h2 style="font-family:'Calibri',serif;font-size:28px;font-weight:900;margin-bottom:6px;" id="ingestionTitle">Load Your Stock Data</h2>
-        <p style="color:var(--text2);font-size:14px;" id="ingestionSubtitle">Upload NSE/BSE CSV files or enter a stock symbol for live analysis</p>
+        <p style="color:var(--text2);font-size:14px;" id="ingestionSubtitle">Search any stock by name or ticker for live technical analysis</p>
       </div>
 
       <!-- Sample Data Banner -->
@@ -1421,62 +1447,37 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       </details>
 
       <div class="card">
-        <!-- Tabs -->
-        <div class="ingestion-tabs">
-          <button class="tab-btn" id="uploadTabBtn" onclick="switchTab('upload')">📁 Upload CSV Files</button>
-          <button class="tab-btn active" id="symbolTabBtn" onclick="switchTab('symbol')">🔍 Live Symbol Lookup</button>
-        </div>
-
-        <!-- Upload Tab -->
-        <div class="tab-panel" id="tabUpload">
-          <!-- US/Crypto no-upload notice (hidden by default, shown in US/Crypto mode) -->
-          <div id="noUploadNotice" style="display:none;padding:24px;text-align:center;background:var(--surface2);border-radius:12px;border:1px solid var(--border);">
-            <div style="font-size:32px;margin-bottom:12px;">📡</div>
-            <div style="font-weight:700;font-size:15px;margin-bottom:8px;">CSV Upload Not Available for This Market</div>
-            <div style="font-size:13px;color:var(--text2);margin-bottom:16px;">US stocks and Crypto data must be fetched live. Use the <strong>Live Symbol Lookup</strong> tab above.</div>
-            <div style="font-size:12px;color:var(--text3);">If live fetch fails, you can download historical CSV from Yahoo Finance manually and re-upload:<br>
-              <a id="yfDownloadLink" href="https://finance.yahoo.com/quote/AAPL/history/" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">📥 Download from Yahoo Finance →</a>
-            </div>
-          </div>
-          <div id="uploadZoneWrapper">
-            <div class="upload-zone" id="uploadZone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
-              <input type="file" id="csvInput" accept=".csv" multiple onchange="handleFiles(event)">
-              <div class="upload-icon">📂</div>
-              <div class="upload-title" id="uploadTitle">Drag & drop NSE/BSE CSV files here</div>
-              <div class="upload-hint">Or click to browse · Max 5 files · 1 year per file · NSE format supported</div>
-            </div>
-          </div>
-          <div class="file-list" id="fileList"></div>
-        </div>
-
-        <!-- Symbol Tab -->
+        <!-- Symbol Search (CSV upload removed - live fetch only) -->
         <div class="tab-panel active" id="tabSymbol">
-          <div class="alert alert-warning" style="margin-bottom:12px;">📡 Fetches 1 year of OHLCV data from Yahoo Finance. Type company name or ticker - autocomplete will suggest the correct symbol.</div>
-          <!-- Autocomplete search -->
-          <div style="position:relative;margin-bottom:12px;">
-            <div class="form-group">
-              <label class="form-label">Search Company / Symbol</label>
-              <input class="form-input" id="symbolInput" placeholder="e.g., Tata Motors, Reliance, INFY, HDFCBANK..." autocomplete="off" oninput="onSymbolInput(this.value)" onkeydown="onSymbolKey(event)" onfocus="if(marketMode==='crypto')onSymbolInput(this.value)" style="padding-right:36px;" />
-              <div id="symbolDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;z-index:200;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.3);"></div>
+          <div class="stock-search">
+            <div class="stock-search-head">
+              <div class="stock-search-title">🔎 Search your stock</div>
+              <div class="stock-search-sub" id="symbolSearchSub">Type a company name or ticker and pick the match - or a similar name. We fetch 1 year of live OHLCV from Yahoo Finance.</div>
+            </div>
+            <div class="stock-search-box">
+              <span class="stock-search-icon">🔍</span>
+              <input id="symbolInput" class="stock-search-input" placeholder="Search your stock or similar names - e.g. Tata Motors, Reliance, INFY"
+                     autocomplete="off" oninput="onSymbolInput(this.value)" onkeydown="onSymbolKey(event)"
+                     onfocus="if(marketMode==='crypto')onSymbolInput(this.value)" />
+              <div id="symbolDropdown" class="stock-search-dd" style="display:none;"></div>
+            </div>
+            <div class="stock-search-row">
+              <div class="stock-resolved">
+                <span class="stock-resolved-label">Resolved symbol</span>
+                <input id="resolvedSymbol" class="stock-resolved-val" placeholder="pick a match above ↑" readonly />
+              </div>
+              <div>
+                <span class="stock-resolved-label">Exchange</span>
+                <select class="form-input" id="exchangeInput" style="height:44px;min-width:150px;">
+                  <option value="NSE">NSE (.NS)</option>
+                  <option value="BSE">BSE (.BO)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" onclick="fetchSymbolData()" style="height:44px;padding:0 24px;font-weight:700;" id="fetchBtn">📡 Fetch data</button>
             </div>
           </div>
-          <div class="form-grid fetch-row" style="grid-template-columns:1fr 1fr auto;">
-            <div class="form-group">
-              <label class="form-label">Resolved Symbol</label>
-              <input class="form-input" id="resolvedSymbol" placeholder="Auto-filled from search" readonly style="background:var(--surface2);color:var(--accent);font-family:'JetBrains Mono',monospace;" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Exchange</label>
-              <select class="form-input" id="exchangeInput">
-                <option value="NSE">NSE (.NS)</option>
-                <option value="BSE">BSE (.BO)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">&nbsp;</label>
-              <button class="btn btn-secondary" onclick="fetchSymbolData()" style="height:42px;" id="fetchBtn">📡 Fetch</button>
-            </div>
-          </div>
+          <!-- File status (populated after a live fetch) -->
+          <div class="file-list" id="fileList" style="margin-top:12px;"></div>
           <!-- BYOK API Keys (stored in localStorage) -->
           <details id="byokPanel" style="margin:8px 0 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);">
             <summary style="padding:8px 12px;cursor:pointer;font-size:12px;color:var(--text3);user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
@@ -1560,7 +1561,12 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         <span>⚠️ <strong>Educational Tool Only</strong> - Not financial advice. This AI & rule-based analysis does not account for macro-economic events, news, or fundamentals. <strong>Past performance ≠ future results.</strong> Consult a SEBI/licensed advisor before investing.</span>
         <button class="sticky-disclaimer-close" onclick="document.getElementById('stickyDisclaimer').style.display='none'" title="Dismiss">✕</button>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;margin-top:16px;">
+      <!-- Prominent back bar so leaving the analysis is never confusing -->
+      <div class="no-print" style="margin:12px 0 14px;">
+        <button onclick="goBackToSearch()" style="display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;transition:border-color .15s,background .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.background='var(--surface)'">← Back to Search</button>
+        <span style="font-size:11px;color:var(--text3);margin-left:10px;">Your analysis stays saved - going back or refreshing won't lose it.</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
         <div>
           <h2 style="font-family:'Calibri',serif;font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
           <p style="font-size:13px;color:var(--text3);" id="resultsSubtitle">Technical analysis complete</p>
@@ -2822,7 +2828,7 @@ function selectMarket(mode) {
 
   // ── Ingestion heading
   const titles = { india:'Load Your Stock Data', us:'Load Your US Stock Data', crypto:'Load Crypto Data' };
-  const subs   = { india:'Upload NSE/BSE CSV files or enter a stock symbol for live analysis', us:'Use Live Symbol Lookup - US CSV not supported. Fetch data directly via Yahoo Finance.', crypto:'Use Live Symbol Lookup - select one of the Top 10 coins below.' };
+  const subs   = { india:'Search any stock by name or ticker for live technical analysis', us:'Use Live Symbol Lookup - US CSV not supported. Fetch data directly via Yahoo Finance.', crypto:'Use Live Symbol Lookup - select one of the Top 10 coins below.' };
   document.getElementById('ingestionTitle').textContent = titles[mode];
   document.getElementById('ingestionSubtitle').textContent = subs[mode];
 
@@ -2838,24 +2844,10 @@ function selectMarket(mode) {
   sBtn.style.display = bc.btn ? '' : 'none';
   if (bc.btn) sBtn.textContent = bc.btn;
 
-  // ── Upload tab visibility: hide for US/Crypto
-  const uploadBtn = document.getElementById('uploadTabBtn');
-  const noUpload  = document.getElementById('noUploadNotice');
-  const uploadZW  = document.getElementById('uploadZoneWrapper');
-  if (notIndia) {
-    uploadBtn.style.display = 'none';
-    if (noUpload) noUpload.style.display = '';
-    if (uploadZW) uploadZW.style.display = 'none';
-    // Force to Symbol tab
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.getElementById('tabSymbol').classList.add('active');
-    document.getElementById('symbolTabBtn')?.classList.add('active');
-  } else {
-    uploadBtn.style.display = '';
-    if (noUpload) noUpload.style.display = 'none';
-    if (uploadZW) uploadZW.style.display = '';
-  }
+  // ── CSV upload removed: the symbol search is the only ingestion path now.
+  // These elements no longer exist, but guard in case any are re-added.
+  document.getElementById('uploadTabBtn')?.style && (document.getElementById('uploadTabBtn').style.display = 'none');
+  document.getElementById('tabSymbol')?.classList.add('active');
 
   // ── Exchange selector in Live Lookup
   const excEl = document.getElementById('exchangeInput');
@@ -2879,15 +2871,15 @@ function selectMarket(mode) {
 
   // ── Symbol input placeholder
   const symEl = document.getElementById('symbolInput');
-  const symHints = { india:'e.g., Tata Motors, Reliance, INFY, HDFCBANK...', us:'e.g., Apple, Tesla, AAPL, MSFT, NVDA...', crypto:'e.g., Bitcoin, Ethereum, BTC-USD, ETH-USD...' };
+  const symHints = { india:'Search your stock or similar names - e.g. Tata Motors, Reliance, INFY', us:'Search your stock or similar names - e.g. Apple, Tesla, AAPL, NVDA', crypto:'Search a coin - e.g. Bitcoin, Ethereum, BTC-USD' };
   if (symEl) symEl.placeholder = symHints[mode];
 
   // ── Live fetch hint text
-  const liveHint = document.querySelector('#tabSymbol .alert-warning');
+  const liveHint = document.getElementById('symbolSearchSub');
   const hints = {
-    india:  '📡 Fetches 1 year of OHLCV data from Yahoo Finance. Type company name or ticker - autocomplete will suggest the correct symbol.',
-    us:     '📡 Fetches 1 year of OHLCV data from Yahoo Finance. Type company name or US ticker - autocomplete suggests the correct symbol.',
-    crypto: '🪙 Fetches 1 year of crypto price data. Only the Top 10 coins by market cap are supported. Select from autocomplete.',
+    india:  'Type a company name or ticker and pick the match - or a similar name. We fetch 1 year of live OHLCV from Yahoo Finance.',
+    us:     'Type a US company or ticker (AAPL, TSLA, NVDA) and pick the match. We fetch 1 year of live OHLCV from Yahoo Finance.',
+    crypto: 'Select a coin (Top 10 by market cap). We fetch 1 year of live daily price data.',
   };
   if (liveHint) liveHint.innerHTML = hints[mode];
 
@@ -2908,6 +2900,7 @@ function selectMarket(mode) {
 
   showPage('mainPage');
   try { loadMarketDashboard(); } catch(e) {}   // opening market dashboard (India only)
+  try { setTimeout(_offerRestore, 350); } catch(e) {}   // offer restore now that we're in the analysis view
   // Land ready to type - Live Symbol Lookup is the default tab.
   setTimeout(() => { const si=document.getElementById('symbolInput');
     if (si && document.getElementById('tabSymbol')?.classList.contains('active')) si.focus(); }, 120);
@@ -3748,9 +3741,23 @@ async function fetchSymbolData() {
     { label:'Stooq',                   url:`https://corsproxy.io/?${enc(stooqUrl)}`,                 src:'stooq', wrap:false }
   );
 
-  st.innerHTML = `<div class="alert alert-warning" style="align-items:center;gap:8px;">
-    <div class="loading-spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
-    Racing <strong>${strategies.length} sources</strong> for <strong>${yahooSym}</strong>… fastest wins.
+  // A scrolling line-chart animation instead of the "racing N sources" text. The
+  // polyline is two identical 104px tiles; translating one tile-width loops
+  // seamlessly, so the graph appears to move continuously while data loads.
+  st.innerHTML = `<div class="fetch-anim">
+    <div class="fetch-chart">
+      <svg width="208" height="38" viewBox="0 0 208 38" class="fetch-scroll" preserveAspectRatio="none">
+        <defs><linearGradient id="fetchFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/>
+          <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+        <polygon fill="url(#fetchFill)" points="0,24 13,15 26,27 39,10 52,20 65,7 78,26 91,17 104,13 117,24 130,15 143,27 156,10 169,20 182,7 195,26 208,17 208,38 0,38"/>
+        <polyline class="fetch-line" points="0,24 13,15 26,27 39,10 52,20 65,7 78,26 91,17 104,13 117,24 130,15 143,27 156,10 169,20 182,7 195,26 208,17"/>
+      </svg>
+    </div>
+    <div style="font-size:13px;color:var(--text2);">
+      Fetching <strong>${yahooSym}</strong> - live market data
+      <span class="fetch-dot">.</span><span class="fetch-dot">.</span><span class="fetch-dot">.</span>
+    </div>
   </div>`;
 
   // ── Helper: fetch one strategy, return {rows, strat} or throw ────────────
@@ -3868,19 +3875,104 @@ async function fetchSymbolData() {
 
   } catch(aggErr) {
     const hasKey = avKey || tdKey || fmpKey;
-    const keyHint = !hasKey ? `<br><small>• 🔑 <strong>Tip:</strong> Add a free <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)">TwelveData key</a> (800 req/day) or <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Alpha Vantage key</a> for reliable direct access - no proxy needed.</small>` : '';
-    const modeHints = {
-      india:  `<br><small>• NSE codes: <b>RELIANCE</b>, <b>INFY</b>, <b>TCS</b> (no .NS suffix)</small><br><small>• Try BSE ↔ NSE toggle</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download NSE CSV →</a></small>`,
-      us:     `<br><small>• US tickers: <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
-      crypto: `<br><small>• Format: <b>BTC-USD</b>, <b>ETH-USD</b>, <b>SOL-USD</b></small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
-    };
-    st.innerHTML = `<div class="alert alert-error">❌ All ${strategies.length} sources failed for <strong>${yahooSym}</strong>.
-      ${keyHint}${modeHints[marketMode] || modeHints.india}
-      <br><small>• Check internet · On <code>file://</code>? Serve via <code>http://localhost:8080</code></small>
-    </div>`;
+    // Classify why it failed. A blocked/unreachable host throws TypeError
+    // "Failed to fetch"; a timeout throws AbortError. If EVERY strategy failed
+    // that way, the servers were never reached - which on an office network
+    // almost always means a firewall is blocking the proxy hosts, not that the
+    // symbol is wrong. A data-level error (bad symbol) reaches the server first.
+    const errs = (aggErr && aggErr.errors) ? aggErr.errors : [aggErr];
+    const isNetErr = e => { const m = (e && (e.message||e.name||'')+'').toLowerCase();
+      return m.includes('failed to fetch') || m.includes('aborted') || m.includes('aborterror')
+          || m.includes('networkerror') || m.includes('load failed'); };
+    const netCount = errs.filter(isNetErr).length;
+    const allNetwork = errs.length > 0 && netCount === errs.length;
+
+    if (allNetwork) {
+      // Network/firewall block - the useful, honest message.
+      st.innerHTML = `<div class="alert alert-error">
+        🚧 <strong>Can't reach the data servers.</strong> None of the ${strategies.length} sources responded -
+        every request failed at the network level (not a bad symbol).
+        <br><br><small><b>This usually means the network you're on is blocking them.</b> Common on office / college
+        WiFi, which filters public proxy sites (corsproxy.io, allorigins.win, codetabs.com).</small>
+        <br><small>• ✅ <b>Quickest check:</b> switch to mobile data / hotspot - if it works there, it's the network.</small>
+        ${!hasKey ? `<br><small>• 🔑 <b>Best fix for office use:</b> add a free
+          <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)">TwelveData</a> or
+          <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Alpha Vantage</a>
+          key in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button>.
+          The app then calls that provider's own domain directly - no public proxy - which office firewalls rarely block.</small>`
+        : `<br><small>• Your API key host may also be blocked here - the test below will show which servers are reachable.</small>`}
+        <br><small>• 🏢 If the block is intentional, ask IT to allow the domain(s) shown by the test.</small>
+        <br><br><button onclick="runNetworkDiagnostic()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">▶ Run network test</button>
+      </div>`;
+    } else {
+      // Servers reachable but no data - most likely a wrong symbol/exchange.
+      const keyHint = !hasKey ? `<br><small>• 🔑 <strong>Tip:</strong> Add a free <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)">TwelveData key</a> (800 req/day) or <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Alpha Vantage key</a> for reliable direct access - no proxy needed.</small>` : '';
+      const modeHints = {
+        india:  `<br><small>• NSE codes: <b>RELIANCE</b>, <b>INFY</b>, <b>TCS</b> (no .NS suffix)</small><br><small>• Try BSE ↔ NSE toggle</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download NSE CSV →</a></small>`,
+        us:     `<br><small>• US tickers: <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
+        crypto: `<br><small>• Format: <b>BTC-USD</b>, <b>ETH-USD</b>, <b>SOL-USD</b></small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
+      };
+      st.innerHTML = `<div class="alert alert-error">❌ Reached the servers but got no data for <strong>${yahooSym}</strong> - likely a wrong symbol or exchange.
+        ${keyHint}${modeHints[marketMode] || modeHints.india}
+        <br><small>• Check internet · On <code>file://</code>? Serve via <code>http://localhost:8080</code></small>
+      </div>`;
+    }
   }
 
   btn.disabled = false; btn.textContent = '📡 Fetch';
+}
+
+// Probes each data host individually so the user (or their IT team) can see
+// exactly which servers are reachable from this network. A host that throws
+// "Failed to fetch" is blocked/unreachable; one that returns any HTTP status -
+// even an error - is reachable, so the problem is elsewhere.
+async function runNetworkDiagnostic() {
+  const st = document.getElementById('fetchStatus');
+  if (!st) return;
+  const enc = encodeURIComponent;
+  const probe = 'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1d&interval=1d';
+  const hosts = [
+    ['corsproxy.io',    'https://corsproxy.io/?' + enc(probe)],
+    ['allorigins.win',  'https://api.allorigins.win/raw?url=' + enc(probe)],
+    ['codetabs.com',    'https://api.codetabs.com/v1/proxy?quest=' + enc(probe)],
+  ];
+  // If a key is configured, test its provider's OWN domain too - that is the
+  // path that bypasses the public proxies.
+  if (_loadKey('tdApiKey')) hosts.push(['twelvedata.com (your key)', `https://api.twelvedata.com/quote?symbol=AAPL&apikey=${_loadKey('tdApiKey')}`]);
+  if (_loadKey('avApiKey')) hosts.push(['alphavantage.co (your key)', `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${_loadKey('avApiKey')}`]);
+
+  st.innerHTML = `<div class="alert alert-warning"><div class="loading-spinner" style="width:15px;height:15px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Testing ${hosts.length} data servers…</div>`;
+
+  const results = [];
+  for (const [name, url] of hosts) {
+    const t0 = performance.now();
+    try {
+      const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 8000);
+      let res; try { res = await fetch(url, { signal: ctrl.signal }); } finally { clearTimeout(tm); }
+      results.push({ name, reachable: true, status: res.status, ms: Math.round(performance.now() - t0) });
+    } catch (e) {
+      const timeout = ((e && (e.name || '')) + '').toLowerCase().includes('abort');
+      results.push({ name, reachable: false, status: timeout ? 'timed out' : 'blocked', ms: Math.round(performance.now() - t0) });
+    }
+  }
+
+  const anyReach = results.some(r => r.reachable);
+  const row = r => `<tr>
+    <td style="padding:4px 10px;">${r.reachable ? '✅' : '⛔'} ${r.name}</td>
+    <td style="padding:4px 10px;color:${r.reachable ? 'var(--green)' : 'var(--red)'};font-weight:700;">${r.reachable ? 'reachable ('+r.status+')' : r.status}</td>
+    <td style="padding:4px 10px;color:var(--text3);text-align:right;">${r.ms} ms</td></tr>`;
+  const verdict = anyReach
+    ? `<b style="color:var(--green);">At least one server is reachable.</b> Data should load - if a symbol still fails, it is likely the symbol/exchange, not the network. Retry the fetch.`
+    : `<b style="color:var(--red);">Every server is blocked from this network.</b> This confirms a firewall/proxy block. Use mobile data, add an API key whose domain is allowed, or ask IT to whitelist the domains above.`;
+
+  st.innerHTML = `<div class="alert ${anyReach ? 'alert-success' : 'alert-error'}">
+    <div style="font-weight:800;margin-bottom:6px;">🔎 Network test results</div>
+    <table style="font-size:12px;border-collapse:collapse;width:100%;max-width:420px;">
+      <thead><tr style="color:var(--text3);font-size:10px;text-transform:uppercase;">
+        <th style="text-align:left;padding:2px 10px;">Server</th><th style="text-align:left;padding:2px 10px;">Result</th><th style="text-align:right;padding:2px 10px;">Time</th></tr></thead>
+      <tbody>${results.map(row).join('')}</tbody></table>
+    <div style="margin-top:8px;font-size:12px;line-height:1.5;">${verdict}</div>
+  </div>`;
 }
 
 // ============================================================
@@ -5790,7 +5882,11 @@ function renderMktExtra() {
       <div style="border:1px solid var(--border);border-radius:9px;overflow:hidden;"><div style="background:var(--surface2);font-weight:700;font-size:12.5px;padding:6px 11px;color:var(--text3);">Loading losers…</div>${sk.repeat(5)}</div></div>`;
   } else if (_moversData && _moversData.length) {
     const sorted = [..._moversData].sort((a,b)=>b.pct-a.pct);
-    const n = Math.min(5, Math.floor(sorted.length/2)) || 1;
+    // Show up to 5 on each side. The old Math.floor(len/2) split the basket in
+    // half, so a partially-loaded basket (e.g. 4 quotes) collapsed to 2 each.
+    // With fewer than 10 loaded the two lists may share a name; that is fine -
+    // showing 5 movers is what the user expects.
+    const n = Math.min(5, sorted.length);
     const g = sorted.slice(0,n), l = sorted.slice(-n).reverse();
     // Fixed 4-column grid with tabular numerals. The old flex/space-between let
     // every row pick its own column positions, so nothing lined up vertically.
@@ -5810,7 +5906,6 @@ function renderMktExtra() {
       ${tbl('🚀 Top Gainers','var(--green)','rgba(49,167,69,.12)',g)}
       ${tbl('📉 Top Losers','var(--red)','rgba(255,79,85,.12)',l)}
     </div><div style="font-size:9.5px;color:var(--text3);margin-top:5px;">Movers among a ${MOVERS_BASKET.length}-stock large-cap basket (not the full market). ${_moversData.length} of ${MOVERS_BASKET.length} quotes loaded.</div>`;
-    html += _breadthBar();
   }
   el.innerHTML = html;
 }
@@ -6882,6 +6977,7 @@ async function runAnalysis() {
     };
     overlay.style.display = 'none';
     renderResults();
+    try { _saveAnalysisSnapshot(); } catch(e) {}   // survive refresh / back
   } catch(err) {
     overlay.style.display = 'none';
     ['ls1','ls2','ls3','ls4'].forEach(id => { document.getElementById(id).classList.remove('done','active'); });
@@ -6889,6 +6985,56 @@ async function runAnalysis() {
     console.error(err);
   }
 }
+
+// ── ANALYSIS PERSISTENCE (data saver) ───────────────────────────────────────
+// Saves just enough to rebuild the analysis - the raw OHLCV plus the form
+// fields - so an accidental refresh or Back does not throw away the work. We
+// re-run the (fast, local) analysis on restore rather than trying to serialise
+// the whole analysisResult object, which holds non-JSON values.
+const _SNAP_KEY = 'sb_last_analysis';
+function _saveAnalysisSnapshot() {
+  if (!Array.isArray(parsedData) || parsedData.length < 10) return;
+  const g = id => (document.getElementById(id)?.value || '');
+  const snap = { v:1, ts:Date.now(), marketMode,
+    company:g('companyName'), symbol:g('stockSymbol'), price:g('currentPrice'), market:g('marketSelect'),
+    data: parsedData };
+  try { localStorage.setItem(_SNAP_KEY, JSON.stringify(snap)); }
+  catch(e) { /* quota - drop the snapshot rather than break analysis */ }
+}
+function _restoreAnalysis(snap) {
+  try { selectMarket(snap.marketMode || 'india'); } catch(e) {}
+  parsedData = snap.data || [];
+  const set = (id,v) => { const el=document.getElementById(id); if(el) el.value = v||''; };
+  set('companyName', snap.company); set('stockSymbol', snap.symbol);
+  set('currentPrice', snap.price);  set('marketSelect', snap.market);
+  try { checkReady(); } catch(e) {}
+  runAnalysis();
+}
+window._doRestore = function() {
+  document.getElementById('restoreBar')?.remove();
+  let snap; try { snap = JSON.parse(localStorage.getItem(_SNAP_KEY) || 'null'); } catch(e) {}
+  if (snap && snap.data && snap.data.length) _restoreAnalysis(snap);
+};
+function _offerRestore() {
+  if (document.getElementById('restoreBar')) return;
+  // Only when the analysis page is actually showing - never over the disclaimer,
+  // decline or market-selector pages, where it would cover their buttons.
+  if (!document.getElementById('mainPage')?.classList.contains('active')) return;
+  let snap; try { snap = JSON.parse(localStorage.getItem(_SNAP_KEY) || 'null'); } catch(e) { return; }
+  if (!snap || !snap.data || !snap.data.length) return;
+  if (Date.now() - snap.ts > 7 * 864e5) return;            // ignore >7 days old
+  const when = new Date(snap.ts).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const bar = document.createElement('div');
+  bar.id = 'restoreBar';
+  // Docked to the BOTTOM (not the top) so it never covers the header/logo or the
+  // search icon. Centred with side gutters and a sensible max width on mobile.
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:16px;margin:0 auto;max-width:430px;z-index:9999;background:var(--surface);border:1px solid var(--accent);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.24);padding:10px 12px;display:flex;align-items:center;gap:10px;';
+  bar.innerHTML = `<div style="flex:1;min-width:0;font-size:12.5px;color:var(--text);line-height:1.35;">↩️ Restore last analysis<br><b>${(snap.company || snap.symbol || 'stock')}</b> <span style="color:var(--text3);font-size:10.5px;">· ${when}</span></div>
+    <button onclick="_doRestore()" style="flex-shrink:0;background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:12.5px;">Restore</button>
+    <button onclick="document.getElementById('restoreBar').remove()" title="Dismiss" aria-label="Dismiss" style="flex-shrink:0;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:2px 4px;">✕</button>`;
+  document.body.appendChild(bar);
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(_offerRestore, 700));
 
 // ============================================================
 // RENDER RESULTS
@@ -8558,6 +8704,15 @@ function getMarketWisdom(signals) {
 // ============================================================
 // RESET
 // ============================================================
+// Back to the search view WITHOUT discarding anything - the analysis, inputs and
+// saved snapshot all remain, so the user can return to results or start a new
+// search freely. This is the non-destructive counterpart to resetApp().
+function goBackToSearch() {
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('ingestionSection').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function resetApp() {
   uploadedFiles = []; parsedData = []; analysisResult = null;
   if (mainChartInstance) { mainChartInstance.destroy(); mainChartInstance = null; }
