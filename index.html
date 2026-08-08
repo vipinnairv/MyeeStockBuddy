@@ -9379,6 +9379,22 @@ function renderLTP() {
 // Map of holding index to asset type/ticker for live refresh
 var _ltpRows = [];
 
+// Convert a stored holding ticker (e.g. "NSE:RELIANCE", "BSE:TCS", "NASDAQ:AAPL")
+// into the symbol Yahoo Finance expects (RELIANCE.NS, TCS.BO, AAPL). Without this,
+// refreshing produced junk like "NSE:RELIANCE.NS" and no price ever came back.
+function _toYahooSymbol(rawTicker, type) {
+  const t = (rawTicker || '').trim();
+  if (type === 'US EQ') {
+    return t.includes(':') ? t.split(':').pop().trim() : t;
+  }
+  if (type === 'India EQ') {
+    const isBSE = /^BSE:/i.test(t) || /\.BO$/i.test(t);
+    const bare = t.replace(/^NSE:|^BSE:/i, '').replace(/\.NS$|\.BO$/i, '').trim();
+    return bare + (isBSE ? '.BO' : '.NS');
+  }
+  return t;
+}
+
 async function refreshAllPrices() {
   const btn = document.getElementById('refresh-all-btn');
   const progress = document.getElementById('refresh-progress');
@@ -9389,8 +9405,8 @@ async function refreshAllPrices() {
 
   // Build list of all holdings to refresh
   const tasks = [];
-  S.indEQ.forEach((h,i) => tasks.push({type:'India EQ', ticker:h.ticker+'.NS', idx:i, asset:'indEQ'}));
-  S.usEQ.forEach((h,i)  => tasks.push({type:'US EQ',    ticker:h.ticker,        idx:i, asset:'usEQ'}));
+  S.indEQ.forEach((h,i) => tasks.push({type:'India EQ', ticker:_toYahooSymbol(h.ticker,'India EQ'), idx:i, asset:'indEQ'}));
+  S.usEQ.forEach((h,i)  => tasks.push({type:'US EQ',    ticker:_toYahooSymbol(h.ticker,'US EQ'),    idx:i, asset:'usEQ'}));
   S.crypto.forEach((h,i)=> tasks.push({type:'Crypto',   ticker:h.coinId.toUpperCase()+'-INR', idx:i, asset:'crypto'}));
 
   let done = 0, updated = 0;
@@ -9428,7 +9444,7 @@ async function refreshAllPrices() {
 async function refreshSinglePrice(rowIdx, type, ticker) {
   const btn = document.querySelector(`#ltp-row-${rowIdx} button`);
   if (btn) btn.textContent = '⏳';
-  const yfTicker = type === 'India EQ' ? ticker+'.NS' : type === 'Crypto' ? ticker.toUpperCase()+'-INR' : ticker;
+  const yfTicker = type === 'Crypto' ? ticker.toUpperCase()+'-INR' : _toYahooSymbol(ticker, type);
   const price = await _fetchLivePrice(yfTicker, type);
   if (price && price > 0) {
     if (type === 'India EQ') { const h = S.indEQ.find(x => x.ticker === ticker); if (h) { h.ltp = price; } }
