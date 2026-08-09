@@ -7775,6 +7775,15 @@ function buildChart(type) {
     const lwRsi  = LightweightCharts.createChart(rsiEl,  { ...commonOpts(false), width:rsiEl.clientWidth,  height:rsiEl.clientHeight });
     const lwMacd = LightweightCharts.createChart(macdEl, { ...commonOpts(true),  width:macdEl.clientWidth, height:macdEl.clientHeight });
 
+    // ── SMS Pro momentum shaded-zone (translucent green, behind candles) ──────
+    const zoneSeries = lwMain.addAreaSeries({
+      priceScaleId:'sms-zone', lineColor:'rgba(0,0,0,0)', lineWidth:1,
+      topColor:'rgba(46,204,113,0.12)', bottomColor:'rgba(46,204,113,0.12)',
+      priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false,
+      autoscaleInfoProvider: () => ({ priceRange:{ minValue:0, maxValue:1 } }),
+    });
+    try { lwMain.priceScale('sms-zone').applyOptions({ scaleMargins:{top:0,bottom:0}, visible:false }); } catch(e){}
+
     // ── Candlestick series ────────────────────────────────────────────────────
     const candleSeries = lwMain.addCandlestickSeries({
       upColor:'#26a69a', downColor:'#ef5350', borderVisible:false,
@@ -7829,6 +7838,75 @@ function buildChart(type) {
           Could not plot this data: no bars with a valid, ascending date were found
           (${sd.length} bar${sd.length===1?'':'s'} received). Re-run the analysis or try another symbol.</div>`);
     }
+
+    // ══ SMS Pro Momentum Signal System ═══════════════════════════════════════
+    // Client-side engine: a momentum run starts ('B') when price closes above
+    // its EMA-20 with RSI-14 > 50, holds ('H') while both remain true, and
+    // resets the moment either breaks. Drives the shaded zone, markers and card.
+    (function _smsPro(){
+      try {
+        const _cl = sd.map(d => d.close);
+        const _emaCalc = (a,p) => { if(!a.length) return []; const k=2/(p+1); let e=a[0]; const o=[e]; for(let i=1;i<a.length;i++){ e=a[i]*k+e*(1-k); o.push(e); } return o; };
+        const _rsiCalc = (a,p) => { const o=new Array(a.length).fill(null); if(a.length<=p) return o; let g=0,l=0; for(let i=1;i<=p;i++){ const c=a[i]-a[i-1]; if(c>=0) g+=c; else l-=c; } g/=p; l/=p; o[p]=100-100/(1+(l===0?100:g/l)); for(let i=p+1;i<a.length;i++){ const c=a[i]-a[i-1]; const gg=c>0?c:0, ll=c<0?-c:0; g=(g*(p-1)+gg)/p; l=(l*(p-1)+ll)/p; o[i]=100-100/(1+(l===0?100:g/l)); } return o; };
+        const _e20 = _emaCalc(_cl,20), _r14 = _rsiCalc(_cl,14);
+
+        const _markers=[], _zoneData=[]; let _active=false, _lastActive=false;
+        for (const i of rows) {
+          const t = toTs(sd[i]);
+          const cond = isFinite(_e20[i]) && _r14[i]!=null && _cl[i] > _e20[i] && _r14[i] > 50;
+          if (cond) {
+            if (!_active) { _markers.push({ time:t, position:'belowBar', color:'#2ecc71', shape:'square', text:'B', size:2 }); _active=true; }
+            else          { _markers.push({ time:t, position:'belowBar', color:'#a855f7', shape:'circle', text:'H', size:1 }); }
+            _zoneData.push({ time:t, value:1 });
+          } else { _active=false; _zoneData.push({ time:t }); }
+          _lastActive = cond;
+        }
+        try { zoneSeries.setData(_zoneData); } catch(e){}
+
+        // ── Floating metadata card (industry / sector / momentum) ─────────────
+        let _ind='—', _sec='—';
+        const _entry = (typeof selectedStockEntry!=='undefined') ? selectedStockEntry : null;
+        try {
+          if (marketMode==='us') { _sec = (_entry && _entry[3]) || 'US Equity'; }
+          else if (marketMode==='commodity') { _ind = (_entry && _entry[3]) || 'Commodity'; _sec = 'Commodities'; }
+          else if (marketMode==='crypto') { _sec = (_entry && _entry[3]) || 'Crypto'; }
+          else if (marketMode==='india') { _sec = 'NSE / BSE'; }
+        } catch(e){}
+
+        mainEl.style.position = 'relative';
+        const _oldCard = mainEl.querySelector('#sms-meta-card'); if (_oldCard) _oldCard.remove();
+        const _card = document.createElement('div');
+        _card.id = 'sms-meta-card';
+        _card.style.cssText = 'position:absolute;right:10px;bottom:34px;z-index:60;pointer-events:none;background:#1e222d;border:1px solid #2a2e39;border-radius:8px;padding:8px 10px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;min-width:188px;box-shadow:0 4px 14px rgba(0,0,0,.4);';
+        const _rowHTML = (k,v,vc) => '<div style="display:flex;justify-content:space-between;gap:14px;font-size:11px;line-height:1.95;"><span style="color:#787b86;">'+k+'</span><span style="color:'+(vc||'#d1d4dc')+';font-weight:600;text-align:right;">'+v+'</span></div>';
+        _card.innerHTML = '<div style="font-size:11.5px;font-weight:800;color:#f0b90b;letter-spacing:.4px;margin-bottom:6px;border-bottom:1px solid #2a2e39;padding-bottom:5px;">&#9670; SMS PRO</div>'
+          + _rowHTML('Industry', _ind)
+          + _rowHTML('Sector', _sec)
+          + _rowHTML('Momentum', _lastActive ? '&#8226; ACTIVE' : '&#9675; QUIET', _lastActive ? '#2ecc71' : '#787b86');
+        mainEl.appendChild(_card);
+
+        // ── Persisted enable/disable toggle (localStorage, zero server) ────────
+        const _apply = (on) => {
+          try { candleSeries.setMarkers(on ? _markers : []); } catch(e){}
+          try { zoneSeries.applyOptions({ visible:on }); } catch(e){}
+          _card.style.display = on ? '' : 'none';
+          try { localStorage.setItem('smsProOn', on ? '1' : '0'); } catch(e){}
+        };
+        let _on = true; try { _on = localStorage.getItem('smsProOn') !== '0'; } catch(e){}
+        _apply(_on);
+
+        const _bar = document.getElementById('lwOverlayBtns');
+        if (_bar && _bar.parentElement) {
+          const _oldBtn = document.getElementById('smsProToggle'); if (_oldBtn) _oldBtn.remove();
+          const _tgl = document.createElement('button');
+          _tgl.id = 'smsProToggle';
+          const _paint = () => { _tgl.textContent = '⚡ SMS Pro'; _tgl.style.cssText = 'cursor:pointer;margin-left:6px;border:1px solid '+(_on?'#2ecc71':'#363c4e')+';background:'+(_on?'rgba(46,204,113,.18)':'transparent')+';color:'+(_on?'#7ee2a8':'#94a3b8')+';font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;'; };
+          _paint();
+          _tgl.onclick = () => { _on = !_on; _apply(_on); _paint(); };
+          _bar.parentElement.appendChild(_tgl);
+        }
+      } catch(e) { /* SMS Pro overlay must never break the chart */ }
+    })();
 
     // ── Volume overlay (bottom 20% of main pane, semi-transparent) ───────────
     const volSeries = lwMain.addHistogramSeries({
