@@ -4739,31 +4739,116 @@ window.SBPatternEngine = (function () {
     }
     return null;
   }
+  // ── Stricter converging-triangle detector ────────────────────────────────
+  // Math runs in Python (Pyodide) when it is loaded; an identical JS port is
+  // the source of truth otherwise, so the fix is always live. Rules:
+  //  (1) upper pivots are timeframe-matched to the support window,
+  //  (2) a flat upper slope classifies as an Ascending Triangle (horizontal top),
+  //  (3) >=2 recent swing highs AND >=2 swing lows are required in the window.
+  const _TRI_PYSRC = `
+import json
+def _pivots(vals,left=3,right=3,kind='high'):
+    piv=[]; n=len(vals)
+    for i in range(left,n-right):
+        v=vals[i]
+        if kind=='high':
+            if all(v> vals[i-j] for j in range(1,left+1)) and all(v>=vals[i+j] for j in range(1,right+1)): piv.append(i)
+        else:
+            if all(v< vals[i-j] for j in range(1,left+1)) and all(v<=vals[i+j] for j in range(1,right+1)): piv.append(i)
+    return piv
+def _fit(idxs,ys):
+    m=len(idxs); sx=sum(idxs); sy=sum(ys); sxx=sum(i*i for i in idxs); sxy=sum(i*y for i,y in zip(idxs,ys))
+    d=m*sxx-sx*sx
+    if d==0: return 0.0, sy/m
+    s=(m*sxy-sx*sy)/d; return s,(sy-s*sx)/m
+def detect_triangle(highs,lows,closes):
+    n=len(closes)
+    if n<30: return json.dumps(None)
+    last=n-1; price=closes[-1]
+    ph=_pivots(highs,3,3,'high'); pl=_pivots(lows,3,3,'low')
+    rl=[i for i in pl if i>=last-120]
+    if len(rl)<2: return json.dumps(None)
+    base=rl[-4:]; win_start=base[0]; win_len=last-win_start
+    if win_len<12: return json.dumps(None)
+    tol=int(max(8,win_len*0.35)); top=[i for i in ph if i>=win_start-tol]
+    if len(top)<2: return json.dumps(None)
+    top=top[-4:]
+    us,ui=_fit(top,[highs[i] for i in top]); ds,di=_fit(base,[lows[i] for i in base])
+    up=us/price*100.0; dn=ds/price*100.0
+    hs=[highs[i] for i in top]; mh=sum(hs)/len(hs); var=(max(hs)-min(hs))/mh*100.0 if mh else 999.0
+    if abs(up)<0.06 or var<3.0:
+        pattern='Ascending Triangle'; us=0.0; ui=max(hs)
+    elif up<-0.05 and dn>0.05:
+        pattern='Symmetrical Triangle'
+    else:
+        return json.dumps(None)
+    if dn<=0.0: return json.dumps(None)
+    upper=us*last+ui; lower=ds*last+di
+    if upper<=lower: return json.dumps(None)
+    return json.dumps({'pattern':pattern,'us':us,'ui':ui,'ds':ds,'di':di,'top':top,'base':base})
+`;
+  function _triEnsurePy(){
+    if(window._pyo && window._miyeePyReady && !window._triPyDef){
+      try{ window._pyo.runPython(_TRI_PYSRC); window._triPyDef=true; }catch(e){ window._triPyDef=false; }
+    }
+    return !!window._triPyDef;
+  }
+  const _triPivHi=(H,left,right)=>{const p=[];for(let i=left;i<H.length-right;i++){let ok=true;for(let j=1;j<=left&&ok;j++)if(!(H[i]>H[i-j]))ok=false;for(let j=1;j<=right&&ok;j++)if(!(H[i]>=H[i+j]))ok=false;if(ok)p.push(i);}return p;};
+  const _triPivLo=(L,left,right)=>{const p=[];for(let i=left;i<L.length-right;i++){let ok=true;for(let j=1;j<=left&&ok;j++)if(!(L[i]<L[i-j]))ok=false;for(let j=1;j<=right&&ok;j++)if(!(L[i]<=L[i+j]))ok=false;if(ok)p.push(i);}return p;};
+  const _triFit=(idx,ys)=>{const m=idx.length;let sx=0,sy=0,sxx=0,sxy=0;for(let k=0;k<m;k++){sx+=idx[k];sy+=ys[k];sxx+=idx[k]*idx[k];sxy+=idx[k]*ys[k];}const d=m*sxx-sx*sx;if(d===0)return[0,sy/m];const s=(m*sxy-sx*sy)/d;return[s,(sy-s*sx)/m];};
+  function _detectTriangleCore(ctx){
+    const {H,L,C}=ctx; const n=C.length; if(n<30) return null;
+    const last=n-1, price=C[last];
+    const pl=_triPivLo(L,3,3), ph=_triPivHi(H,3,3);
+    const rl=pl.filter(i=>i>=last-120); if(rl.length<2) return null;
+    const base=rl.slice(-4); const winStart=base[0]; const winLen=last-winStart; if(winLen<12) return null;
+    const tol=Math.max(8,Math.floor(winLen*0.35));
+    let top=ph.filter(i=>i>=winStart-tol); if(top.length<2) return null; top=top.slice(-4);
+    let [us,ui]=_triFit(top, top.map(i=>H[i]));
+    const [ds,di]=_triFit(base, base.map(i=>L[i]));
+    const up=us/price*100, dn=ds/price*100;
+    const hs=top.map(i=>H[i]); const mh=hs.reduce((a,b)=>a+b,0)/hs.length; const varP=mh?(Math.max(...hs)-Math.min(...hs))/mh*100:999;
+    let pattern;
+    if(Math.abs(up)<0.06||varP<3.0){ pattern='Ascending Triangle'; us=0; ui=Math.max(...hs); }
+    else if(up<-0.05&&dn>0.05){ pattern='Symmetrical Triangle'; }
+    else return null;
+    if(dn<=0) return null;
+    if(us*last+ui<=ds*last+di) return null;
+    return { pattern, us, ui, ds, di, top, base };
+  }
   function detectTriangle(ctx, kind){
-    const {ph,pl,last,price,H,L}=ctx; if(ph.length<2||pl.length<2) return null;
-    const up=bestBoundary(ph,H,true,2,1.5), dn=bestBoundary(pl,L,false,2,1.5); if(!up||!dn) return null;
-    const shP=slopePct(up.slope,price), slP=slopePct(dn.slope,price);
-    const edge=Math.max(Math.max(...up.touches),Math.max(...dn.touches));
-    const span=edge-Math.min(Math.min(...up.touches),Math.min(...dn.touches)); if(span<18) return null;
-    let evalBar=last;
-    if(Math.abs(up.slope-dn.slope)>1e-9){ const apex=(dn.intercept-up.intercept)/(up.slope-dn.slope); if(up.slope<dn.slope&&apex>edge) evalBar=Math.min(last,Math.floor(apex)-1); }
-    evalBar=Math.max(evalBar,edge);
-    let upper=up.slope*evalBar+up.intercept, lower=dn.slope*evalBar+dn.intercept;
-    if(upper<=lower){upper=up.slope*edge+up.intercept;lower=dn.slope*edge+dn.intercept;} if(upper<=lower) return null;
-    let name,narrative;
-    if(kind==="ascending"){ if(!(Math.abs(shP)<0.10&&slP>0.12)) return null; name="Ascending Triangle"; narrative="An ascending triangle reflects rising buying pressure beneath a fixed resistance, with higher lows showing improving demand. A move above resistance is likely to trigger fresh upside."; }
-    else if(kind==="descending"){ if(!(Math.abs(slP)<0.10&&shP<-0.12)) return null; name="Descending Triangle"; narrative="A descending triangle formed during the consolidation phase. The breakout above resistance signals buyers have regained the upper hand, paving the way for further upside."; }
-    else { if(!(shP<-0.08&&slP>0.08)) return null; name="Symmetrical Triangle"; narrative="The breakout from a symmetrical triangle marks a transition from consolidation to expansion, confirming a bullish reversal."; }
+    if(kind==="descending") return null;   // stricter engine emits ascending / symmetrical only
+    let g=null;
+    if(_triEnsurePy()){
+      try{
+        const out=JSON.parse(window._pyo.runPython('detect_triangle('+JSON.stringify(ctx.H)+','+JSON.stringify(ctx.L)+','+JSON.stringify(ctx.C)+')'));
+        if(out) g=out;
+      }catch(e){ g=null; }
+    }
+    if(!g) g=_detectTriangleCore(ctx);
+    if(!g) return null;
+    if(kind==="ascending"   && g.pattern!=="Ascending Triangle")   return null;
+    if(kind==="symmetrical" && g.pattern!=="Symmetrical Triangle") return null;
+
+    const {H,L,C,d,last,price}=ctx;
+    const up={slope:g.us,intercept:g.ui}, dn={slope:g.ds,intercept:g.di};
+    const top=g.top, base=g.base, uT0=Math.min(...top), dT0=Math.min(...base);
+    let upper=up.slope*last+up.intercept, lower=dn.slope*last+dn.intercept;
+    if(upper<=lower) return null;
+    const name=g.pattern;
+    let narrative = name==="Ascending Triangle"
+      ? "An ascending triangle: rising higher-lows press into a flat resistance. A close above the horizontal ceiling opens fresh upside."
+      : "The breakout from a symmetrical triangle marks a transition from consolidation to expansion, confirming a bullish reversal.";
     let signal,stage;
     if(price>upper*1.004){ if(Math.min(...L.slice(-5))<=upper*1.012){signal="Breakout Retest";stage="confirmation_pending";narrative=`Price broke above the resistance of the ${name.toLowerCase()}. It is now retesting the breakout zone as support - a move from this level could be a strong bullish leg.`;} else {signal="Bullish Reversal";stage="confirmed";} }
     else if(price>upper*0.99){signal="On The Verge Of Breakout";stage="anticipatory";}
     else return null;
-    const uT0=Math.min(...up.touches), dT0=Math.min(...dn.touches);
+    const geoFit=+Math.min(1,(top.length+base.length)/6).toFixed(3);
     const graphics={ lines:[
-      {points:[{time:ctx.d[uT0].time,value:up.slope*uT0+up.intercept},{time:ctx.d[last].time,value:up.slope*last+up.intercept}],color:"#ef5350",width:2,title:"Resistance"},
-      {points:[{time:ctx.d[dT0].time,value:dn.slope*dT0+dn.intercept},{time:ctx.d[last].time,value:dn.slope*last+dn.intercept}],color:"#26a69a",width:2,title:"Support"},
-    ], markers: price>upper*1.004?[{time:ctx.d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"}]:[] };
-    return card({ pattern:name, signal, bias:"bullish", stage, narrative, levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:up.touches.length+dn.touches.length,geometryFit:+((up.r2+dn.r2)/2).toFixed(3)}, graphics });
+      {points:[{time:d[uT0].time,value:up.slope*uT0+up.intercept},{time:d[last].time,value:upper}],color:"#ef5350",width:2,title:"Resistance"},
+      {points:[{time:d[dT0].time,value:dn.slope*dT0+dn.intercept},{time:d[last].time,value:lower}],color:"#26a69a",width:2,title:"Support"},
+    ], markers: price>upper*1.004?[{time:d[last].time,position:"belowBar",color:"#26a69a",shape:"arrowUp",text:"Breakout"}]:[] };
+    return card({ pattern:name, signal, bias:"bullish", stage, narrative, levels:{resistance:+upper.toFixed(2),support:+lower.toFixed(2),close:+price.toFixed(2)}, indicators:confluence(ctx,last), components:{touches:top.length+base.length,geometryFit:geoFit}, graphics });
   }
   function detectRisingTrendline(ctx){
     const {pl,last,price,L,C}=ctx; const res=bestBoundary(pl,L,false,3,1.5); if(!res) return null;
