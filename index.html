@@ -3759,13 +3759,14 @@ async function fetchSymbolData() {
   strategies.push(
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
-    { label:'Yahoo Finance',           url:`https://corsproxy.io/?${enc(yfQ2)}`,                     src:'yf', wrap:false },
+    { label:'Yahoo Finance',           url:`https://corsproxy.io/?url=${enc(yfQ2)}`,                     src:'yf', wrap:false },
     { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false }
   );
   if (!isCrypto && !isCommodity) strategies.push(
     { label:'Stooq',                   url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
     { label:'Stooq',                   url:`https://api.allorigins.win/raw?url=${enc(stooqUrl)}`,    src:'stooq', wrap:false },
-    { label:'Stooq',                   url:`https://corsproxy.io/?${enc(stooqUrl)}`,                 src:'stooq', wrap:false }
+    { label:'Stooq',                   url:`https://corsproxy.io/?url=${enc(stooqUrl)}`,                 src:'stooq', wrap:false },
+    { label:'Stooq',                   url:`https://api.codetabs.com/v1/proxy?quest=${enc(stooqUrl)}`, src:'stooq', wrap:false }
   );
 
   // A scrolling line-chart animation instead of the "racing N sources" text. The
@@ -3959,7 +3960,7 @@ async function runNetworkDiagnostic() {
   const enc = encodeURIComponent;
   const probe = 'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1d&interval=1d';
   const hosts = [
-    ['corsproxy.io',    'https://corsproxy.io/?' + enc(probe)],
+    ['corsproxy.io',    'https://corsproxy.io/?url=' + enc(probe)],
     ['allorigins.win',  'https://api.allorigins.win/raw?url=' + enc(probe)],
     ['codetabs.com',    'https://api.codetabs.com/v1/proxy?quest=' + enc(probe)],
   ];
@@ -5785,7 +5786,7 @@ function symSuggest(q){
     let list=_symCache[q.toLowerCase()];
     if(!list){
       const yf='https://query2.finance.yahoo.com/v1/finance/search?quotesCount=8&newsCount=0&q='+encodeURIComponent(q);
-      for(const u of ['https://corsproxy.io/?'+encodeURIComponent(yf),
+      for(const u of ['https://corsproxy.io/?url='+encodeURIComponent(yf),
                       'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]){
         try{ const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),6000);
           const r=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!r.ok) continue;
@@ -5821,7 +5822,7 @@ let _mktTimer = null, _mktLoading = false;
 async function _fetchIndex(sym) {
   const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1y&interval=1d';
   const enc = encodeURIComponent;
-  const urls = [['https://api.allorigins.win/raw?url='+enc(yf),false], ['https://corsproxy.io/?'+enc(yf),false], ['https://api.allorigins.win/get?url='+enc(yf),true]];
+  const urls = [['https://api.allorigins.win/raw?url='+enc(yf),false], ['https://corsproxy.io/?url='+enc(yf),false], ['https://api.allorigins.win/get?url='+enc(yf),true]];
   for (const [u, wrap] of urls) {
     try {
       const ctrl = new AbortController(); const tm = setTimeout(()=>ctrl.abort(), 8000);
@@ -6024,7 +6025,7 @@ function renderMktExtra() {
 
 async function loadFIIDII() {
   const yf = 'https://www.nseindia.com/api/fiidiiTradeReact';
-  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf), 'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]) {
+  for (const u of ['https://corsproxy.io/?url='+encodeURIComponent(yf), 'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]) {
     try { const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
       const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm);
       const arr=JSON.parse(await res.text());
@@ -6038,7 +6039,7 @@ async function _fetchQuote(sym) {
   const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym+'.NS')+'?range=5d&interval=1d';
   // corsproxy first: allorigins repeatedly timed out on these, which added ~7s of
   // dead wait per symbol before the fallback even started.
-  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf), 'https://api.allorigins.win/raw?url='+encodeURIComponent(yf)]) {
+  for (const u of ['https://corsproxy.io/?url='+encodeURIComponent(yf), 'https://api.allorigins.win/raw?url='+encodeURIComponent(yf)]) {
     try { const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),7000);
       const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!res.ok) continue;
       const raw=await res.json(); const r=raw?.chart?.result?.[0]; if(!r) continue;
@@ -6058,7 +6059,7 @@ async function _fetchQuote(sym) {
 async function _fetchMoversBatch() {
   const syms = MOVERS_BASKET.map(s=>s+'.NS').join(',');
   const yf = 'https://query1.finance.yahoo.com/v8/finance/spark?symbols='+encodeURIComponent(syms)+'&range=5d&interval=1d';
-  for (const u of ['https://corsproxy.io/?'+encodeURIComponent(yf),
+  for (const u of ['https://corsproxy.io/?url='+encodeURIComponent(yf),
                    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(yf)]) {
     try {
       const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
@@ -6657,7 +6658,7 @@ async function _screenFetchBars(sym, exch) {
   const urls = [
     { u: `https://api.allorigins.win/raw?url=${enc(yf)}`, wrap: false },
     { u: `https://api.allorigins.win/get?url=${enc(yf)}`, wrap: true  },
-    { u: `https://corsproxy.io/?${enc(yf)}`,              wrap: false },
+    { u: `https://corsproxy.io/?url=${enc(yf)}`,              wrap: false },
   ];
   for (const { u, wrap } of urls) {
     try {
@@ -9737,7 +9738,7 @@ async function _fetchLivePrice(ticker, type) {
   const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
   const proxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(yfUrl)}`,
   ];
   for (const proxyUrl of proxies) {
     try {
