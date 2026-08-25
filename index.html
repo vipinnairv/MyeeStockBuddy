@@ -2127,6 +2127,22 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 <!-- ══════════════════════ MUTUAL FUNDS ══════════════════════ -->
 <div class="page" id="page-mf">
   <div class="kpi-grid" id="mf-kpis"></div>
+  <!-- ══ Live NAV Explorer (AMFI history via api.mfapi.in) ══ -->
+  <div class="card" id="mf-nav-explorer" style="margin-bottom:16px">
+    <div class="ch"><span class="ct">📈 Live NAV Explorer</span><span style="font-size:11px;color:var(--T3)">AMFI daily NAV via mfapi.in · Direct-Growth · ratings indicative, not investment advice</span></div>
+    <div class="cb">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input id="mfnav-q" class="fc" style="flex:1;min-width:220px" placeholder="Search any mutual fund by name…" onkeydown="if(event.key==='Enter'){mfNavSearch(false);}">
+        <button class="btn btn-pri btn-sm" onclick="mfNavSearch(false)">Search</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--T3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Top-rated funds (quick pick)</div>
+      <div id="mfnav-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+      <div id="mfnav-picker" style="margin-bottom:10px"></div>
+      <div id="mfnav-metrics" class="tax-sum-grid" style="margin-bottom:12px"></div>
+      <div style="position:relative;height:260px"><canvas id="mfnav-canvas"></canvas></div>
+      <div id="mfnav-status" style="font-size:11.5px;color:var(--T3);margin-top:8px"></div>
+    </div>
+  </div>
   <div class="sh">
     <div class="sh-title">Mutual Fund Holdings</div>
     <div class="sh-acts">
@@ -11564,6 +11580,121 @@ function addToPortfolioFromAnalysis() {
   } catch(e) {}
 })();
 
+</script>
+<script>
+/* ══════════ MF LIVE NAV EXPLORER ══════════
+   Pulls AMFI daily NAV history from the CORS-enabled api.mfapi.in (no proxy,
+   no key). Ratings/curation are a static, indicative list with an as-of date -
+   CRISIL/Morningstar/Value Research have no free API, so ranking metrics
+   (CAGR, drawdown, volatility) are computed live from NAV instead. */
+(function(){
+  // Curated, well-regarded funds across categories. `q` is the AMFI search query.
+  // As of 2026-08 · indicative only, not investment advice.
+  const MF_TOP = [
+    {n:'Bank of India Flexi Cap', q:'Bank of India Flexi Cap'},
+    {n:'Bandhan Small Cap',       q:'Bandhan Small Cap'},
+    {n:'Parag Parikh Flexi Cap',  q:'Parag Parikh Flexi Cap'},
+    {n:'Quant Small Cap',         q:'Quant Small Cap'},
+    {n:'Nippon India Small Cap',  q:'Nippon India Small Cap'},
+    {n:'HDFC Mid-Cap Opportunities', q:'HDFC Mid Cap Opportunities'},
+    {n:'Motilal Oswal Midcap',    q:'Motilal Oswal Midcap'},
+    {n:'ICICI Pru Bluechip',      q:'ICICI Prudential Bluechip'},
+    {n:'Mirae Asset Large Cap',   q:'Mirae Asset Large Cap'},
+    {n:'Kotak Emerging Equity',   q:'Kotak Emerging Equity'},
+    {n:'SBI Contra',              q:'SBI Contra'},
+    {n:'Quant ELSS Tax Saver',    q:'Quant ELSS Tax Saver'},
+    {n:'UTI Nifty 50 Index',      q:'UTI Nifty 50 Index'},
+    {n:'Edelweiss Balanced Adv.', q:'Edelweiss Balanced Advantage'},
+  ];
+  let mfChart=null;
+
+  function chips(){
+    const el=document.getElementById('mfnav-chips'); if(!el||el._done) return; el._done=true;
+    el.innerHTML=MF_TOP.map((f,i)=>`<button class="btn btn-sec btn-sm" style="font-size:11px" onclick="mfNavPick(${i})">${f.n}</button>`).join('');
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(chips,400));
+
+  const status=(m,err)=>{ const s=document.getElementById('mfnav-status'); if(s){ s.textContent=m; s.style.color=err?'var(--R)':'var(--T3)'; } };
+  const cur=v=>'₹'+Number(v).toLocaleString('en-IN',{maximumFractionDigits:2});
+
+  window.mfNavPick=function(i){ const q=document.getElementById('mfnav-q'); if(q) q.value=MF_TOP[i].q; mfNavSearch(true); };
+
+  window.mfNavSearch=async function(auto){
+    const q=(document.getElementById('mfnav-q')?.value||'').trim(); if(!q) return;
+    status('Searching…');
+    let list=[];
+    try{ const r=await fetch('https://api.mfapi.in/mf/search?q='+encodeURIComponent(q)); list=await r.json(); }
+    catch(e){ status('Search failed - check your connection.',true); return; }
+    if(!Array.isArray(list)||!list.length){ status('No funds matched "'+q+'".',true); return; }
+    // Auto-pick prefers the Direct-Growth plan; otherwise fall back to first.
+    const tokens=q.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches=list.filter(x=>{const nm=(x.schemeName||'').toLowerCase(); return tokens.every(tk=>nm.includes(tk));});
+    const pool=matches.length?matches:list;
+    const dg=pool.find(x=>/direct/i.test(x.schemeName)&&/growth/i.test(x.schemeName));
+    const pick=dg||pool[0];
+    // Render a picker so the user can switch plan/option.
+    const opts=pool.slice(0,40).map(x=>`<option value="${x.schemeCode}" ${x.schemeCode===pick.schemeCode?'selected':''}>${x.schemeName}</option>`).join('');
+    document.getElementById('mfnav-picker').innerHTML=
+      `<label class="fl" style="display:block;margin-bottom:4px">Fund / plan (${pool.length} matches)</label>`+
+      `<select class="fc" id="mfnav-sel" onchange="mfNavLoad(this.value, this.options[this.selectedIndex].text)">${opts}</select>`;
+    mfNavLoad(pick.schemeCode, pick.schemeName);
+  };
+
+  window.mfNavLoad=async function(code,name){
+    if(!code) return;
+    status('Loading NAV history for '+name+'…');
+    let js=null;
+    try{
+      const ck='mfnav_'+code;
+      let cached=null; try{ cached=JSON.parse(localStorage.getItem(ck)||'null'); }catch(e){}
+      if(cached && Date.now()-cached.t < 12*3600e3){ js=cached.d; }
+      else { const r=await fetch('https://api.mfapi.in/mf/'+code); js=await r.json();
+             try{ localStorage.setItem(ck, JSON.stringify({t:Date.now(), d:js})); }catch(e){} }
+    }catch(e){ status('Could not load NAV history.',true); return; }
+    const raw=(js&&js.data)||[];
+    if(!raw.length){ status('No NAV history returned for this scheme.',true); return; }
+    // api.mfapi.in returns newest-first, date 'dd-mm-yyyy'. Build ascending series.
+    const ser=raw.map(p=>{const d=p.date.split('-'); return {t:new Date(+d[2],+d[1]-1,+d[0]), nav:+p.nav};})
+                 .filter(p=>isFinite(p.nav)&&p.nav>0).sort((a,b)=>a.t-b.t);
+    if(ser.length<2){ status('Not enough NAV points to chart.',true); return; }
+
+    const last=ser[ser.length-1], first=ser[0];
+    const navAt=days=>{ const cut=last.t.getTime()-days*864e5; for(let i=ser.length-1;i>=0;i--) if(ser[i].t.getTime()<=cut) return ser[i].nav; return null; };
+    const ret=days=>{ const b=navAt(days); return b? (last.nav/b-1)*100 : null; };
+    const cagr=days=>{ const b=navAt(days); if(!b) return null; const yrs=days/365; return (Math.pow(last.nav/b,1/yrs)-1)*100; };
+    // Max drawdown + annualised volatility from daily log returns.
+    let peak=-Infinity, mdd=0; for(const p of ser){ peak=Math.max(peak,p.nav); mdd=Math.min(mdd,(p.nav-peak)/peak); }
+    let sum=0,sum2=0,k=0; for(let i=1;i<ser.length;i++){ const lr=Math.log(ser[i].nav/ser[i-1].nav); if(isFinite(lr)){sum+=lr;sum2+=lr*lr;k++;} }
+    const vol=k>1? Math.sqrt((sum2-sum*sum/k)/(k-1))*Math.sqrt(252)*100 : null;
+
+    const tile=(l,v,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${l}</div><div class="tax-sum-box-val" style="color:${c||'var(--T1)'}">${v}</div></div>`;
+    const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
+    const g=v=>v==null?'var(--T3)':(v>=0?'var(--G)':'var(--R)');
+    document.getElementById('mfnav-metrics').innerHTML=
+      tile('Latest NAV', cur(last.nav)+'<div style="font-size:10px;color:var(--T3)">'+last.t.toLocaleDateString('en-IN')+'</div>','var(--P)')+
+      tile('1Y Return', pct(ret(365)), g(ret(365)))+
+      tile('3Y CAGR', pct(cagr(1095)), g(cagr(1095)))+
+      tile('5Y CAGR', pct(cagr(1825)), g(cagr(1825)))+
+      tile('Max Drawdown', mdd?(mdd*100).toFixed(1)+'%':'—','var(--R)')+
+      tile('Volatility (ann.)', vol==null?'—':vol.toFixed(1)+'%');
+
+    // Chart last ~3Y for readability.
+    const cut=last.t.getTime()-1100*864e5; const view=ser.filter(p=>p.t.getTime()>=cut);
+    const src=view.length>30?view:ser;
+    const cv=document.getElementById('mfnav-canvas');
+    if(typeof Chart!=='undefined' && cv){
+      try{ if(mfChart) mfChart.destroy(); }catch(e){}
+      mfChart=new Chart(cv.getContext('2d'),{ type:'line',
+        data:{ labels:src.map(p=>p.t.toLocaleDateString('en-IN',{month:'short',year:'2-digit'})),
+               datasets:[{ data:src.map(p=>p.nav), borderColor:'#1A73E8', backgroundColor:'rgba(26,115,232,.08)', fill:true, pointRadius:0, borderWidth:1.6, tension:.1 }] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:c=>'NAV '+cur(c.parsed.y)}}},
+          scales:{ x:{ticks:{maxTicksLimit:8,color:'#94A3B8',font:{size:10}},grid:{display:false}},
+                   y:{ticks:{color:'#94A3B8',font:{size:10}},grid:{color:'#F1F5F9'}} } } });
+    }
+    status(name+' · '+ser.length+' NAV points · '+first.t.toLocaleDateString('en-IN')+' → '+last.t.toLocaleDateString('en-IN'));
+  };
+})();
 </script>
 </body>
 </html>
