@@ -2149,6 +2149,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       <input type="text" class="search-inp" id="mf-search" placeholder="🔍 Search fund…" oninput="filterTable('mf')">
       <select class="filter-sel" id="mf-cat-f" onchange="filterTable('mf')"><option value="">All Categories</option><option>Large Cap</option><option>Mid Cap</option><option>Small Cap</option><option>Flexi Cap</option><option>ELSS</option><option>Debt</option><option>Hybrid</option><option>Index</option><option>International</option></select>
       <select class="filter-sel" id="mf-mode-f" onchange="filterTable('mf')"><option value="">All Modes</option><option>SIP</option><option>Lumpsum</option></select>
+      <button class="btn btn-pri btn-sm" onclick="mfRefreshLiveNAV()">\uD83D\uDD04 Refresh Live NAV</button>
       <button class="btn btn-ghost btn-sm" onclick="dlSampleCSV('mf')">⬇ Sample CSV</button>
       <label class="btn btn-sec btn-sm" style="cursor:pointer">📥 Import CSV<input type="file" accept=".csv" style="display:none" onchange="importCSV('mf',this)"></label>
       <button class="btn btn-pri btn-sm" onclick="openModal('add','MF')">+ Add Fund</button>
@@ -10028,13 +10029,13 @@ function submitTxn(){
 function submitMF(){
   const name=gv('m-name'),units=gn('m-units'),avgNAV=gn('m-avgNav');
   if(!name||!units||!avgNAV){toast('Fill required (*) fields','err');return;}
-  S.mf.push({id:uid(),name,amc:gv('m-amc'),category:gv('m-cat'),mode:gv('m-mode')||'SIP',units,avgNAV,currentNAV:gn('m-curNav')||avgNAV,startDate:gv('m-date')||today(),folio:gv('m-folio'),sipAmt:gn('m-sip')});
+  S.mf.push({id:uid(),name,amc:gv('m-amc'),category:gv('m-cat'),mode:gv('m-mode')||'SIP',units,avgNAV,currentNAV:gn('m-curNav')||avgNAV,startDate:gv('m-date')||today(),folio:gv('m-folio'),sipAmt:gn('m-sip'),schemeCode:gv('m-schemecode')||''});
   logT('BUY','MF',name,'',units,avgNAV,'');
   closeModal();save();renderAll();toast('Fund saved!','ok');
 }
 function submitEditMF(id){
   const idx=S.mf.findIndex(x=>x.id===id);if(idx<0)return;
-  Object.assign(S.mf[idx],{name:gv('m-name'),amc:gv('m-amc'),category:gv('m-cat'),mode:gv('m-mode'),units:gn('m-units'),avgNAV:gn('m-avgNav'),currentNAV:gn('m-curNav')||S.mf[idx].currentNAV,startDate:gv('m-date'),folio:gv('m-folio'),sipAmt:gn('m-sip')});
+  Object.assign(S.mf[idx],{name:gv('m-name'),amc:gv('m-amc'),category:gv('m-cat'),mode:gv('m-mode'),units:gn('m-units'),avgNAV:gn('m-avgNav'),currentNAV:gn('m-curNav')||S.mf[idx].currentNAV,startDate:gv('m-date'),folio:gv('m-folio'),sipAmt:gn('m-sip'),schemeCode:gv('m-schemecode')||S.mf[idx].schemeCode||''});
   closeModal();save();renderAll();toast('Updated!','ok');
 }
 function submitMFBuyMore(id){
@@ -10711,7 +10712,14 @@ function mfForm(h){const edit=!!h;return`
   <div class="fg"><label class="fl">Avg Purchase NAV (₹) <span>*</span></label><input class="fc" id="m-avgNav" type="number" step="any" value="${h?.avgNAV||''}" placeholder="45.32" oninput="calcMFCost()"></div></div>
   <div class="fr"><div class="fg"><label class="fl">Current NAV (₹)</label><input class="fc" id="m-curNav" type="number" step="any" value="${h?.currentNAV||''}" placeholder="55.00"></div>
   <div class="fg"><label class="fl">SIP Start / Buy Date</label><input class="fc" id="m-date" type="date" value="${h?.startDate||today()}"></div></div>
-  <div class="fr"><div class="fg"><label class="fl">Folio Number</label><input class="fc" id="m-folio" value="${h?.folio||''}" placeholder="12345678 / 90"></div>
+  <div class="fr"><div class="fg" style="flex:2"><label class="fl">\uD83D\uDD17 Link Live NAV (AMFI) <span style="font-weight:400;color:var(--T3)">\u2014 auto-updates Current NAV & returns</span></label>
+    <div style="display:flex;gap:6px">
+      <input class="fc" id="m-navsearch" value="${h?.name||''}" placeholder="Search AMFI scheme by name\u2026" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();mfFormFind();}">
+      <button type="button" class="btn btn-sec btn-sm" onclick="mfFormFind()">\uD83D\uDD0D Find</button>
+    </div></div></div>
+  <div class="fr"><div class="fg"><label class="fl">Matched Scheme</label>
+    <select class="fc" id="m-schemecode" onchange="mfFormLink()"><option value="${h?.schemeCode||''}">${h?.schemeCode?('\u2713 Linked (scheme '+h.schemeCode+')'):'\u2014 not linked \u2014 click Find'}</option></select></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Folio Number</label><input class="fc" id="m-folio" value="${h?.folio||''}" placeholder="12345678 / 90"></div>
   <div class="fg"><label class="fl">SIP Amount (₹/month)</label><input class="fc" id="m-sip" type="number" value="${h?.sipAmt||''}" placeholder="Optional for SIP"></div></div>
   <div id="cost-calc-mf" class="calc-box" style="display:none">
     <div class="calc-row"><span>Invested Amount</span><strong id="cc-mf-inv">-</strong></div>
@@ -11684,17 +11692,71 @@ function addToPortfolioFromAnalysis() {
     const cv=document.getElementById('mfnav-canvas');
     if(typeof Chart!=='undefined' && cv){
       try{ if(mfChart) mfChart.destroy(); }catch(e){}
+      const _fd=p=>p.t.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
       mfChart=new Chart(cv.getContext('2d'),{ type:'line',
-        data:{ labels:src.map(p=>p.t.toLocaleDateString('en-IN',{month:'short',year:'2-digit'})),
-               datasets:[{ data:src.map(p=>p.nav), borderColor:'#1A73E8', backgroundColor:'rgba(26,115,232,.08)', fill:true, pointRadius:0, borderWidth:1.6, tension:.1 }] },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},
-          tooltip:{callbacks:{label:c=>'NAV '+cur(c.parsed.y)}}},
-          scales:{ x:{ticks:{maxTicksLimit:8,color:'#94A3B8',font:{size:10}},grid:{display:false}},
-                   y:{ticks:{color:'#94A3B8',font:{size:10}},grid:{color:'#F1F5F9'}} } } });
+        data:{ labels:src.map(_fd),
+               datasets:[{ label:'NAV', data:src.map(p=>p.nav), borderColor:'#1A73E8', backgroundColor:'rgba(26,115,232,.08)', fill:true, pointRadius:0, pointHoverRadius:5, pointHoverBackgroundColor:'#1A73E8', pointHoverBorderColor:'#fff', pointHoverBorderWidth:2, borderWidth:1.6, tension:.1 }] },
+        options:{ responsive:true, maintainAspectRatio:false,
+          interaction:{ mode:'index', intersect:false },
+          plugins:{ legend:{display:false},
+            tooltip:{ displayColors:false, padding:10, backgroundColor:'rgba(15,23,42,.92)', titleColor:'#fff', bodyColor:'#e2e8f0', titleFont:{size:12,weight:'700'}, bodyFont:{size:12.5,weight:'600'},
+              callbacks:{ title:items=>items.length?('\uD83D\uDCC5 '+items[0].label):'', label:c=>'NAV  '+cur(c.parsed.y) } } },
+          scales:{ x:{ ticks:{maxTicksLimit:8,maxRotation:0,autoSkip:true,color:'#94A3B8',font:{size:10}}, grid:{display:false} },
+                   y:{ ticks:{color:'#94A3B8',font:{size:10},callback:v=>'\u20B9'+v}, grid:{color:'rgba(148,163,184,.15)'} } } } });
     }
     status(name+' · '+ser.length+' NAV points · '+first.t.toLocaleDateString('en-IN')+' → '+last.t.toLocaleDateString('en-IN'));
   };
 })();
+</script>
+<script>
+/* ══════════ MF LIVE NAV LINK (holdings ↔ AMFI) ══════════
+   Links each mutual-fund holding to its AMFI scheme code and refreshes the
+   Current NAV live from api.mfapi.in, so Invested / Current Value / Abs Return
+   and CAGR (already computed in cMF) update automatically. Shares the same 12h
+   localStorage cache ('mfnav_'+code) as the NAV Explorer. */
+window.mfFetchLatestNAV = async function(code){
+  if(!code) return null;
+  const ck='mfnav_'+code; let js=null;
+  try{ const c=JSON.parse(localStorage.getItem(ck)||'null'); if(c && Date.now()-c.t < 12*3600e3) js=c.d; }catch(e){}
+  if(!js){ try{ const r=await fetch('https://api.mfapi.in/mf/'+code); js=await r.json();
+            try{ localStorage.setItem(ck, JSON.stringify({t:Date.now(), d:js})); }catch(e){} }
+          catch(e){ return null; } }
+  const d=(js&&js.data)||[]; if(!d.length) return null;
+  const nav=parseFloat(d[0].nav); return isFinite(nav)?nav:null;
+};
+window.mfFormFind = async function(){
+  const q=(document.getElementById('m-navsearch')?.value||'').trim();
+  const sel=document.getElementById('m-schemecode');
+  if(!q){ if(typeof toast==='function') toast('Enter a fund name to search','err'); return; }
+  if(sel) sel.innerHTML='<option>Searching…</option>';
+  let list=[];
+  try{ const r=await fetch('https://api.mfapi.in/mf/search?q='+encodeURIComponent(q)); list=await r.json(); }
+  catch(e){ if(sel) sel.innerHTML='<option value="">Search failed — check connection</option>'; return; }
+  if(!Array.isArray(list)||!list.length){ if(sel) sel.innerHTML='<option value="">No AMFI schemes matched</option>'; return; }
+  const tokens=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches=list.filter(x=>{const nm=(x.schemeName||'').toLowerCase(); return tokens.every(tk=>nm.includes(tk));});
+  const pool=(matches.length?matches:list).slice(0,40);
+  const dg=pool.find(x=>/direct/i.test(x.schemeName)&&/growth/i.test(x.schemeName))||pool[0];
+  sel.innerHTML=pool.map(x=>`<option value="${x.schemeCode}" ${x.schemeCode===dg.schemeCode?'selected':''}>${x.schemeName}</option>`).join('');
+  mfFormLink();
+};
+window.mfFormLink = async function(){
+  const sel=document.getElementById('m-schemecode'); const code=sel&&sel.value; if(!code) return;
+  const nav=await mfFetchLatestNAV(code);
+  if(nav!=null){ const cn=document.getElementById('m-curNav'); if(cn) cn.value=nav;
+    if(typeof toast==='function') toast('Live NAV linked: ₹'+nav,'ok'); }
+  else if(typeof toast==='function') toast('Could not fetch NAV for that scheme','err');
+};
+window.mfRefreshLiveNAV = async function(){
+  const linked=(typeof S!=='undefined'&&S.mf?S.mf:[]).filter(f=>f.schemeCode);
+  if(!linked.length){ if(typeof toast==='function') toast('No funds linked yet — Edit a fund → 🔗 Link Live NAV','err'); return; }
+  if(typeof toast==='function') toast('Fetching live NAV for '+linked.length+' fund(s)…');
+  let ok=0;
+  for(const f of linked){ const nav=await mfFetchLatestNAV(f.schemeCode); if(nav!=null){ f.currentNAV=nav; ok++; } }
+  try{ if(typeof save==='function') save(); }catch(e){}
+  try{ if(typeof renderAll==='function') renderAll(); }catch(e){}
+  if(typeof toast==='function') toast('Live NAV updated for '+ok+'/'+linked.length+' fund(s).', ok?'ok':'err');
+};
 </script>
 </body>
 </html>
