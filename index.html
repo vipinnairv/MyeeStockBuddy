@@ -9531,11 +9531,12 @@ function filterTable(prefix){
         <td class="r tm">${F.inr(c.cur)}</td>
         <td class="r tm" style="color:${clr(c.pl)};font-weight:700">${c.pl>=0?'+':'-'}${F.inr(Math.abs(c.pl))}</td>
         <td class="r">${pill(c.r)}</td>
-        <td class="r" style="font-size:11px;color:${clr(c.cagr)};font-weight:600">${c.cagr!=null?F.pct1(c.cagr)+" p.a.":"-"}</td>
+        <td class="r" style="font-size:11px;color:${clr(c.xirr!=null?c.xirr:c.cagr)};font-weight:600">${c.xirr!=null?("XIRR "+F.pct1(c.xirr)):(c.cagr!=null?F.pct1(c.cagr)+" p.a.":"-")}</td>
         <td style="font-size:11px;color:var(--T3)">${f.folio||'-'}</td>
         <td class="r"><div class="acts">
           <button class="ab ab-edit" onclick="openModal('edit','MF','${f.id}')">✏</button>
           <button class="ab ab-buy" onclick="openModal('buymore','MF','${f.id}')">+Units</button>
+          <button class="ab ab-edit" title="SIP ledger & XIRR" onclick="openModal('sipledger','MF','${f.id}')">📅</button>
           <button class="ab ab-del" onclick="del('mf','${f.id}')">✕</button>
         </div></td>
       </tr>`;
@@ -9555,7 +9556,7 @@ function filterTable(prefix){
           <td class="r tm" style="color:var(--P);font-weight:700">${F.inr(f.sipAmt)}/mo</td>
           <td class="r tm">${F.inr(cv.inv)}</td><td class="r tm">${F.inr(cv.cur)}</td>
           <td class="r tm" style="color:${clr(cv.pl)}">${cv.pl>=0?'+':'-'}${F.inr(Math.abs(cv.pl))}</td>
-          <td class="r" style="font-size:11px;color:${clr(cv.cagr)};font-weight:600">${cv.cagr!=null?F.pct1(cv.cagr)+" p.a.":"-"}</td>
+          <td class="r" style="font-size:11px;color:${clr(cv.xirr!=null?cv.xirr:cv.cagr)};font-weight:600">${cv.xirr!=null?("XIRR "+F.pct1(cv.xirr)):(cv.cagr!=null?F.pct1(cv.cagr)+" p.a.":"-")}</td>
           <td style="font-size:11.5px">${f.startDate||'-'}</td>
           <td style="font-size:11px;color:var(--T3)">${f.folio||'-'}</td>
         </tr>`;
@@ -9852,6 +9853,7 @@ function openModal(action, cls, id){
   if(action==='add'&&cls==='MF'){mb.innerHTML=mfForm(null);mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitMF()">Save Fund</button>`;}
   else if(action==='edit'&&cls==='MF'){const h=S.mf.find(x=>x.id===id);mb.innerHTML=mfForm(h);mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitEditMF('${id}')">Update</button>`;}
   else if(action==='buymore'&&cls==='MF'){const h=S.mf.find(x=>x.id===id);mb.innerHTML=`<div class="calc-box"><div class="calc-row"><span>Fund</span><strong>${h?.name}</strong></div><div class="calc-row"><span>Current Units</span><strong>${h?.units}</strong></div></div><div class="fr"><div class="fg"><label class="fl">Additional Units *</label><input class="fc" id="m-units" type="number" step="any" placeholder="0"></div><div class="fg"><label class="fl">Purchase NAV (₹) *</label><input class="fc" id="m-avgNav" type="number" step="any" placeholder="0"></div></div>`;mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitMFBuyMore('${id}')">Add Units</button>`;}
+  else if(action==='sipledger'&&cls==='MF'){const h=S.mf.find(x=>x.id===id);document.getElementById('m-ttl').textContent='SIP Ledger - '+(h?.name||'');document.getElementById('m-sub').textContent='True money-weighted XIRR from your installments';mb.innerHTML=mfSipLedgerBody(id);mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Close</button>`;}
   else if(action==='add'&&cls==='FD'){mb.innerHTML=fdFormEnhanced(null);mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitFDEnhanced()">Save FD / Bond</button>`;}
   else if(action==='edit'&&cls==='FD'){const h=S.fd.find(x=>x.id===id);mb.innerHTML=fdFormEnhanced(h);mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitEditFD('${id}')">Update</button>`;}
   else if(action==='add'&&cls==='TXN'){mb.innerHTML=txnForm();mf.innerHTML=`<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="submitTxn()">Save Transaction</button>`;}
@@ -10444,24 +10446,121 @@ function showGDrivePanel(){
 /* ══════════ MUTUAL FUNDS DATA & RENDER ══════════ */
 // MF state already in S.mf = [] - seeded below
 
+function xirr(cfs){
+  // cfs: [{date:Date, amount:Number}] — outflows negative, inflows positive.
+  // Newton-Raphson with a bracketed bisection fallback for robustness.
+  if(!cfs||cfs.length<2) return null;
+  let neg=false,pos=false; for(const c of cfs){ if(c.amount<0)neg=true; if(c.amount>0)pos=true; }
+  if(!neg||!pos) return null;
+  const t0=cfs[0].date.getTime(), yr=c=>(c.date.getTime()-t0)/(365*864e5);
+  const npv=r=>cfs.reduce((s,c)=>s+c.amount/Math.pow(1+r,yr(c)),0);
+  const dnpv=r=>cfs.reduce((s,c)=>{const y=yr(c);return s - y*c.amount/Math.pow(1+r,y+1);},0);
+  let r=0.12;
+  for(let i=0;i<80;i++){ const f=npv(r), d=dnpv(r); if(!isFinite(f)||!isFinite(d)||d===0) break; let nr=r-f/d; if(nr<=-0.999) nr=-0.999; if(Math.abs(nr-r)<1e-7){ r=nr; break; } r=nr; }
+  if(isFinite(r)&&r>-0.999&&Math.abs(npv(r))<1) return r*100;
+  let lo=-0.999, hi=10, flo=npv(lo), fhi=npv(hi);
+  if(!isFinite(flo)||!isFinite(fhi)||flo*fhi>0) return null;
+  for(let i=0;i<200;i++){ const mid=(lo+hi)/2, fm=npv(mid); if(!isFinite(fm)) return null; if(Math.abs(fm)<1e-6) return mid*100; if(flo*fm<0){ hi=mid; } else { lo=mid; flo=fm; } }
+  return ((lo+hi)/2)*100;
+}
 function cMF(f){
-  const inv=f.units*f.avgNAV, cur=f.units*f.currentNAV, pl=cur-inv, r=inv>0?pl/inv*100:0;
+  // With a SIP installment ledger, invested = sum of installments and returns
+  // include a true money-weighted XIRR. Current value stays anchored to the
+  // real units held x current NAV. Without a ledger, behaviour is unchanged.
+  const sips=Array.isArray(f.sips)?f.sips:[];
+  let inv, units;
+  if(sips.length){ inv=sips.reduce((s,x)=>s+(+x.amount||0),0); const lu=sips.reduce((s,x)=>s+(+x.units||0),0); units=f.units||lu||0; }
+  else { inv=f.units*f.avgNAV; units=f.units; }
+  const nav=f.currentNAV||f.avgNAV;
+  const cur=units*nav, pl=cur-inv, r=inv>0?pl/inv*100:0;
   const cagr=_safeCAGR(cur,inv,f.startDate||'2020-01-01');
-  return{inv,cur,pl,r,cagr};
+  let xr=null;
+  if(sips.length && cur>0){ const cf=sips.map(x=>({date:new Date(x.date),amount:-(+x.amount||0)})); cf.push({date:new Date(),amount:cur}); cf.sort((a,b)=>a.date-b.date); xr=xirr(cf); }
+  return{inv,cur,pl,r,cagr,xirr:xr,units};
 }
 
+function mfSipLedgerBody(id){
+  const f=S.mf.find(x=>x.id===id); if(!f) return '<div>Fund not found</div>';
+  if(!Array.isArray(f.sips)) f.sips=[];
+  const c=cMF(f);
+  const th='style="padding:7px 9px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--T3);border-bottom:1px solid var(--bd)"';
+  const td='style="padding:6px 9px;font-size:12px;border-bottom:1px solid var(--bd)"';
+  const rows=f.sips.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).map(s=>`
+    <tr>
+      <td ${td}>${s.date}</td>
+      <td ${td} class="r tm">${F.inr(s.amount)}</td>
+      <td ${td} class="r tm">${s.units?(+s.units).toLocaleString('en-IN',{maximumFractionDigits:3}):'&mdash;'}</td>
+      <td ${td} class="r"><button class="ab ab-del" onclick="mfSipDel('${id}','${s.id}')">&#10005;</button></td>
+    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--T3);padding:16px;font-size:12px">No installments yet &mdash; add them below or generate a monthly schedule.</td></tr>`;
+  const xr = c.xirr!=null ? F.pct1(c.xirr)+' p.a.' : '&mdash;';
+  return `
+    <div class="calc-box" style="margin-bottom:12px">
+      <div class="calc-row"><span>Invested (sum of installments)</span><strong>${F.inr(c.inv)}</strong></div>
+      <div class="calc-row"><span>Current Value</span><strong>${F.inr(c.cur)}</strong></div>
+      <div class="calc-row"><span>Absolute Return</span><strong style="color:${clr(c.pl)}">${F.pct1(c.r)}</strong></div>
+      <div class="calc-row"><span>True SIP XIRR (money-weighted)</span><strong style="color:${c.xirr!=null?clr(c.xirr):'var(--T3)'}">${xr}</strong></div>
+    </div>
+    <div style="overflow:auto;max-height:220px;border:1px solid var(--bd);border-radius:8px;margin-bottom:12px">
+      <table style="width:100%;border-collapse:collapse"><thead><tr>
+        <th ${th} style="text-align:left;padding:7px 9px">Date</th><th ${th} class="r">Amount (&#8377;)</th><th ${th} class="r">Units</th><th ${th}></th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Date</label><input class="fc" id="sip-date" type="date" value="${today()}"></div>
+      <div class="fg"><label class="fl">Amount (&#8377;)</label><input class="fc" id="sip-amt" type="number" step="any" value="${f.sipAmt||''}" placeholder="5000"></div>
+      <div class="fg"><label class="fl">Units (optional)</label><input class="fc" id="sip-units" type="number" step="any" placeholder="if known"></div>
+      <div class="fg" style="display:flex;align-items:flex-end"><button class="btn btn-pri btn-sm" style="width:100%" onclick="mfSipAdd('${id}')">+ Add installment</button></div>
+    </div>
+    <div style="border-top:1px solid var(--bd);margin-top:12px;padding-top:10px">
+      <div style="font-size:10.5px;color:var(--T3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Quick fill &mdash; monthly SIP schedule</div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Start date</label><input class="fc" id="sip-gen-start" type="date" value="${f.startDate||today()}"></div>
+        <div class="fg"><label class="fl">Monthly amount (&#8377;)</label><input class="fc" id="sip-gen-amt" type="number" step="any" value="${f.sipAmt||''}" placeholder="5000"></div>
+        <div class="fg" style="display:flex;align-items:flex-end"><button class="btn btn-sec btn-sm" style="width:100%" onclick="mfSipGenerate('${id}')">&#9889; Generate to today</button></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--T3);margin-top:6px">One installment per month from the start date up to today. Current value stays based on your total units &times; live NAV; the ledger only supplies the cash-flow timeline for XIRR.</div>
+    </div>`;
+}
+function _mfSipRefresh(id){ try{ document.getElementById('m-body').innerHTML=mfSipLedgerBody(id); }catch(e){} save(); renderAll(); }
+function mfSipAdd(id){
+  const f=S.mf.find(x=>x.id===id); if(!f) return;
+  if(!Array.isArray(f.sips)) f.sips=[];
+  const date=gv('sip-date'), amount=gn('sip-amt'), units=gn('sip-units')||0;
+  if(!date||!amount){ toast('Enter a date and amount','err'); return; }
+  f.sips.push({id:uid(),date,amount,units}); _mfSipRefresh(id); toast('Installment added','ok');
+}
+function mfSipDel(id,sipId){
+  const f=S.mf.find(x=>x.id===id); if(!f) return;
+  f.sips=(f.sips||[]).filter(s=>s.id!==sipId); _mfSipRefresh(id);
+}
+function mfSipGenerate(id){
+  const f=S.mf.find(x=>x.id===id); if(!f) return;
+  const start=gv('sip-gen-start'), amt=gn('sip-gen-amt');
+  if(!start||!amt){ toast('Enter start date and monthly amount','err'); return; }
+  if(f.sips&&f.sips.length && !confirm('Replace the existing '+f.sips.length+' installment(s) with a fresh monthly schedule?')) return;
+  const out=[]; const s=new Date(start); const day=s.getDate(); const now=new Date(); let d=new Date(s);
+  let guard=0;
+  while(d<=now && guard++<600){ const mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); out.push({id:uid(),date:d.getFullYear()+'-'+mm+'-'+dd,amount:amt,units:0}); d=new Date(d.getFullYear(),d.getMonth()+1,day); }
+  f.sips=out; _mfSipRefresh(id); toast('Generated '+out.length+' monthly installment(s)','ok');
+}
 function renderMF(){
   let tI=0,tC=0;
   S.mf.forEach(f=>{const c=cMF(f);tI+=c.inv;tC+=c.cur;});
   const tPL=tC-tI,tR=tI>0?tPL/tI*100:0;
-  document.getElementById('mf-kpis').innerHTML=[
+  // Portfolio-wide money-weighted XIRR across every fund that has a ledger.
+  const _allCf=[]; let _anyLedger=false;
+  S.mf.forEach(f=>{ if(Array.isArray(f.sips)&&f.sips.length){ const cv=cMF(f); if(cv.cur>0){ _anyLedger=true; f.sips.forEach(s=>_allCf.push({date:new Date(s.date),amount:-(+s.amount||0)})); _allCf.push({date:new Date(),amount:cv.cur}); } } });
+  let _portXirr=null; if(_anyLedger){ _allCf.sort((a,b)=>a.date-b.date); _portXirr=xirr(_allCf); }
+  const _kpis=[
     {lbl:'Invested',val:F.lac(tI)||'₹0',c:'var(--P)',ico:'💰'},
     {lbl:'Current Value',val:F.lac(tC)||'₹0',c:'var(--B)',ico:'📈'},
     {lbl:'Unrealised P&L',val:(tPL>=0?'+':'-')+F.lac(Math.abs(tPL))||'₹0',c:tPL>=0?'var(--G)':'var(--R)',ico:tPL>=0?'🟢':'🔴'},
     {lbl:'Overall Return',val:F.pct(tR),c:tPL>=0?'var(--G)':'var(--R)',ico:'📊'},
     {lbl:'Funds',val:S.mf.length,c:'var(--T2)',ico:'📋'},
     {lbl:'Active SIPs',val:S.mf.filter(f=>f.mode==='SIP').length,c:'var(--AU)',ico:'🔄'},
-  ].map(k=>`<div class="kpi" style="--kc:${k.c}"><div class="kpi-ico">${k.ico}</div><div class="kpi-lbl">${k.lbl}</div><div class="kpi-val" style="color:${k.c}">${k.val}</div></div>`).join('');
+  ];
+  if(_portXirr!=null) _kpis.push({lbl:'SIP XIRR',val:F.pct1(_portXirr)+' p.a.',c:_portXirr>=0?'var(--G)':'var(--R)',ico:'🎯'});
+  document.getElementById('mf-kpis').innerHTML=_kpis.map(k=>`<div class="kpi" style="--kc:${k.c}"><div class="kpi-ico">${k.ico}</div><div class="kpi-lbl">${k.lbl}</div><div class="kpi-val" style="color:${k.c}">${k.val}</div></div>`).join('');
   filterTable('mf');
 }
 
