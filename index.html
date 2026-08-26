@@ -10489,7 +10489,7 @@ function mfSipLedgerBody(id){
     <tr>
       <td ${td}>${s.date}</td>
       <td ${td} class="r tm">${F.inr(s.amount)}</td>
-      <td ${td} class="r tm">${s.units?(+s.units).toLocaleString('en-IN',{maximumFractionDigits:3}):'&mdash;'}</td>
+      <td ${td} class="r tm">${s.units?(+s.units).toLocaleString('en-IN',{maximumFractionDigits:3}):'&mdash;'}${s.nav?('<div style="font-size:9.5px;color:var(--T3)">@ '+F.inr(s.nav)+'</div>'):''}</td>
       <td ${td} class="r"><button class="ab ab-del" onclick="mfSipDel('${id}','${s.id}')">&#10005;</button></td>
     </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--T3);padding:16px;font-size:12px">No installments yet &mdash; add them below or generate a monthly schedule.</td></tr>`;
   const xr = c.xirr!=null ? F.pct1(c.xirr)+' p.a.' : '&mdash;';
@@ -10518,16 +10518,39 @@ function mfSipLedgerBody(id){
         <div class="fg"><label class="fl">Monthly amount (&#8377;)</label><input class="fc" id="sip-gen-amt" type="number" step="any" value="${f.sipAmt||''}" placeholder="5000"></div>
         <div class="fg" style="display:flex;align-items:flex-end"><button class="btn btn-sec btn-sm" style="width:100%" onclick="mfSipGenerate('${id}')">&#9889; Generate to today</button></div>
       </div>
-      <div style="font-size:10.5px;color:var(--T3);margin-top:6px">One installment per month from the start date up to today. Current value stays based on your total units &times; live NAV; the ledger only supplies the cash-flow timeline for XIRR.</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <button class="btn btn-pri btn-sm" onclick="mfSipFillUnits('${id}')">&#128260; Fetch NAV units for all installments</button>
+        <span style="font-size:10.5px;color:var(--T3)">${f.schemeCode?'Stamps each installment with the AMFI NAV on its date and sets your units.':'Link this fund to a scheme first (Edit fund &rarr; &#128279; Link Live NAV).'}</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--T3);margin-top:6px">One installment per month from the start date up to today. When the fund is linked to a scheme, each installment is stamped with the AMFI NAV on its date, so units accumulate accurately and drive both current value and XIRR.</div>
     </div>`;
 }
 function _mfSipRefresh(id){ try{ document.getElementById('m-body').innerHTML=mfSipLedgerBody(id); }catch(e){} save(); renderAll(); }
-function mfSipAdd(id){
+async function mfSipAdd(id){
   const f=S.mf.find(x=>x.id===id); if(!f) return;
   if(!Array.isArray(f.sips)) f.sips=[];
-  const date=gv('sip-date'), amount=gn('sip-amt'), units=gn('sip-units')||0;
+  const date=gv('sip-date'), amount=gn('sip-amt'); let units=gn('sip-units')||0;
   if(!date||!amount){ toast('Enter a date and amount','err'); return; }
-  f.sips.push({id:uid(),date,amount,units}); _mfSipRefresh(id); toast('Installment added','ok');
+  let nav=null;
+  if(!units && f.schemeCode){ const ser=await mfNavSeries(f.schemeCode); nav=ser?mfNavOnDate(ser,date):null; if(nav&&nav>0) units=amount/nav; }
+  const row={id:uid(),date,amount,units}; if(nav) row.nav=nav;
+  f.sips.push(row);
+  const lu=f.sips.reduce((a,s)=>a+(+s.units||0),0); if(lu>0) f.units=lu;
+  _mfSipRefresh(id); toast(nav?('Added \u00b7 NAV \u20B9'+nav.toFixed(2)+' \u2192 '+units.toFixed(3)+' units'):'Installment added','ok');
+}
+async function mfSipFillUnits(id){
+  const f=S.mf.find(x=>x.id===id); if(!f) return;
+  if(!f.schemeCode){ toast('Link this fund to a scheme first (Edit fund \u2192 \uD83D\uDD17 Link Live NAV)','err'); return; }
+  if(!Array.isArray(f.sips)||!f.sips.length){ toast('Add or generate installments first','err'); return; }
+  toast('Fetching historical NAV for '+f.sips.length+' date(s)\u2026');
+  const ser=await mfNavSeries(f.schemeCode);
+  if(!ser){ toast('Could not load NAV history for this scheme','err'); return; }
+  let filled=0, missed=0;
+  f.sips.forEach(s=>{ const nav=mfNavOnDate(ser, s.date); if(nav&&nav>0){ s.nav=nav; s.units=(+s.amount||0)/nav; filled++; } else { missed++; } });
+  const lu=f.sips.reduce((a,s)=>a+(+s.units||0),0);
+  if(lu>0) f.units=lu;   // accumulated units become the true holding
+  _mfSipRefresh(id);
+  toast('NAV units filled for '+filled+' installment(s)'+(missed?(', '+missed+' before fund history'):''), filled?'ok':'err');
 }
 function mfSipDel(id,sipId){
   const f=S.mf.find(x=>x.id===id); if(!f) return;
@@ -10541,7 +10564,9 @@ function mfSipGenerate(id){
   const out=[]; const s=new Date(start); const day=s.getDate(); const now=new Date(); let d=new Date(s);
   let guard=0;
   while(d<=now && guard++<600){ const mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); out.push({id:uid(),date:d.getFullYear()+'-'+mm+'-'+dd,amount:amt,units:0}); d=new Date(d.getFullYear(),d.getMonth()+1,day); }
-  f.sips=out; _mfSipRefresh(id); toast('Generated '+out.length+' monthly installment(s)','ok');
+  f.sips=out;
+  if(f.schemeCode){ toast('Generated '+out.length+' installment(s) \u00b7 fetching historical NAV\u2026'); mfSipFillUnits(id); }
+  else { _mfSipRefresh(id); toast('Generated '+out.length+' installment(s). Link a scheme, then \u201cFetch NAV units\u201d for accurate units.','ok'); }
 }
 function renderMF(){
   let tI=0,tC=0;
@@ -11883,6 +11908,29 @@ window.mfFetchLatestNAV = async function(code){
           catch(e){ return null; } }
   const d=(js&&js.data)||[]; if(!d.length) return null;
   const nav=parseFloat(d[0].nav); return isFinite(nav)?nav:null;
+};
+window.mfNavSeries = async function(code){
+  // Full AMFI NAV history as an ascending [{t:ms, nav}] series, from the same
+  // 12h localStorage cache the NAV Explorer / live-NAV link already populate.
+  if(!code) return null;
+  const ck='mfnav_'+code; let js=null;
+  try{ const c=JSON.parse(localStorage.getItem(ck)||'null'); if(c && Date.now()-c.t < 12*3600e3) js=c.d; }catch(e){}
+  if(!js){ try{ const r=await fetch('https://api.mfapi.in/mf/'+code); js=await r.json();
+            try{ localStorage.setItem(ck, JSON.stringify({t:Date.now(), d:js})); }catch(e){} }
+          catch(e){ return null; } }
+  const d=(js&&js.data)||[]; if(!d.length) return null;
+  const ser=d.map(p=>{ const a=(p.date||'').split('-'); return { t:new Date(+a[2],+a[1]-1,+a[0]).getTime(), nav:parseFloat(p.nav) }; })
+             .filter(p=>isFinite(p.t)&&isFinite(p.nav)&&p.nav>0).sort((a,b)=>a.t-b.t);
+  return ser.length?ser:null;
+};
+// NAV on the given YYYY-MM-DD, or the latest available on/before it (nearest
+// prior trading day). Returns null if the date predates the fund's history.
+window.mfNavOnDate = function(ser, dateStr){
+  if(!ser||!ser.length) return null;
+  const a=(dateStr||'').split('-'); const tgt=new Date(+a[0],+a[1]-1,+a[2]).getTime();
+  if(!isFinite(tgt)) return null;
+  let nav=null; for(let i=0;i<ser.length;i++){ if(ser[i].t<=tgt) nav=ser[i].nav; else break; }
+  return nav;
 };
 window.mfFormFind = async function(){
   const q=(document.getElementById('m-navsearch')?.value||'').trim();
