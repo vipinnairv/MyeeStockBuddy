@@ -624,18 +624,21 @@ main{max-width:1400px;margin:0 auto;padding:14px 16px}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px}
 .kpi{
   background:var(--white);border:1px solid var(--bd);
-  border-radius:var(--r);padding:12px 14px;
-  position:relative;overflow:hidden;
-  transition:box-shadow .18s,transform .18s;
+  border-radius:var(--r2);padding:14px 15px 14px 18px;
+  position:relative;overflow:hidden;box-shadow:var(--sh);
+  transition:box-shadow .18s,transform .18s,border-color .18s;
   cursor:default;
 }
-.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kc,var(--P))}
-.kpi:hover{box-shadow:var(--sh2);transform:translateY(-2px)}
-.kpi-ico{position:absolute;right:12px;top:12px;font-size:22px;opacity:.12}
-.kpi-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--T3);margin-bottom:6px}
-.kpi-val{font-size:17px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
-.kpi-sub{margin-top:7px;display:flex;align-items:center;gap:5px}
+.kpi::before{content:'';position:absolute;top:0;bottom:0;left:0;width:4px;background:var(--kc,var(--P))}
+.kpi:hover{box-shadow:var(--sh2);transform:translateY(-2px);border-color:var(--kc,var(--bd2))}
+.kpi-ico{position:absolute;right:11px;top:11px;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:1;background:color-mix(in srgb,var(--kc,var(--P)) 13%, transparent)}
+.kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:6px;padding-right:34px}
+.kpi-val{font-size:20px;font-weight:800;letter-spacing:-.4px;line-height:1.1;color:var(--T1)}
+.kpi-sub{margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .kpi-sub-txt{font-size:10.5px;color:var(--T3)}
+.kpi-alloc{display:flex;justify-content:space-between;font-size:9.5px;color:var(--T3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-top:10px;margin-bottom:4px}
+.kpi-bar{height:5px;border-radius:3px;background:var(--bd);overflow:hidden}
+.kpi-bar > i{display:block;height:100%;border-radius:3px;background:var(--kc,var(--P))}
 .pill{display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:20px}
 .up{color:var(--G)}.dn{color:var(--R)}.neu{color:var(--T3)}
 .pill-up{background:var(--GL);color:var(--G)}
@@ -9335,17 +9338,18 @@ function renderDashboard(){
 
   // KPIs
   document.getElementById('dash-kpis').innerHTML=[
-    {lbl:'India Equity',val:F.lac(g.iC),r:g.iI>0?(g.iC-g.iI)/g.iI*100:0,sub:F.inr(g.iC),c:'#1A73E8',ico:'🇮🇳'},
-    {lbl:'US Equity',val:F.lac(g.uC),r:g.uI>0?(g.uC-g.uI)/g.uI*100:0,sub:F.inr(g.uC),c:'#E53935',ico:'🇺🇸'},
-    {lbl:'Crypto',val:F.lac(g.crC),r:g.crI>0?(g.crC-g.crI)/g.crI*100:0,sub:F.inr(g.crC),c:'#F59E0B',ico:'₿'},
-    {lbl:'FD / Bonds',val:F.lac(g.fdC),r:g.fdI>0?(g.fdC-g.fdI)/g.fdI*100:0,sub:F.inr(g.fdC),c:'#00B386',ico:'🏦'},
-    {lbl:'Mutual Funds',val:F.lac(g.mfC),r:g.mfI>0?(g.mfC-g.mfI)/g.mfI*100:0,sub:F.inr(g.mfC),c:'#7C3AED',ico:'📈'},
-    {lbl:'Total P&L',val:(totPL>=0?'+':'-')+F.lac(Math.abs(totPL)),r:totR,sub:F.pct(totR)+' overall',c:totPL>=0?'#00B386':'#D93025',ico:totPL>=0?'📈':'📉'},
+    {lbl:'India Equity',val:F.lac(g.iC),r:g.iI>0?(g.iC-g.iI)/g.iI*100:0,sub:F.inr(g.iC),c:'#1A73E8',ico:'🇮🇳',alloc:g.iC/tot*100},
+    {lbl:'US Equity',val:F.lac(g.uC),r:g.uI>0?(g.uC-g.uI)/g.uI*100:0,sub:F.inr(g.uC),c:'#E53935',ico:'🇺🇸',alloc:g.uC/tot*100},
+    {lbl:'Crypto',val:F.lac(g.crC),r:g.crI>0?(g.crC-g.crI)/g.crI*100:0,sub:F.inr(g.crC),c:'#F59E0B',ico:'₿',alloc:g.crC/tot*100},
+    {lbl:'FD / Bonds',val:F.lac(g.fdC),r:g.fdI>0?(g.fdC-g.fdI)/g.fdI*100:0,sub:F.inr(g.fdC),c:'#00B386',ico:'🏦',alloc:g.fdC/tot*100},
+    {lbl:'Mutual Funds',val:F.lac(g.mfC),r:g.mfI>0?(g.mfC-g.mfI)/g.mfI*100:0,sub:F.inr(g.mfC),c:'#7C3AED',ico:'📈',alloc:g.mfC/tot*100},
+    {lbl:'Total P&L',val:(totPL>=0?'+':'-')+F.lac(Math.abs(totPL)),r:totR,sub:F.pct(totR)+' overall',c:totPL>=0?'#00B386':'#D93025',ico:totPL>=0?'📈':'📉',vc:totPL>=0?'#00B386':'#D93025'},
   ].map(k=>`<div class="kpi" style="--kc:${k.c}">
     <div class="kpi-ico">${k.ico}</div>
     <div class="kpi-lbl">${k.lbl}</div>
-    <div class="kpi-val" style="color:${k.c}">${k.val}</div>
+    <div class="kpi-val"${k.vc?` style="color:${k.vc}"`:''}>${k.val}</div>
     <div class="kpi-sub">${pill(k.r)}<span class="kpi-sub-txt">${k.sub}</span></div>
+    ${k.alloc!=null?`<div class="kpi-alloc"><span>Allocation</span><span>${k.alloc.toFixed(1)}%</span></div><div class="kpi-bar"><i style="width:${Math.max(2,Math.min(100,k.alloc)).toFixed(1)}%"></i></div>`:''}
   </div>`).join('');
 
   // Ticker
