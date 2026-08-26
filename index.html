@@ -1583,6 +1583,9 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         </div>
       </div>
 
+      <!-- Trendlyne-style DVM score badges -->
+      <div id="dvmBadges" style="margin-bottom:16px"></div>
+
       <!-- KPI Strip -->
       <div class="kpi-strip" id="kpiStrip"></div>
 
@@ -7176,6 +7179,64 @@ function _rrColor(rr) {
   return r >= 2 ? 'var(--green)' : r >= 1 ? 'var(--accent)' : 'var(--red)';
 }
 
+function computeDVM(ar){
+  // Durability / Valuation / Momentum as TECHNICAL proxies (no fundamentals):
+  //  D - trend consistency above the 200-DMA, drawdown and volatility.
+  //  V - relative cheapness: position in the 52w range + extension over 200-DMA.
+  //  M - price vs 50/200-DMA, RSI, Supertrend and 3-month return.
+  try{
+    const d=ar.data, n=d.length; if(!n) return null;
+    const price=ar.currentPrice||d[n-1].close;
+    const closes=ar.closes||d.map(x=>x.close);
+    const smaAt=(arr,p,i)=>{ if(i<p-1) return null; let s=0; for(let k=i-p+1;k<=i;k++) s+=arr[k]; return s/p; };
+    const s50=(ar.sma50&&ar.sma50[n-1])||smaAt(closes,50,n-1);
+    const s200=(ar.sma200&&ar.sma200[n-1])||smaAt(closes,200,n-1);
+    const rsi=(ar.signals&&ar.signals.rsiV)!=null?ar.signals.rsiV:50;
+    const stV=ar.signals&&ar.signals.stV;
+    const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+    const mapR=(x,a,b)=>clamp((x-a)/(b-a)*100,0,100); // a->0, b->100 (b<a reverses)
+
+    const win=d.slice(-250);
+    const hi52=Math.max(...win.map(x=>x.high)), lo52=Math.min(...win.map(x=>x.low));
+    const pos52=hi52>lo52?((price-lo52)/(hi52-lo52)*100):50;
+    const i3=Math.max(0,n-64), r3=closes[i3]?(price/closes[i3]-1)*100:0;
+    const iY=Math.max(0,n-250), rY=closes[iY]?(price/closes[iY]-1)*100:0;
+
+    // Momentum
+    const trend=(s50&&price>s50?25:0)+(s200&&price>s200?25:0)+((s50&&s200&&s50>s200)?25:0)+(stV===1?25:0);
+    const M=Math.round(0.35*trend + 0.30*clamp(rsi,0,100) + 0.35*mapR(r3,-20,30));
+
+    // Durability
+    let above=0,cnt=0; for(let i=Math.max(0,n-250);i<n;i++){ const sv=(ar.sma200&&ar.sma200[i])||smaAt(closes,200,i); if(sv!=null){ cnt++; if(closes[i]>sv) above++; } }
+    const aboveComp=cnt?above/cnt*100:50;
+    let peak=-Infinity,mdd=0; for(let i=Math.max(0,n-250);i<n;i++){ peak=Math.max(peak,closes[i]); if(peak>0) mdd=Math.min(mdd,(closes[i]-peak)/peak); }
+    const ddComp=mapR(mdd*100,-50,0);
+    let sum=0,sum2=0,k=0; for(let i=Math.max(1,n-250);i<n;i++){ const lr=Math.log(closes[i]/closes[i-1]); if(isFinite(lr)){sum+=lr;sum2+=lr*lr;k++;} }
+    const vol=k>1?Math.sqrt((sum2-sum*sum/k)/(k-1))*Math.sqrt(252)*100:40;
+    const D=Math.round(0.30*aboveComp + 0.25*ddComp + 0.20*mapR(vol,60,15) + 0.25*mapR(rY,-10,30));
+
+    // Valuation (technical proxy)
+    const ext=s200?(price/s200-1)*100:0;
+    const V=Math.round(0.5*(100-pos52) + 0.5*mapR(ext,40,-20));
+
+    return { d:clamp(D,0,100), v:clamp(V,0,100), m:clamp(M,0,100) };
+  }catch(e){ return null; }
+}
+function renderDVMBadges(){
+  const host=document.getElementById('dvmBadges'); if(!host) return;
+  const s=computeDVM(analysisResult); if(!s){ host.innerHTML=''; return; }
+  const col=v=>v>=60?'#31a745':v>=40?'#f59e0b':'#ff4f55';
+  const lab=v=>v>=60?'Strong':v>=40?'Moderate':'Weak';
+  const badge=(L,v,name,tip)=>`<div title="${tip}" style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:8px 14px 8px 8px;min-width:158px;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:help">`
+    +`<div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px;background:${col(v)}1a;border:2px solid ${col(v)};color:${col(v)}">${L}</div>`
+    +`<div style="line-height:1.25"><div style="font-size:11px;color:var(--text3);font-weight:600">${name}</div><div style="font-size:17px;font-weight:800;color:${col(v)}">${v}<span style="font-size:10px;color:var(--text3);font-weight:600"> /100 &middot; ${lab(v)}</span></div></div></div>`;
+  host.innerHTML=`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">DVM Scores <span style="text-transform:none;letter-spacing:0;font-weight:500">&middot; technical proxy &middot; 0&ndash;100, higher is better</span></div>`
+    +`<div style="display:flex;flex-wrap:wrap;gap:10px">`
+    + badge('D',s.d,'Durability','Durability (technical proxy): how consistently price holds above its 200-day average, plus drawdown and volatility. Not a fundamental quality score.')
+    + badge('V',s.v,'Valuation','Valuation (technical proxy): position in the 52-week range and extension above the 200-day average. No P/E data - this is relative cheapness, not fundamental valuation.')
+    + badge('M',s.m,'Momentum','Momentum: price vs 50/200-day averages, RSI, Supertrend and 3-month return.')
+    + `</div>`;
+}
 function renderResults() {
   const { signals, patterns, currentPrice, prevClose, priceChg, pricePct, data, symbol, company, market } = analysisResult;
   const last = data.length - 1;
@@ -7188,6 +7249,9 @@ function renderResults() {
   const _stg = analysisResult.stage, _ss = _STAGE_STYLE[_stg?.stage] || _STAGE_STYLE.unknown;
   document.getElementById('resultsSubtitle').innerHTML = `${market} · ` + _freshBadge(data[last].date) +
     (_stg && _stg.stage!=='unknown' ? ` · <span style="background:${_ss[0]}22;color:${_ss[0]};font-weight:700;padding:2px 9px;border-radius:12px;font-size:11px;">${_ss[1]} ${_ss[2]}${analysisResult.vcp?.rs?' · RS '+analysisResult.vcp.rs:''}</span>` : '');
+
+  // DVM score badges (Trendlyne-style)
+  try { renderDVMBadges(); } catch(e){}
 
   // KPI Strip
   const kpis = [
