@@ -5775,6 +5775,44 @@ async function fetchFundamentals(sym, exch, isUS, isCrypto) {
       if (j && !j.code && j.symbol) return { source:'TwelveData', name:j.name, yrHi:+j.fifty_two_week?.high||null, yrLo:+j.fifty_two_week?.low||null };
     } catch(e) {}
   }
+  // 4. Yahoo quoteSummary - KEYLESS, best-effort via the public CORS proxies.
+  //    Works out of the box; when a proxy/crumb blocks it we simply return null
+  //    and the DVM Valuation falls back to its technical proxy.
+  try {
+    const ySym = isUS ? sym : sym + (exch === 'BSE' ? '.BO' : '.NS');
+    const yUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ySym)}?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile`;
+    const enc = encodeURIComponent;
+    const proxies = [
+      ['https://corsproxy.io/?url='+enc(yUrl), false],
+      ['https://api.allorigins.win/raw?url='+enc(yUrl), false],
+      ['https://api.codetabs.com/v1/proxy?quest='+enc(yUrl), false],
+      ['https://api.allorigins.win/get?url='+enc(yUrl), true],
+    ];
+    for (const [u, wrap] of proxies) {
+      try {
+        const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),7000);
+        const r=await fetch(u,{signal:ctrl.signal}); clearTimeout(tm); if(!r.ok) continue;
+        let j=await r.json(); if(wrap && j && typeof j.contents==='string') j=JSON.parse(j.contents);
+        const res=j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
+        if(!res) continue;
+        const sd=res.summaryDetail||{}, ks=res.defaultKeyStatistics||{}, fd=res.financialData||{}, ap=res.assetProfile||{};
+        const raw=o=>(o&&typeof o==='object'&&('raw' in o))?o.raw:(typeof o==='number'?o:null);
+        const pe=raw(sd.trailingPE), pb=raw(ks.priceToBook), peg=raw(ks.pegRatio);
+        if(pe==null && pb==null && peg==null && raw(sd.marketCap)==null) continue;
+        const pct=v=>v==null?null:v*100;
+        return { source:'Yahoo', sector:ap.sector, industry:ap.industry,
+          pe, pb, peg, eps:raw(ks.trailingEps),
+          forwardPE:raw(sd.forwardPE)||raw(ks.forwardPE),
+          mktCap:raw(sd.marketCap), divYield:pct(raw(sd.dividendYield)),
+          yrHi:raw(sd.fiftyTwoWeekHigh), yrLo:raw(sd.fiftyTwoWeekLow),
+          ps:raw(sd.priceToSalesTrailing12Months), evEbitda:raw(ks.enterpriseToEbitda),
+          beta:raw(sd.beta)||raw(ks.beta),
+          roe:pct(raw(fd.returnOnEquity)), profitMargin:pct(raw(fd.profitMargins)),
+          revGrowth:pct(raw(fd.revenueGrowth)), earnGrowth:pct(raw(fd.earningsGrowth)),
+          targetPrice:raw(fd.targetMeanPrice) };
+      } catch(e) {}
+    }
+  } catch(e) {}
   return null;
 }
 
@@ -6352,11 +6390,13 @@ function renderFundamentals(ar) {
   const sym  = ar.symbol;
   const exch = document.getElementById('marketSelect')?.value || 'NSE';
   fetchFundamentals(sym, exch, marketMode==='us', marketMode==='crypto').then(f => {
+    ar.fundamentals = f;                       // feed the DVM Valuation score
+    try { renderDVMBadges(); } catch(e){}
     const row = document.getElementById('fundApiRow');
     if (!row) return;
     if (!f) {
       row.innerHTML = `<div style="background:var(--surface2);border:1px dashed var(--border2);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--text3);line-height:1.5;">
-        💡 Add an <b>Alpha Vantage</b> key (works for NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> to pull <b>P/E, market cap, EPS, dividend yield & sector</b> alongside the technicals.</div>`;
+        💡 Couldn't reach the keyless valuation feed right now (a public proxy or Yahoo crumb blocked it). It often works on retry — or add an <b>Alpha Vantage</b> key (NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> for reliable <b>P/E, market cap, EPS, dividend yield & sector</b>.</div>`;
       return;
     }
     const fc = [];
@@ -7215,11 +7255,21 @@ function computeDVM(ar){
     const vol=k>1?Math.sqrt((sum2-sum*sum/k)/(k-1))*Math.sqrt(252)*100:40;
     const D=Math.round(0.30*aboveComp + 0.25*ddComp + 0.20*mapR(vol,60,15) + 0.25*mapR(rY,-10,30));
 
-    // Valuation (technical proxy)
+    // Valuation - real fundamentals (P/E, PEG, P/B) when available, else a
+    // technical relative-cheapness proxy (52w position + extension vs 200-DMA).
     const ext=s200?(price/s200-1)*100:0;
-    const V=Math.round(0.5*(100-pos52) + 0.5*mapR(ext,40,-20));
+    const vTech=Math.round(0.5*(100-pos52) + 0.5*mapR(ext,40,-20));
+    let V=vTech, vSource='technical';
+    const fu=ar.fundamentals;
+    if(fu){
+      const parts=[];
+      if(fu.pe!=null && fu.pe>0)  parts.push(mapR(fu.pe,45,8));   // cheap P/E -> high
+      if(fu.peg!=null && fu.peg>0) parts.push(mapR(fu.peg,2.5,0.8)); // PEG<1 cheap
+      if(fu.pb!=null && fu.pb>0)  parts.push(mapR(fu.pb,8,1));    // low P/B -> high
+      if(parts.length){ V=Math.round(parts.reduce((a,b)=>a+b,0)/parts.length); vSource='fundamental'; }
+    }
 
-    return { d:clamp(D,0,100), v:clamp(V,0,100), m:clamp(M,0,100) };
+    return { d:clamp(D,0,100), v:clamp(V,0,100), m:clamp(M,0,100), vSource };
   }catch(e){ return null; }
 }
 function renderDVMBadges(){
@@ -7227,13 +7277,16 @@ function renderDVMBadges(){
   const s=computeDVM(analysisResult); if(!s){ host.innerHTML=''; return; }
   const col=v=>v>=60?'#31a745':v>=40?'#f59e0b':'#ff4f55';
   const lab=v=>v>=60?'Strong':v>=40?'Moderate':'Weak';
-  const badge=(L,v,name,tip)=>`<div title="${tip}" style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:8px 14px 8px 8px;min-width:158px;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:help">`
+  const badge=(L,v,name,tip,tag)=>`<div title="${tip}" style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:8px 14px 8px 8px;min-width:158px;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:help">`
     +`<div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px;background:${col(v)}1a;border:2px solid ${col(v)};color:${col(v)}">${L}</div>`
-    +`<div style="line-height:1.25"><div style="font-size:11px;color:var(--text3);font-weight:600">${name}</div><div style="font-size:17px;font-weight:800;color:${col(v)}">${v}<span style="font-size:10px;color:var(--text3);font-weight:600"> /100 &middot; ${lab(v)}</span></div></div></div>`;
+    +`<div style="line-height:1.25"><div style="font-size:11px;color:var(--text3);font-weight:600">${name}${tag?` <span style="font-size:9px;color:var(--text3);font-weight:600;background:var(--surface2);padding:1px 5px;border-radius:6px">${tag}</span>`:''}</div><div style="font-size:17px;font-weight:800;color:${col(v)}">${v}<span style="font-size:10px;color:var(--text3);font-weight:600"> /100 &middot; ${lab(v)}</span></div></div></div>`;
   host.innerHTML=`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">DVM Scores <span style="text-transform:none;letter-spacing:0;font-weight:500">&middot; technical proxy &middot; 0&ndash;100, higher is better</span></div>`
     +`<div style="display:flex;flex-wrap:wrap;gap:10px">`
     + badge('D',s.d,'Durability','Durability (technical proxy): how consistently price holds above its 200-day average, plus drawdown and volatility. Not a fundamental quality score.')
-    + badge('V',s.v,'Valuation','Valuation (technical proxy): position in the 52-week range and extension above the 200-day average. No P/E data - this is relative cheapness, not fundamental valuation.')
+    + badge('V',s.v,'Valuation', s.vSource==='fundamental'
+        ? 'Valuation from real fundamentals: blended P/E, PEG and P/B (higher = cheaper / better value).'
+        : 'Valuation (technical proxy): position in the 52-week range and extension above the 200-day average. A P/E-based score loads once the fundamentals feed responds (or add an API key).',
+        s.vSource==='fundamental'?'P/E based':'technical')
     + badge('M',s.m,'Momentum','Momentum: price vs 50/200-day averages, RSI, Supertrend and 3-month return.')
     + `</div>`;
 }
