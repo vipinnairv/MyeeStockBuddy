@@ -227,6 +227,59 @@ group('glossary popovers');
   }
 }
 
+// ── Watchlist presets ──────────────────────────────────────────────────────
+group('watchlist presets');
+{
+  const src = slice('const WATCHLIST_PRESETS = {', 'function screenAddSymbol() {', 'presets');
+  let LS = {}, TOASTS = [];
+  const env = {
+    localStorage: { getItem: k => (k in LS ? LS[k] : null), setItem: (k,v) => { LS[k] = v; }, removeItem: k => { delete LS[k]; } },
+    toast: (m) => TOASTS.push(m), confirm: () => true, renderWatchlistChips: () => {},
+  };
+  const preamble = `
+    const SCREEN_WL_KEY='asa_watchlist';
+    function screenGetWatchlist(){try{const v=JSON.parse(localStorage.getItem(SCREEN_WL_KEY));return Array.isArray(v)?v:[];}catch(e){return [];}}
+    function screenSaveWatchlist(l){try{localStorage.setItem(SCREEN_WL_KEY,JSON.stringify([...new Set(l)].slice(0,60)));}catch(e){}}
+  `;
+  const api = load(preamble + src.replace(/^const /gm, 'var ').replace(/^function /gm, 'var _x_=0; function '),
+    ['WATCHLIST_PRESETS','screenLoadPreset','screenClearWatchlist','screenGetWatchlist','screenSaveWatchlist'], env);
+  const { WATCHLIST_PRESETS: P, screenLoadPreset, screenClearWatchlist, screenGetWatchlist, screenSaveWatchlist } = api;
+  const basket = P.icici_momentum_aug26;
+
+  eq('preset defines 20 symbols', basket.symbols.length, 20);
+  eq('no duplicate tickers', new Set(basket.symbols.map(x => x[0])).size, 20);
+  ok('tickers are uppercase and non-empty', basket.symbols.every(([s]) => s && s === s.toUpperCase()), 'bad ticker');
+
+  LS = {}; TOASTS = []; screenLoadPreset('icici_momentum_aug26');
+  eq('loads the whole basket', screenGetWatchlist().length, 20);
+  eq('stored as SYM|EXCH', screenGetWatchlist()[0], 'ACE|NSE');
+  ok('M&M survives storage', screenGetWatchlist().includes('M&M|NSE'), 'M&M missing');
+
+  TOASTS = []; screenLoadPreset('icici_momentum_aug26');
+  eq('re-loading does not duplicate', screenGetWatchlist().length, 20);
+  ok('says everything was already present', /already on your watchlist/.test(TOASTS[0] || ''), TOASTS[0]);
+
+  LS = {}; screenSaveWatchlist(['TCS|NSE','INFY|NSE']); screenLoadPreset('icici_momentum_aug26');
+  ok('merges instead of replacing', screenGetWatchlist().includes('TCS|NSE'), 'existing symbol lost');
+  eq('merged total', screenGetWatchlist().length, 22);
+
+  LS = {}; screenSaveWatchlist(Array.from({length:50}, (_,i) => 'X'+i+'|NSE')); TOASTS = [];
+  screenLoadPreset('icici_momentum_aug26');
+  eq('caps the watchlist at 60', screenGetWatchlist().length, 60);
+  ok('warns rather than dropping silently', /skipped \(60 max\)/.test(TOASTS[0] || ''), TOASTS[0]);
+
+  LS = {}; screenLoadPreset('icici_momentum_aug26'); screenClearWatchlist();
+  eq('clear empties the watchlist', screenGetWatchlist().length, 0);
+  LS = {}; screenLoadPreset('does-not-exist');
+  eq('unknown preset is a no-op', screenGetWatchlist().length, 0);
+
+  // Tickers containing "&" must be escaped or the path is truncated.
+  const url = k => `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(k)}?period1=1&period2=2&interval=1d`;
+  ok('M&M.NS is escaped in the fetch URL', url('M&M.NS').includes('M%26M.NS'), url('M&M.NS'));
+  ok('ordinary tickers are untouched', url('HAL.NS').includes('/chart/HAL.NS?'), url('HAL.NS'));
+  ok('fetch URL actually uses encodeURIComponent', SRC.includes('chart/${encodeURIComponent(key)}'), 'symbol not encoded');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

@@ -1490,6 +1490,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
             </select>
             <button class="btn btn-outline btn-sm" onclick="screenAddSymbol()">+ Add</button>
           </div>
+          <div id="screenPresets" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px;"></div>
           <div id="screenWatchlist" style="margin-bottom:13px;"></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
             <label style="font-size:12px;color:var(--text3);">Min confidence
@@ -6845,7 +6846,9 @@ async function _screenFetchBars(sym, exch) {
   const cached = await _cacheGet(key);
   if (cached && cached.length >= 60) return cached;
   const to = Math.floor(Date.now()/1000), from = to - 400*24*3600;
-  const yf = `https://query1.finance.yahoo.com/v8/finance/chart/${key}?period1=${from}&period2=${to}&interval=1d`;
+  // Tickers such as M&M contain characters that must be escaped, or the "&"
+  // terminates the path and the request silently fetches the wrong thing.
+  const yf = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(key)}?period1=${from}&period2=${to}&interval=1d`;
   const enc = encodeURIComponent;
   const urls = [
     { u: `https://api.allorigins.win/raw?url=${enc(yf)}`, wrap: false },
@@ -6996,6 +6999,51 @@ async function screenOpen(sym, exch) {
         document.getElementById('resultsSection')?.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
 }
 
+// Curated baskets that can be loaded into the watchlist in one click. Symbols
+// are NSE tickers as the exchange lists them. These are lists to *examine* -
+// nothing here is a recommendation, and the app's own analysis is what decides.
+const WATCHLIST_PRESETS = {
+  icici_momentum_aug26: {
+    label: 'ICICI Momentum Picks',
+    note: 'ICICI Securities Momentum Picks note, 17 Aug 2026 · a list to screen, not advice',
+    symbols: [
+      ['ACE','Action Construction Equipment'], ['ADANIPORTS','Adani Ports & SEZ'],
+      ['ABDL','Allied Blenders & Distillers'], ['APOLLOTYRE','Apollo Tyres'],
+      ['ASIANPAINT','Asian Paints'],           ['BANKBARODA','Bank of Baroda'],
+      ['BHEL','Bharat Heavy Electricals'],     ['BHARTIARTL','Bharti Airtel'],
+      ['FLUOROCHEM','Gujarat Fluorochemicals'],['HAL','Hindustan Aeronautics'],
+      ['ICIL','Indo Count Industries'],        ['KOTAKBANK','Kotak Mahindra Bank'],
+      ['LT','Larsen & Toubro'],                ['M&M','Mahindra & Mahindra'],
+      ['MUTHOOTMF','Muthoot Microfin'],        ['NH','Narayana Hrudayalaya'],
+      ['PFC','Power Finance Corporation'],     ['SHRIRAMPPS','Shriram Properties'],
+      ['SOUTHBANK','South Indian Bank'],       ['ZYDUSLIFE','Zydus Lifesciences'],
+    ],
+  },
+};
+function screenLoadPreset(key) {
+  const p = WATCHLIST_PRESETS[key];
+  if (!p) return;
+  const existing = screenGetWatchlist();
+  const have = new Set(existing);
+  const additions = p.symbols.map(([s]) => s.toUpperCase() + '|NSE').filter(e => !have.has(e));
+  const merged = [...existing, ...additions];
+  // screenSaveWatchlist caps the list at 60; say so rather than dropping names silently.
+  const dropped = Math.max(0, merged.length - 60);
+  screenSaveWatchlist(merged);
+  renderWatchlistChips();
+  const added = additions.length - dropped;
+  if (typeof toast === 'function') {
+    toast(added > 0
+      ? `Added ${added} symbol${added === 1 ? '' : 's'} from ${p.label}${dropped ? ` · ${dropped} skipped (60 max)` : ''}`
+      : 'All of those are already on your watchlist', added > 0 ? 'ok' : 'err');
+  }
+}
+function screenClearWatchlist() {
+  if (!screenGetWatchlist().length) return;
+  if (!confirm('Remove every symbol from the watchlist? Portfolio holdings are scanned regardless and are not affected.')) return;
+  screenSaveWatchlist([]);
+  renderWatchlistChips();
+}
 function screenAddSymbol() {
   const inp = document.getElementById('screenSymInput');
   const exchSel = document.getElementById('screenExchInput');
@@ -7011,7 +7059,15 @@ function screenRemoveSymbol(entry) {
   screenSaveWatchlist(screenGetWatchlist().filter(x => x !== entry));
   renderWatchlistChips();
 }
+function renderPresetButtons() {
+  const el = document.getElementById('screenPresets');
+  if (!el) return;
+  el.innerHTML = Object.entries(WATCHLIST_PRESETS).map(([k, p]) =>
+    `<button class="btn btn-outline btn-sm" title="${p.note}" onclick="screenLoadPreset('${k}')">➕ ${p.label} <span style="opacity:.6">(${p.symbols.length})</span></button>`
+  ).join('') + `<button class="btn btn-ghost btn-sm" onclick="screenClearWatchlist()">Clear watchlist</button>`;
+}
 function renderWatchlistChips() {
+  renderPresetButtons();
   const el = document.getElementById('screenWatchlist');
   if (!el) return;
   const wl = screenGetWatchlist();
