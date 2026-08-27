@@ -1,0 +1,14 @@
+{
+  "name": "myee-stock-buddy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-file stock analyser and portfolio manager. index.html is the deployable artifact; src/ is where the separable parts are edited.",
+  "scripts": {
+    "build": "node build.js",
+    "check": "node build.js --check",
+    "test": "node tests/run.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
