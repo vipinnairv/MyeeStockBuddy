@@ -7208,19 +7208,41 @@ async function runAnalysis() {
       // with drawn support/resistance, marked as a developing structure.
       if (!chartPatterns.length) {
         try {
-          const d = _bars.slice(-150), H = d.map(b=>b.high), L = d.map(b=>b.low);
+          // Use a recent window, not 150 bars: a long window drags in an older
+          // crash or run-up, and the "range" then spans price action that was
+          // never ranging.
+          const d = _bars.slice(-90), H = d.map(b=>b.high), L = d.map(b=>b.low);
           const piv = SBPatternEngine.findPivots(H, L);
           if (piv.highs.length >= 2 && piv.lows.length >= 2) {
             const hi = Math.max(...piv.highs.slice(-5).map(i=>H[i]));
             const lo = Math.min(...piv.lows.slice(-5).map(i=>L[i]));
             const price = d[d.length-1].close;
+            // Only call it a range if it actually ranged. Net drift across the
+            // window, measured against the window's own height, separates
+            // "sideways" from "trending" - a stock that fell 50% is in a
+            // downtrend, and labelling that a Trading Range is simply wrong.
+            const _first = d[0].close;
+            const _driftPct = _first ? (price - _first) / _first * 100 : 0;
+            // Travel ratio: how much of the window's height the move actually
+            // covered end-to-end. A clean decline starts at the high and ends at
+            // the low (ratio ~1); genuine sideways action starts and ends in the
+            // same part of the range (ratio ~0). Comparing drift to height alone
+            // fails here, because in a trend the height IS the trend.
+            const _travel = (hi > lo) ? Math.abs(_first - price) / (hi - lo) : 0;
+            const _trending = Math.abs(_driftPct) > 15 && _travel > 0.55;
+            const _dir = _driftPct < 0 ? 'down' : 'up';
             if (hi > lo) {
               const pos = (price - lo) / (hi - lo) * 100;
-              const near = pos >= 66 ? 'Near Resistance' : pos <= 34 ? 'Near Support' : 'Mid-Range';
+              const near = _trending ? (_dir === 'down' ? 'Downtrend In Force' : 'Uptrend In Force')
+                         : pos >= 66 ? 'Near Resistance' : pos <= 34 ? 'Near Support' : 'Mid-Range';
               chartPatterns = [{
-                pattern:'Trading Range', signal:near, bias:'neutral', stage:'anticipatory',
+                pattern: _trending ? (_dir === 'down' ? 'Downtrend' : 'Uptrend') : 'Trading Range',
+                signal:near, bias: _trending ? (_dir === 'down' ? 'bearish' : 'bullish') : 'neutral',
+                stage:'anticipatory',
                 timeframe:'1 day', confidence:42, _developing:true, symbol:_sym, triggerTs:(_bars.length?_bars[_bars.length-1].time:Math.floor(Date.now()/1000)),
-                narrative:`${_sym} has no active breakout pattern - it is ranging between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
+                narrative: _trending
+                  ? `${_sym} has no completed breakout pattern - it is in a ${_dir}trend, ${Math.abs(_driftPct).toFixed(0)}% ${_dir} over the last ${d.length} bars. The ${CUR()}${lo.toFixed(2)}-${CUR()}${hi.toFixed(2)} band below is where it has recently traded, not a range it is holding. In a trend this strong, ${_dir === 'down' ? 'bounces tend to be sold - wait for the downtrend to actually break before treating support as a floor' : 'dips tend to be bought, but chasing an extended move carries the worst risk:reward'}.`
+                  : `${_sym} has no active breakout pattern - it is ranging between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
                 levels:{ resistance:+hi.toFixed(2), support:+lo.toFixed(2), close:+price.toFixed(2), position:+pos.toFixed(0) },
                 indicators:[], components:{ touches:piv.highs.length+piv.lows.length, geometryFit:0.6 },
                 graphics:{ lines:[
@@ -8692,12 +8714,18 @@ def miyee_momentum(closes):
     const s200Ready = closes.length > 200;
     const s200Pts   = s200Ready ? closes.length - 200 : 0;
     const s200s = mkLine('#a855f7', 1.5);
+    // A 200-day average sits far from price after a big move. Left in the
+    // autoscale it forces the scale to span both - e.g. SMA200 near 1100 while
+    // price trades at 588 - squeezing every candle into a strip at the bottom.
+    // It still draws; it just no longer gets a vote on the price scale.
+    try { s200s.applyOptions({ autoscaleInfoProvider: () => null }); } catch(e){}
     s200s.setData(s200Ready ? seriesBy(i => sma200[sl+i]) : rows.map(i => ({ time:toTs(sd[i]) })));
     const _s200Leg = document.getElementById('lw-legend-sma200');
     if (_s200Leg) {
       _s200Leg.textContent = !s200Ready ? `── SMA 200 · needs 200+ bars (have ${closes.length})`
                            : s200Pts < 20 ? `── SMA 200 · only ${s200Pts} bars long`
                            : '── SMA 200';
+      if (s200Ready) _s200Leg.title = 'Excluded from the price scale, so it cannot squash the candles. It may sit off-screen when price has moved far from its 200-day average.';
       _s200Leg.style.opacity = s200Ready ? '1' : '.45';
       _s200Leg.title = s200Ready ? '' : 'A 200-day average needs more than 200 bars of history. Not drawn rather than shown at a shorter period.';
     }
