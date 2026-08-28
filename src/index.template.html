@@ -4045,18 +4045,26 @@ async function fetchSymbolData() {
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
     { label:'Yahoo Finance',           url:`https://corsproxy.io/?url=${enc(yfQ2)}`,                     src:'yf', wrap:false },
-    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false }
-    // Two further relays were tried here and removed: api.cors.lol was
-    // unreachable, and r.jina.ai is a reader that returns Markdown, not JSON
-    // ("Unexpected token 'T', \"Title: ...\""). Both only added noise to the
-    // failure breakdown. corsproxy.io stays in the list but now answers HTTP
-    // 401 from this origin, so a key is the dependable route.
+    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false },
+    // thingproxy and cors.eu.org take the RAW upstream URL (no encoding) and
+    // relay the body verbatim - two more independent hosts, so a fetch only
+    // fails when all four are down at once.
+    { label:'Yahoo Finance',           url:`https://thingproxy.freeboard.io/fetch/${yfQ2}`,         src:'yf', wrap:false },
+    { label:'Yahoo Finance',           url:`https://cors.eu.org/${yfQ2}`,                           src:'yf', wrap:false }
+    // corsproxy.io stays in the list but now answers HTTP 401 from this origin
+    // (it requires a registered origin on their paid tier). allorigins/codetabs
+    // are free and frequently time out under load. Earlier relays cors.lol
+    // (unreachable) and r.jina.ai (returns Markdown, not JSON) were removed.
+    // None of these are ours, so none can be made reliable from here - a key,
+    // or a self-hosted proxy, is the only dependable route.
   );
   if (!isCrypto && !isCommodity) strategies.push(
     { label:'Stooq',                   url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
     { label:'Stooq',                   url:`https://api.allorigins.win/raw?url=${enc(stooqUrl)}`,    src:'stooq', wrap:false },
     { label:'Stooq',                   url:`https://corsproxy.io/?url=${enc(stooqUrl)}`,                 src:'stooq', wrap:false },
-    { label:'Stooq',                   url:`https://api.codetabs.com/v1/proxy?quest=${enc(stooqUrl)}`, src:'stooq', wrap:false }
+    { label:'Stooq',                   url:`https://api.codetabs.com/v1/proxy?quest=${enc(stooqUrl)}`, src:'stooq', wrap:false },
+    { label:'Stooq',                   url:`https://thingproxy.freeboard.io/fetch/${stooqUrl}`,     src:'stooq', wrap:false },
+    { label:'Stooq',                   url:`https://cors.eu.org/${stooqUrl}`,                        src:'stooq', wrap:false }
   );
 
   // A scrolling line-chart animation instead of the "racing N sources" text. The
@@ -4092,7 +4100,7 @@ async function fetchSymbolData() {
   };
   async function _tryOne(strat) {
     const ctrl  = new AbortController();
-    strat._budgetMs = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs)/.test(strat.url) ? 15000 : 8000;
+    strat._budgetMs = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|thingproxy|cors\.eu\.org)/.test(strat.url) ? 15000 : 8000;
     // A proxy has to fetch ~400 days of JSON from Yahoo and relay it, so it
     // needs a longer budget than a direct API call. allorigins was timing out
     // at 7s on real user traffic, taking the main fallback out of the race.
