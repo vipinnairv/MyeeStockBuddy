@@ -368,6 +368,34 @@ group('fetch diagnostics — say which source failed and why');
   ok('main fetch escapes the symbol', SRC.includes('chart/${encodeURIComponent(yahooSym)}'), 'symbol not escaped');
 }
 
+// ── Live-fetch resilience (from a real user's diagnostics) ────────────────
+group('fetch resilience — causes seen in production logs');
+{
+  // Alpha Vantage lists Indian equities under .BSE only. Sending ".NSE"
+  // returned an empty series for every NSE stock, silently killing the one
+  // path that needs no proxy - even for users who had paid attention and
+  // added a key.
+  ok('Alpha Vantage uses the BSE listing for India',
+     SRC.includes("const avSuffix  = isUS ? '' : '.BSE';"), 'still requesting .NSE');
+  ok('no .NSE suffix is sent to Alpha Vantage', !SRC.includes("'.BSE' : '.NSE'"), '.NSE suffix still present');
+  ok('cross-listed fallback is flagged to the user', SRC.includes('avIsCrossListed'), 'no flag');
+  ok('empty AV series explains the exchange', SRC.includes('no NSE feed'), 'generic message only');
+
+  // Proxies were timing out at 7s on real traffic.
+  const budget = url => /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|r\.jina|api\.cors)/.test(url) ? 15000 : 8000;
+  eq('allorigins gets the longer budget', budget('https://api.allorigins.win/raw?url=x'), 15000);
+  eq('codetabs gets the longer budget', budget('https://api.codetabs.com/v1/proxy?quest=x'), 15000);
+  eq('corsproxy gets the longer budget', budget('https://corsproxy.io/?url=x'), 15000);
+  eq('direct Alpha Vantage stays short', budget('https://www.alphavantage.co/query?f=x'), 8000);
+  eq('direct TwelveData stays short', budget('https://api.twelvedata.com/time_series?x'), 8000);
+  ok('the app actually applies a per-host budget', SRC.includes('const _budget ='), 'no budget logic');
+  ok('7s blanket timeout is gone', !SRC.includes('ctrl.abort(), 7000'), 'still 7s for proxies');
+
+  // corsproxy.io answered HTTP 401 to everything, so extra relays were added.
+  ok('extra keyless relays are present',
+     SRC.includes('api.cors.lol') && SRC.includes('r.jina.ai'), 'no additional fallbacks');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
