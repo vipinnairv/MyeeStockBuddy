@@ -3949,6 +3949,19 @@ async function _cachePut(sym, rows) {
 // SYMBOL FETCH - parallel race with cache + BYOK sources
 // ============================================================
 
+// Owner-hosted CORS proxy (Cloudflare Worker in proxy/worker.js). Once you
+// deploy it, put your Worker URL here - e.g.
+//   const SELF_PROXY_BUILTIN = 'https://myee-proxy.you.workers.dev';
+// and every visitor fetches keyless through a proxy you control, tried first.
+// Empty = fall back to the public relay pool. A per-browser override lives in
+// localStorage('self_proxy_url') so you can test a Worker before hardcoding it.
+const SELF_PROXY_BUILTIN = '';
+function _selfProxyUrl() {
+  let v = SELF_PROXY_BUILTIN;
+  try { v = (localStorage.getItem('self_proxy_url') || '').trim() || v; } catch(e) {}
+  return v.replace(/\/+$/, '');   // no trailing slash; we append ?url=
+}
+
 async function fetchSymbolData() {
   const resolved = document.getElementById('resolvedSymbol').value.trim().toUpperCase();
   const typed    = document.getElementById('symbolInput').value.trim().toUpperCase();
@@ -4036,7 +4049,15 @@ async function fetchSymbolData() {
   const stooqUrl = `https://stooq.com/q/d/l/?s=${stooqSym}&f=${fd}&t=${td}&i=d`;
 
   const strategies = [];
-  // BYOK direct sources first - no proxy latency
+  // Owner-hosted Worker first: direct CORS, no public proxy, real NSE coverage.
+  // It only proxies the Yahoo/Stooq hosts its allowlist permits (see worker.js).
+  const _sp = _selfProxyUrl();
+  if (_sp) {
+    strategies.push({ label:'Yahoo Finance (your proxy)', url:`${_sp}/?url=${enc(yfQ2)}`, src:'yf', wrap:false });
+    if (!isCrypto && !isCommodity)
+      strategies.push({ label:'Stooq (your proxy)', url:`${_sp}/?url=${enc(stooqUrl)}`, src:'stooq', wrap:false });
+  }
+  // BYOK direct sources next - no proxy latency
   if (avKey  && !isCrypto && !isCommodity)  strategies.push({ label:'Alpha Vantage',  url:avUrl,  src:'av',  wrap:false });
   if (tdKey && !isCommodity) strategies.push({ label:'TwelveData',     url:tdUrl,  src:'td',  wrap:false });
   if (fmpKey && isUS)       strategies.push({ label:'FMP',            url:fmpUrl, src:'fmp', wrap:false });

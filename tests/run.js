@@ -567,6 +567,52 @@ group('fetch failure routes to the setup step');
      'card can go stale after a key is saved');
 }
 
+// ── Self-hosted Cloudflare Worker proxy ────────────────────────────────────
+group('self-hosted proxy (Cloudflare Worker)');
+{
+  // The Worker's host allowlist is the security boundary - it must reject
+  // anything that isn't one of the two data hosts, over https only.
+  const fs = require('fs'); const path = require('path');
+  const wsrc = fs.readFileSync(path.join(__dirname, '..', 'proxy', 'worker.js'), 'utf8').replace(/\r\n/g, '\n');
+  const a = wsrc.indexOf('const ALLOWED_HOSTS');
+  const b = wsrc.indexOf('const CORS_HEADERS');
+  ok('worker.js exposes the allowlist + isAllowedTarget', a >= 0 && b > a, 'markers missing');
+  const isAllowed = load(wsrc.slice(a, b).replace(/^export /gm, ''), ['isAllowedTarget'], { URL }).isAllowedTarget;
+  ok('allows Yahoo query1', isAllowed('https://query1.finance.yahoo.com/v8/finance/chart/AAPL'), 'q1 blocked');
+  ok('allows Yahoo query2', isAllowed('https://query2.finance.yahoo.com/v8/finance/chart/RELIANCE.NS'), 'q2 blocked');
+  ok('allows Stooq', isAllowed('https://stooq.com/q/d/l/?s=reliance.in'), 'stooq blocked');
+  ok('rejects an arbitrary host (not an open proxy)', !isAllowed('https://evil.example.com/steal'), 'open proxy!');
+  ok('rejects http (no plaintext, no SSRF to internal http)', !isAllowed('http://query1.finance.yahoo.com/x'), 'http allowed');
+  ok('rejects a subdomain spoof', !isAllowed('https://query1.finance.yahoo.com.evil.com/x'), 'spoof allowed');
+  ok('rejects garbage', !isAllowed('not a url') && !isAllowed('') && !isAllowed('file:///etc/passwd'), 'garbage allowed');
+
+  // App wiring: the Worker is opt-in, tried first, and appends ?url=.
+  ok('app defines the built-in Worker constant', SRC.includes('const SELF_PROXY_BUILTIN'), 'constant missing');
+  ok('app ships with it empty (no accidental hardcoded URL)',
+     /const SELF_PROXY_BUILTIN = '';/.test(SRC), 'a URL got committed - intended?');
+  ok('a per-browser override reads localStorage', SRC.includes("localStorage.getItem('self_proxy_url')"), 'no override');
+  ok('trailing slash is stripped before appending ?url=', SRC.includes("replace(/\\/+$/, '')"), 'slash not stripped');
+  ok('the proxy is raced FIRST, ahead of the public relays',
+     SRC.indexOf("Yahoo Finance (your proxy)") < SRC.indexOf("https://api.allorigins.win/get"),
+     'proxy is not first');
+  ok('the proxy strategy encodes the upstream URL', SRC.includes('`${_sp}/?url=${enc(yfQ2)}`'), 'not encoded / wrong shape');
+  ok('the proxy covers Stooq too', SRC.includes('`${_sp}/?url=${enc(stooqUrl)}`'), 'Stooq not proxied');
+
+  // _selfProxyUrl resolution: builtin default, localStorage override wins,
+  // trailing slash stripped.
+  const spSrc = slice('function _selfProxyUrl()', '\nasync function fetchSymbolData()', 'selfproxy');
+  const mk = (builtin, ls) => {
+    const store = { self_proxy_url: ls };
+    return load(`var SELF_PROXY_BUILTIN=${JSON.stringify(builtin)};\n` + spSrc,
+      ['_selfProxyUrl'],
+      { localStorage: { getItem: k => (k in store ? store[k] : null) } })._selfProxyUrl();
+  };
+  eq('empty builtin, no override -> empty', mk('', undefined), '');
+  eq('builtin used when no override', mk('https://a.workers.dev', undefined), 'https://a.workers.dev');
+  eq('localStorage override beats builtin', mk('https://a.workers.dev', 'https://b.workers.dev'), 'https://b.workers.dev');
+  eq('trailing slash stripped', mk('https://a.workers.dev/', undefined), 'https://a.workers.dev');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
