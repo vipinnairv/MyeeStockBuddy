@@ -4045,6 +4045,22 @@ async function fetchSymbolData() {
     checkReady();
 
   } catch(aggErr) {
+    // Work out why every source failed FIRST. This used to be computed after
+    // the cache fallback, which meant anyone with a cached copy - i.e. most
+    // returning users - never saw it, and the one piece of information needed
+    // to diagnose an outage was unreachable exactly when it was needed.
+    const _att = (window._lastFetchAttempts || []).filter(a => !a.ok);
+    const _breakdown = _att.map(a => `${a.label} (${a.host}): ${a.why}`).join(' · ');
+    try { _logErr(new Error(`fetch ${yahooSym} failed - ${_breakdown || 'no attempts recorded'}`), 'fetchSymbolData'); } catch(e) {}
+    const _breakdownHTML = _att.length
+      ? `<details style="margin-top:9px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text3)">What each source said (${_att.length})</summary>
+         <div style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.75">${
+           _att.map(a => `<div><b style="color:var(--text2)">${a.label}</b> <span style="opacity:.75">${a.host}</span> - ${a.why}</div>`).join('')
+         }</div>
+         <button onclick="copyDiagnostics()" style="margin-top:8px;background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--text2);font-family:inherit">📋 Copy for a bug report</button>
+         </details>`
+      : '';
+
     // ── Last-good-price fallback ──────────────────────────────────────────
     // Every live source failed. Rather than dead-ending the user, fall back to
     // the newest cached copy regardless of age, clearly labelled as stale so
@@ -4068,8 +4084,13 @@ async function fetchSymbolData() {
           last close ${CUR()}${_last.toFixed(2)}, ${parsedData.length} days.
           <br><small>Analysis will run, but <b>anything price-sensitive (entry, stop, targets) may be out of date.</b>
           Retry when your connection or the data sources recover.</small>
-          <br><br><button onclick="fetchSymbolData()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">↻ Try live again</button></div>`;
+          <br><br><button onclick="fetchSymbolData()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">↻ Try live again</button>
+          ${_breakdownHTML}</div>`;
         checkReady();
+        // This early return skipped the reset at the end of the function, so
+        // the button stayed on "Fetching..." forever even though the fetch had
+        // finished and the stale banner was already on screen.
+        btn.disabled = false; btn.textContent = '📡 Fetch';
         return;
       }
     } catch(e) {}
@@ -4080,19 +4101,6 @@ async function fetchSymbolData() {
     // that way, the servers were never reached - which on an office network
     // almost always means a firewall is blocking the proxy hosts, not that the
     // symbol is wrong. A data-level error (bad symbol) reaches the server first.
-    // Record exactly which source failed and why, so a user can hand over
-    // something actionable instead of "it does not work".
-    const _att = (window._lastFetchAttempts || []).filter(a => !a.ok);
-    const _breakdown = _att.map(a => `${a.label} (${a.host}): ${a.why}`).join(' · ');
-    try { _logErr(new Error(`fetch ${yahooSym} failed - ${_breakdown || 'no attempts recorded'}`), 'fetchSymbolData'); } catch(e) {}
-    const _breakdownHTML = _att.length
-      ? `<details style="margin-top:9px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text3)">What each source said (${_att.length})</summary>
-         <div style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.75">${
-           _att.map(a => `<div><b style="color:var(--text2)">${a.label}</b> <span style="opacity:.75">${a.host}</span> - ${a.why}</div>`).join('')
-         }</div>
-         <button onclick="copyDiagnostics()" style="margin-top:8px;background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--text2);font-family:inherit">📋 Copy for a bug report</button>
-         </details>`
-      : '';
     const errs = (aggErr && aggErr.errors) ? aggErr.errors : [aggErr];
     const isNetErr = e => { const m = (e && (e.message||e.name||'')+'').toLowerCase();
       return m.includes('failed to fetch') || m.includes('aborted') || m.includes('aborterror')

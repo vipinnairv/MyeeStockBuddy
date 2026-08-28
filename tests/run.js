@@ -298,7 +298,31 @@ group('fetch diagnostics — say which source failed and why');
   eq('undefined error handled', _whyOf(undefined), 'unknown');
   ok('long messages are truncated', _whyOf(new Error('x'.repeat(200))).length <= 70, 'not truncated');
   ok('per-source attempts are recorded', SRC.includes('_lastFetchAttempts'), 'attempt tracking missing');
-  ok('breakdown shown on both failure branches', (SRC.match(/\$\{_breakdownHTML\}/g) || []).length === 2, 'missing branch');
+  // Network-block branch, bad-symbol branch, AND the stale-cache banner. The
+  // stale one matters most: users with a cache are the majority, and they used
+  // to get no diagnostic at all.
+  ok('breakdown shown on all three failure paths', (SRC.match(/\$\{_breakdownHTML\}/g) || []).length === 3,
+     'found ' + (SRC.match(/\$\{_breakdownHTML\}/g) || []).length);
+  ok('breakdown is computed before the cache fallback',
+     SRC.indexOf('const _breakdownHTML') < SRC.indexOf('_cacheGetStale(cacheKey)'), 'computed too late');
+  ok('breakdown defined exactly once', (SRC.match(/const _breakdownHTML =/g) || []).length === 1, 'duplicated');
+  // Every early return inside fetchSymbolData must re-enable the Fetch button;
+  // the stale-cache return did not, leaving it stuck on "Fetching..." forever.
+  {
+    const RESET = "btn.disabled = false; btn.textContent = '\uD83D\uDCE1 Fetch';";
+    const a = SRC.indexOf('async function fetchSymbolData');
+    // The function ends at its final button reset; bound the scan there so
+    // returns in unrelated functions are not counted.
+    const last = SRC.lastIndexOf(RESET, SRC.indexOf('async function runNetworkDiagnostic'));
+    ok('fetchSymbolData body located', a >= 0 && last > a, `a=${a} last=${last}`);
+    const lines = SRC.slice(a, last).split(/\r?\n/);
+    const leaks = lines.reduce((acc, l, i) => {
+      if (!/^\s*return;\s*$/.test(l)) return acc;
+      const ctx = lines.slice(Math.max(0, i - 6), i).join('\n');
+      return ctx.includes('btn.disabled = false') ? acc : acc + 1;
+    }, 0);
+    eq('no early return leaves the Fetch button stuck', leaks, 0);
+  }
   ok('main fetch escapes the symbol', SRC.includes('chart/${encodeURIComponent(yahooSym)}'), 'symbol not escaped');
 }
 
