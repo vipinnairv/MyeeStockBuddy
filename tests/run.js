@@ -280,6 +280,28 @@ group('watchlist presets');
   ok('fetch URL actually uses encodeURIComponent', SRC.includes('chart/${encodeURIComponent(key)}'), 'symbol not encoded');
 }
 
+// ── Fetch failure reporting ────────────────────────────────────────────────
+group('fetch diagnostics — say which source failed and why');
+{
+  const src = slice('  const _hostOf = u =>', '  async function _tryOne(strat) {', 'fetch helpers');
+  const { _hostOf, _whyOf } = load(src.replace(/^\s*const /gm, 'var '), ['_hostOf', '_whyOf']);
+  eq('host from allorigins URL', _hostOf('https://api.allorigins.win/raw?url=x'), 'api.allorigins.win');
+  eq('host from corsproxy URL', _hostOf('https://corsproxy.io/?url=x'), 'corsproxy.io');
+  eq('host from codetabs URL', _hostOf('https://api.codetabs.com/v1/proxy?quest=y'), 'api.codetabs.com');
+  eq('malformed URL still returns a string', typeof _hostOf('not a url'), 'string');
+  eq('CORS / offline is classified', _whyOf(new TypeError('Failed to fetch')), 'blocked / unreachable');
+  eq('timeout is classified', _whyOf(Object.assign(new Error('aborted'), { name:'AbortError' })), 'timed out (7s)');
+  eq('HTTP status is preserved', _whyOf(new Error('HTTP 429')), 'HTTP 429');
+  eq('provider rate-limit is preserved', _whyOf(new Error('AV rate-limit')), 'AV rate-limit');
+  eq('empty error is not reported as "Error"', _whyOf(new Error('')), 'unknown');
+  eq('null error handled', _whyOf(null), 'unknown');
+  eq('undefined error handled', _whyOf(undefined), 'unknown');
+  ok('long messages are truncated', _whyOf(new Error('x'.repeat(200))).length <= 70, 'not truncated');
+  ok('per-source attempts are recorded', SRC.includes('_lastFetchAttempts'), 'attempt tracking missing');
+  ok('breakdown shown on both failure branches', (SRC.match(/\$\{_breakdownHTML\}/g) || []).length === 2, 'missing branch');
+  ok('main fetch escapes the symbol', SRC.includes('chart/${encodeURIComponent(yahooSym)}'), 'symbol not escaped');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

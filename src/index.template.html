@@ -3864,7 +3864,10 @@ async function fetchSymbolData() {
   const fmpUrl  = `https://financialmodelingprep.com/api/v3/historical-price-full/${sym}?from=${fmpFrom}&apikey=${fmpKey}`;
 
   // Yahoo Finance v8 via CORS proxies
-  const yfQ1  = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym}?period1=${from}&period2=${to}&interval=1d`;
+  // Escape the symbol: a ticker containing "&" (M&M) would otherwise terminate
+  // the path and fetch the wrong instrument. Ordinary tickers pass through
+  // byte-for-byte unchanged.
+  const yfQ1  = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?period1=${from}&period2=${to}&interval=1d`;
   const yfQ2  = yfQ1.replace('query1','query2');
 
   // Stooq CSV (India+US, not crypto)
@@ -3912,6 +3915,15 @@ async function fetchSymbolData() {
   </div>`;
 
   // ── Helper: fetch one strategy, return {rows, strat} or throw ────────────
+  const _hostOf = u => { try { return new URL(u).host; } catch(e) { return String(u).slice(0,40); } };
+  const _whyOf = e => {
+    const m = ((e && (e.message || e.name)) || '') + '';
+    if (/failed to fetch|networkerror|load failed/i.test(m)) return 'blocked / unreachable';
+    if (/abort/i.test(m)) return 'timed out (7s)';
+    // A bare "Error" is the default name with no message - not worth reporting.
+    if (!m || m === 'Error') return 'unknown';
+    return m.slice(0, 70);
+  };
   async function _tryOne(strat) {
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 7000);
@@ -4007,7 +4019,15 @@ async function fetchSymbolData() {
 
   // ── 3. Race all strategies - cache winner ────────────────────────────────
   try {
-    const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s)));
+    // Annotate each rejection with the source and host it came from. Without
+    // this, Promise.any collapses eight different failures into one opaque
+    // AggregateError and a real outage cannot be told apart from a bad symbol.
+    const _attempts = [];
+    const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s).then(
+      r => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:true }); return r; },
+      e => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:false, why:_whyOf(e) });
+             throw e; })));
+    window._lastFetchAttempts = _attempts;
 
     parsedData = rows;
     _cachePut(cacheKey, rows); // fire-and-forget cache write
@@ -4060,6 +4080,19 @@ async function fetchSymbolData() {
     // that way, the servers were never reached - which on an office network
     // almost always means a firewall is blocking the proxy hosts, not that the
     // symbol is wrong. A data-level error (bad symbol) reaches the server first.
+    // Record exactly which source failed and why, so a user can hand over
+    // something actionable instead of "it does not work".
+    const _att = (window._lastFetchAttempts || []).filter(a => !a.ok);
+    const _breakdown = _att.map(a => `${a.label} (${a.host}): ${a.why}`).join(' · ');
+    try { _logErr(new Error(`fetch ${yahooSym} failed - ${_breakdown || 'no attempts recorded'}`), 'fetchSymbolData'); } catch(e) {}
+    const _breakdownHTML = _att.length
+      ? `<details style="margin-top:9px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text3)">What each source said (${_att.length})</summary>
+         <div style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.75">${
+           _att.map(a => `<div><b style="color:var(--text2)">${a.label}</b> <span style="opacity:.75">${a.host}</span> - ${a.why}</div>`).join('')
+         }</div>
+         <button onclick="copyDiagnostics()" style="margin-top:8px;background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--text2);font-family:inherit">📋 Copy for a bug report</button>
+         </details>`
+      : '';
     const errs = (aggErr && aggErr.errors) ? aggErr.errors : [aggErr];
     const isNetErr = e => { const m = (e && (e.message||e.name||'')+'').toLowerCase();
       return m.includes('failed to fetch') || m.includes('aborted') || m.includes('aborterror')
@@ -4083,6 +4116,7 @@ async function fetchSymbolData() {
         : `<br><small>• Your API key host may also be blocked here - the test below will show which servers are reachable.</small>`}
         <br><small>• 🏢 If the block is intentional, ask IT to allow the domain(s) shown by the test.</small>
         <br><br><button onclick="runNetworkDiagnostic()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">▶ Run network test</button>
+        ${_breakdownHTML}
       </div>`;
     } else {
       // Servers reachable but no data - most likely a wrong symbol/exchange.
@@ -4095,6 +4129,7 @@ async function fetchSymbolData() {
       st.innerHTML = `<div class="alert alert-error">❌ Reached the servers but got no data for <strong>${yahooSym}</strong> - likely a wrong symbol or exchange.
         ${keyHint}${modeHints[marketMode] || modeHints.india}
         <br><small>• Check internet · On <code>file://</code>? Serve via <code>http://localhost:8080</code></small>
+        ${_breakdownHTML}
       </div>`;
     }
   }
