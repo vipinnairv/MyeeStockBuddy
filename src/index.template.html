@@ -3850,7 +3850,13 @@ async function fetchSymbolData() {
   const fmpKey = _loadKey('fmpApiKey');
 
   // Alpha Vantage - direct CORS, no proxy (works from file://)
-  const avSuffix  = isUS ? '' : (exch === 'BSE' ? '.BSE' : '.NSE');
+  // Alpha Vantage lists Indian equities under .BSE only - there is no .NSE
+  // feed. Sending JKCEMENT.NSE returned an empty time series for every NSE
+  // stock, which silently broke the one path that does not need a proxy. Daily
+  // OHLC is effectively the same instrument on either exchange, so fall back to
+  // the BSE listing and say so rather than returning nothing.
+  const avSuffix  = isUS ? '' : '.BSE';
+  const avIsCrossListed = !isUS && exch !== 'BSE';
   const avUrl     = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${sym}${avSuffix}&outputsize=full&datatype=json&apikey=${avKey}`;
 
   // TwelveData - direct CORS, generous free tier (800 req/day)
@@ -3886,7 +3892,12 @@ async function fetchSymbolData() {
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
     { label:'Yahoo Finance',           url:`https://corsproxy.io/?url=${enc(yfQ2)}`,                     src:'yf', wrap:false },
-    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false }
+    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false },
+    // corsproxy.io started answering HTTP 401 to every request from this origin
+    // (both Yahoo and Stooq), so it can no longer carry the app on its own.
+    // These are extra keyless relays; each either works or fails like the rest.
+    { label:'Yahoo Finance',           url:`https://api.cors.lol/?url=${enc(yfQ2)}`,                src:'yf', wrap:false },
+    { label:'Yahoo Finance',           url:`https://r.jina.ai/${yfQ2}`,                             src:'yf', wrap:false }
   );
   if (!isCrypto && !isCommodity) strategies.push(
     { label:'Stooq',                   url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
@@ -3926,7 +3937,11 @@ async function fetchSymbolData() {
   };
   async function _tryOne(strat) {
     const ctrl  = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 7000);
+    // A proxy has to fetch ~400 days of JSON from Yahoo and relay it, so it
+    // needs a longer budget than a direct API call. allorigins was timing out
+    // at 7s on real user traffic, taking the main fallback out of the race.
+    const _budget = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|r\.jina|api\.cors)/.test(strat.url) ? 15000 : 8000;
+    const timer = setTimeout(() => ctrl.abort(), _budget);
     let res;
     try { res = await fetch(strat.url, { signal: ctrl.signal }); }
     finally { clearTimeout(timer); }
@@ -3940,7 +3955,9 @@ async function fetchSymbolData() {
       if (raw['Note'])        throw new Error('AV rate-limit');
       if (raw['Information']) throw new Error('AV: ' + raw['Information']);
       const ts = raw['Time Series (Daily)'];
-      if (!ts || !Object.keys(ts).length) throw new Error('AV: empty time series');
+      if (!ts || !Object.keys(ts).length) throw new Error(
+        avIsCrossListed ? 'AV: no BSE listing for this symbol (Alpha Vantage has no NSE feed)'
+                        : 'AV: empty time series');
       rows = Object.entries(ts)
         .sort(([a],[b]) => a < b ? -1 : 1)
         .map(([date, v]) => {
@@ -5920,10 +5937,14 @@ function backtestVerdict(data, verdict, horizon = 10) {
 async function fetchFundamentals(sym, exch, isUS, isCrypto) {
   if (isCrypto) return null;
   const avKey = _loadKey('avApiKey'), fmpKey = _loadKey('fmpApiKey'), tdKey = _loadKey('tdApiKey');
-  // 1. Alpha Vantage OVERVIEW - richest, covers US + many India .BSE/.NSE
+  // 1. Alpha Vantage OVERVIEW - richest, covers US + Indian equities via .BSE
   if (avKey) {
     try {
-      const avSym = isUS ? sym : sym + (exch === 'BSE' ? '.BSE' : '.NSE');
+      // Same constraint as the price feed: Alpha Vantage has no .NSE listing,
+      // so an NSE selection must ask for the BSE line or it returns nothing.
+      // This is why P/E and the DVM valuation stayed empty for NSE stocks even
+      // when a key was configured.
+      const avSym = isUS ? sym : sym + '.BSE';
       const r = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(avSym)}&apikey=${avKey}`);
       const j = await r.json();
       // One OVERVIEW call carries everything the scorecard needs - important,
