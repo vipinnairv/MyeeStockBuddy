@@ -6,7 +6,9 @@ const _ERR_KEY='diag_errors', _ERR_MAX=40;
 function _logErr(err, ctx){
   try{
     const e={ t:Date.now(), ctx:String(ctx||'').slice(0,80),
-      msg:String((err&&(err.message||err))||'unknown').slice(0,300),
+      // 300 chars cut the per-source fetch breakdown off mid-sentence, losing
+      // the very entries that identify which source failed and why.
+      msg:String((err&&(err.message||err))||'unknown').slice(0,900),
       where:String((err&&err.stack||'').split('\n')[1]||'').trim().slice(0,160) };
     let log=[]; try{ log=JSON.parse(localStorage.getItem(_ERR_KEY)||'[]'); }catch(_){}
     log.push(e); if(log.length>_ERR_MAX) log=log.slice(-_ERR_MAX);

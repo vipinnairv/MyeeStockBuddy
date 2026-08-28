@@ -391,9 +391,38 @@ group('fetch resilience — causes seen in production logs');
   ok('the app actually applies a per-host budget', SRC.includes('const _budget ='), 'no budget logic');
   ok('7s blanket timeout is gone', !SRC.includes('ctrl.abort(), 7000'), 'still 7s for proxies');
 
-  // corsproxy.io answered HTTP 401 to everything, so extra relays were added.
-  ok('extra keyless relays are present',
-     SRC.includes('api.cors.lol') && SRC.includes('r.jina.ai'), 'no additional fallbacks');
+  // Alpha Vantage made TIME_SERIES_DAILY_ADJUSTED premium: a free key gets
+  // "This is a premium endpoint" and no data. TIME_SERIES_DAILY is the free
+  // equivalent and is what a BYOK user actually has access to.
+  ok('requests the free daily series', SRC.includes('function=TIME_SERIES_DAILY&'), 'not using the free endpoint');
+  ok('does not request the premium endpoint',
+     !/function=TIME_SERIES_DAILY_ADJUSTED&/.test(SRC), 'still calling the premium endpoint');
+  ok('premium refusal gives an actionable message',
+     SRC.includes('cannot use that endpoint (premium)'), 'raw vendor text only');
+
+  // The two relays added on spec in #27 were removed: cors.lol was
+  // unreachable and r.jina.ai returns Markdown, not JSON.
+  ok('no dead relays remain in the strategy list',
+     !/url:`https:\/\/api\.cors\.lol/.test(SRC) && !/url:`https:\/\/r\.jina\.ai/.test(SRC), 'dead relay still active');
+
+  // Truncating at 300 chars cut the breakdown off mid-sentence.
+  ok('diagnostics keep the full breakdown', SRC.includes('slice(0,900)'), 'still truncating at 300');
+
+  // The parser must read both AV response shapes.
+  {
+    const a = SRC.indexOf("      rows = Object.entries(ts)");
+    const endMark = "        }).filter(r => +r['Close Price'] > 0).slice(-1300);";
+    const b = SRC.indexOf(endMark, a) + endMark.length;
+    const parse = new Function('ts', 'let rows;\n' + SRC.slice(a, b).replace(/\r/g, '') + '\nreturn rows;');
+    const free = { '2026-08-27': {'1. open':'100','2. high':'110','3. low':'95','4. close':'105','5. volume':'12345'} };
+    const adj  = { '2026-08-27': {'1. open':'100','2. high':'110','3. low':'95','4. close':'105','5. adjusted close':'105','6. volume':'12345'} };
+    eq('free endpoint close parses', parse(free)[0]['Close Price'], '105.00');
+    eq('free endpoint volume parses (5. volume)', parse(free)[0]['Total Traded Quantity'], '12345');
+    eq('adjusted endpoint still parses', parse(adj)[0]['Close Price'], '105.00');
+    eq('adjusted volume still parses (6. volume)', parse(adj)[0]['Total Traded Quantity'], '12345');
+    eq('missing volume degrades to 0',
+       parse({'2026-08-27':{'1. open':'1','2. high':'1','3. low':'1','4. close':'1'}})[0]['Total Traded Quantity'], '0');
+  }
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────

@@ -3857,7 +3857,11 @@ async function fetchSymbolData() {
   // the BSE listing and say so rather than returning nothing.
   const avSuffix  = isUS ? '' : '.BSE';
   const avIsCrossListed = !isUS && exch !== 'BSE';
-  const avUrl     = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${sym}${avSuffix}&outputsize=full&datatype=json&apikey=${avKey}`;
+  // TIME_SERIES_DAILY_ADJUSTED became a premium endpoint - a free key gets
+  // "This is a premium endpoint" and no data at all. TIME_SERIES_DAILY is the
+  // free equivalent; it omits the adjusted close, which the parser below
+  // already tolerates by falling back to the raw close.
+  const avUrl     = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${sym}${avSuffix}&outputsize=full&datatype=json&apikey=${avKey}`;
 
   // TwelveData - direct CORS, generous free tier (800 req/day)
   // India: exchange=NSE or BSE; US: no exchange param needed
@@ -3892,12 +3896,12 @@ async function fetchSymbolData() {
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/get?url=${enc(yfQ1)}`,        src:'yf', wrap:true  },
     { label:'Yahoo Finance',           url:`https://api.allorigins.win/raw?url=${enc(yfQ2)}`,        src:'yf', wrap:false },
     { label:'Yahoo Finance',           url:`https://corsproxy.io/?url=${enc(yfQ2)}`,                     src:'yf', wrap:false },
-    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false },
-    // corsproxy.io started answering HTTP 401 to every request from this origin
-    // (both Yahoo and Stooq), so it can no longer carry the app on its own.
-    // These are extra keyless relays; each either works or fails like the rest.
-    { label:'Yahoo Finance',           url:`https://api.cors.lol/?url=${enc(yfQ2)}`,                src:'yf', wrap:false },
-    { label:'Yahoo Finance',           url:`https://r.jina.ai/${yfQ2}`,                             src:'yf', wrap:false }
+    { label:'Yahoo Finance',           url:`https://api.codetabs.com/v1/proxy?quest=${enc(yfQ1)}`,  src:'yf', wrap:false }
+    // Two further relays were tried here and removed: api.cors.lol was
+    // unreachable, and r.jina.ai is a reader that returns Markdown, not JSON
+    // ("Unexpected token 'T', \"Title: ...\""). Both only added noise to the
+    // failure breakdown. corsproxy.io stays in the list but now answers HTTP
+    // 401 from this origin, so a key is the dependable route.
   );
   if (!isCrypto && !isCommodity) strategies.push(
     { label:'Stooq',                   url:`https://api.allorigins.win/get?url=${enc(stooqUrl)}`,    src:'stooq', wrap:true  },
@@ -3940,7 +3944,7 @@ async function fetchSymbolData() {
     // A proxy has to fetch ~400 days of JSON from Yahoo and relay it, so it
     // needs a longer budget than a direct API call. allorigins was timing out
     // at 7s on real user traffic, taking the main fallback out of the race.
-    const _budget = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|r\.jina|api\.cors)/.test(strat.url) ? 15000 : 8000;
+    const _budget = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs)/.test(strat.url) ? 15000 : 8000;
     const timer = setTimeout(() => ctrl.abort(), _budget);
     let res;
     try { res = await fetch(strat.url, { signal: ctrl.signal }); }
@@ -3950,10 +3954,15 @@ async function fetchSymbolData() {
     let rows;
 
     if (strat.src === 'av') {
-      // Alpha Vantage TIME_SERIES_DAILY_ADJUSTED
+      // Alpha Vantage TIME_SERIES_DAILY (free tier; ADJUSTED is premium)
       const raw = await res.json();
       if (raw['Note'])        throw new Error('AV rate-limit');
-      if (raw['Information']) throw new Error('AV: ' + raw['Information']);
+      if (raw['Information']) {
+        const _i = String(raw['Information']);
+        throw new Error(/premium/i.test(_i)
+          ? 'AV: this key cannot use that endpoint (premium) - the app now asks for the free daily series, so reload if this persists'
+          : 'AV: ' + _i);
+      }
       const ts = raw['Time Series (Daily)'];
       if (!ts || !Object.keys(ts).length) throw new Error(
         avIsCrossListed ? 'AV: no BSE listing for this symbol (Alpha Vantage has no NSE feed)'
@@ -3968,7 +3977,8 @@ async function fetchSymbolData() {
           const o = (+v['1. open']) * k, h = (+v['2. high']) * k, l = (+v['3. low']) * k;
           return { 'Date':fmt, 'Open Price':o.toFixed(2),
             'High Price':Math.max(h, o, adjC).toFixed(2), 'Low Price':Math.min(l, o, adjC).toFixed(2),
-            'Close Price':adjC.toFixed(2), 'Total Traded Quantity':(+(v['6. volume']||0)).toString() };
+            // ADJUSTED numbers volume as "6."; the free DAILY endpoint as "5.".
+            'Close Price':adjC.toFixed(2), 'Total Traded Quantity':(+(v['6. volume'] ?? v['5. volume'] ?? 0)).toString() };
         }).filter(r => +r['Close Price'] > 0).slice(-1300);
 
     } else if (strat.src === 'td') {
@@ -9857,7 +9867,9 @@ const _ERR_KEY='diag_errors', _ERR_MAX=40;
 function _logErr(err, ctx){
   try{
     const e={ t:Date.now(), ctx:String(ctx||'').slice(0,80),
-      msg:String((err&&(err.message||err))||'unknown').slice(0,300),
+      // 300 chars cut the per-source fetch breakdown off mid-sentence, losing
+      // the very entries that identify which source failed and why.
+      msg:String((err&&(err.message||err))||'unknown').slice(0,900),
       where:String((err&&err.stack||'').split('\n')[1]||'').trim().slice(0,160) };
     let log=[]; try{ log=JSON.parse(localStorage.getItem(_ERR_KEY)||'[]'); }catch(_){}
     log.push(e); if(log.length>_ERR_MAX) log=log.slice(-_ERR_MAX);
