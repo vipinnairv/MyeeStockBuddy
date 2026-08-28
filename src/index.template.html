@@ -1539,6 +1539,8 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
           </div>
           <!-- File status (populated after a live fetch) -->
           <div class="file-list" id="fileList" style="margin-top:12px;"></div>
+          <!-- TwelveData setup step (rendered by _renderTdSetup) -->
+          <div id="tdSetupHost"></div>
           <!-- BYOK API Keys (stored in localStorage) -->
           <details id="byokPanel" style="margin:8px 0 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);">
             <summary style="padding:8px 12px;cursor:pointer;font-size:12px;color:var(--text3);user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
@@ -3612,7 +3614,10 @@ document.addEventListener('click', e => {
 // ============================================================
 function _saveKey(id, val) {
   try { localStorage.setItem(id, val.trim()); } catch(e) {}
+  const el = document.getElementById(id);
+  if (el && el.value !== val) el.value = val;          // keep panel + modal in sync
   _updateByokStatus();
+  try { _renderTdSetup(); } catch(e) {}
 }
 function _loadKey(id) {
   return (document.getElementById(id)?.value || localStorage.getItem(id) || '').trim();
@@ -3630,6 +3635,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.value = localStorage.getItem(id) || '';
   });
   _updateByokStatus();
+  _renderTdSetup();
   // Pre-warm Fuse index for current market mode after render (requestIdleCallback or setTimeout fallback)
   const prewarm = () => {
     if (typeof Fuse !== 'undefined') {
@@ -3640,6 +3646,149 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(prewarm, { timeout: 2000 });
   else setTimeout(prewarm, 400);
 });
+
+// ============================================================
+// TWELVEDATA SETUP STEP
+// ------------------------------------------------------------
+// The keyless price path goes through public CORS proxies, and every one of
+// them has degraded (401s, timeouts, unreachable hosts). TwelveData is the one
+// free provider that is direct-CORS - the browser calls api.twelvedata.com
+// itself, no proxy in the middle - and genuinely carries NSE. So we walk the
+// user through getting a key up front instead of after a failed fetch.
+// The key is stored in localStorage and sent only to TwelveData.
+// ============================================================
+const _TD_DISMISS_KEY = 'td_setup_dismissed';
+const _TD_VERIFY_KEY  = 'td_key_checked';
+const _TD_SIGNUP_URL  = 'https://twelvedata.com/pricing';
+
+function _tdSetupState() {
+  if (_loadKey('tdApiKey')) return 'keyed';
+  try { if (localStorage.getItem(_TD_DISMISS_KEY) === '1') return 'dismissed'; } catch(e) {}
+  return 'prompt';
+}
+
+function _renderTdSetup() {
+  const host = document.getElementById('tdSetupHost');
+  if (!host) return;
+  const state = _tdSetupState();
+  if (state === 'dismissed') { host.innerHTML = ''; return; }
+
+  if (state === 'keyed') {
+    let chk = ''; try { chk = localStorage.getItem(_TD_VERIFY_KEY) || ''; } catch(e) {}
+    host.innerHTML = `<div style="margin:8px 0 6px;padding:9px 12px;border:1px solid var(--green,#00B386);border-radius:8px;background:rgba(0,179,134,.08);font-size:12px;color:var(--text2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>✅ <strong>TwelveData key saved.</strong> Prices come straight from twelvedata.com - no public proxy involved.</span>
+      ${chk ? `<span style="font-size:11px;color:var(--text3);">${chk}</span>` : ''}
+      <button onclick="openTdSetup()" style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px;">Check key</button>
+    </div>`;
+    return;
+  }
+
+  host.innerHTML = `<div id="tdSetupCard" style="margin:8px 0 6px;padding:11px 13px;border:1px solid var(--accent);border-radius:8px;background:var(--surface2);font-size:12px;color:var(--text2);line-height:1.55;">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+      <span style="font-size:15px;">🔑</span>
+      <strong style="color:var(--text);">One-time setup: connect a free data key</strong>
+    </div>
+    Without a key this app borrows public CORS proxies to reach market data, and those proxies now fail
+    often - that is the "couldn't fetch" error. A free <strong>TwelveData</strong> key (800 requests/day,
+    real NSE + US coverage) is called directly from your browser, so no proxy is involved. Takes about two minutes.
+    <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button onclick="openTdSetup()" style="background:var(--accent);color:#fff;border:none;padding:7px 15px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">Set it up →</button>
+      <button onclick="dismissTdSetup()" style="background:none;border:1px solid var(--border);color:var(--text3);padding:7px 13px;border-radius:7px;cursor:pointer;font-size:12px;">Skip - I'll use the proxies</button>
+    </div>
+  </div>`;
+}
+
+function dismissTdSetup() {
+  try { localStorage.setItem(_TD_DISMISS_KEY, '1'); } catch(e) {}
+  _renderTdSetup();
+}
+
+function openTdSetup() {
+  const old = document.getElementById('tdSetupModal');
+  if (old) old.remove();
+  const m = document.createElement('div');
+  m.id = 'tdSetupModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const step = (n, body) => `<div style="display:flex;gap:11px;margin-bottom:14px;">
+    <div style="flex:0 0 24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">${n}</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;">${body}</div></div>`;
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:22px;max-width:500px;width:100%;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <b style="font-size:17px;">🔑 Connect TwelveData</b>
+      <button onclick="closeTdSetup()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.5;">Free tier: 800 requests/day, 8/minute. The key is stored in this browser only and is sent to nobody but TwelveData.</div>
+    ${step(1, `Open <a href="${_TD_SIGNUP_URL}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;">twelvedata.com/pricing →</a> and sign up on the <b>Basic (free)</b> plan. No card needed.`)}
+    ${step(2, `After signing up you land on the dashboard - your <b>API key</b> is shown there. Copy it.`)}
+    ${step(3, `Paste it below. It saves as you type.
+      <input id="tdSetupInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your TwelveData key…"
+        oninput="_saveKey('tdApiKey',this.value)"
+        style="width:100%;height:38px;margin-top:8px;font-size:13px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'JetBrains Mono',monospace;" />`)}
+    <button onclick="_tdVerifyKey()" style="width:100%;background:var(--accent);color:#fff;border:none;padding:10px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">Test my key</button>
+    <div id="tdVerifyOut" style="margin-top:11px;font-size:12px;color:var(--text3);line-height:1.6;"></div>
+    <button onclick="closeTdSetup()" style="width:100%;margin-top:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:7px;cursor:pointer;font-size:12px;">Done</button>
+  </div>`;
+  document.body.appendChild(m);
+  const inp = document.getElementById('tdSetupInput');
+  if (inp) { try { inp.value = localStorage.getItem('tdApiKey') || ''; } catch(e) {} inp.focus(); }
+}
+
+function closeTdSetup() {
+  const m = document.getElementById('tdSetupModal');
+  if (m) m.remove();
+  _renderTdSetup();
+}
+
+// Probe one TwelveData quote endpoint. Reports what actually came back - a
+// plan restriction on NSE is a real answer, not a pass.
+async function _tdProbe(label, url) {
+  try {
+    const c = new AbortController();
+    const timer = setTimeout(() => c.abort(), 12000);
+    let r, j = null;
+    try { r = await fetch(url, { signal: c.signal }); j = await r.json(); }
+    finally { clearTimeout(timer); }
+    if (j && j.close != null && j.status !== 'error') return { label, ok: true, msg: 'live (last close ' + j.close + ')' };
+    const msg = (j && (j.message || j.note)) || ('HTTP ' + (r ? r.status : '?'));
+    return { label, ok: false, msg: String(msg).slice(0, 150) };
+  } catch (e) {
+    const n = (e && (e.name || e.message)) || '';
+    return { label, ok: false, msg: /abort/i.test(n) ? 'timed out (12s)' : 'could not reach api.twelvedata.com' };
+  }
+}
+
+async function _tdVerifyKey() {
+  const out = document.getElementById('tdVerifyOut');
+  const key = _loadKey('tdApiKey');
+  if (!out) return;
+  if (!key) { out.innerHTML = '<span style="color:var(--red,#D93025)">Paste a key first.</span>'; return; }
+  out.textContent = '⏳ Testing against a US and an NSE symbol…';
+  const q = encodeURIComponent(key);
+  const res = await Promise.all([
+    _tdProbe('US (AAPL)', `https://api.twelvedata.com/quote?symbol=AAPL&apikey=${q}`),
+    _tdProbe('NSE (RELIANCE)', `https://api.twelvedata.com/quote?symbol=RELIANCE&exchange=NSE&apikey=${q}`),
+  ]);
+  const us = res[0], nse = res[1];
+  const rows = res.map(r => `<div>${r.ok ? '✅' : '⚠️'} <b>${r.label}</b> - ${r.msg}</div>`).join('');
+  let verdict;
+  if (us.ok && nse.ok) {
+    verdict = '<div style="color:var(--green,#00B386);font-weight:700;margin-top:6px;">Key works for both US and NSE. You can close this.</div>';
+  } else if (us.ok) {
+    // Honest: the free plan does not always include Indian exchanges. Say so
+    // rather than declaring success and letting India fetches fail later.
+    verdict = '<div style="color:var(--text2);margin-top:6px;">The key is valid, but <b>NSE was refused on this plan</b>. US symbols will fetch directly; Indian symbols still fall back to the public proxies, which may fail. TwelveData sometimes gates Indian exchanges behind a paid plan.</div>';
+  } else if (nse.ok) {
+    verdict = '<div style="color:var(--text2);margin-top:6px;">NSE works. The US probe failed - retry in a minute; the free plan allows 8 requests per minute.</div>';
+  } else {
+    verdict = '<div style="color:var(--red,#D93025);font-weight:700;margin-top:6px;">The key did not work. Check for stray spaces, or wait a minute if you have hit the 8-requests-per-minute limit.</div>';
+  }
+  out.innerHTML = rows + verdict;
+  const stamp = (us.ok || nse.ok)
+    ? `checked ${new Date().toISOString().slice(0,10)}: ${us.ok ? 'US ✓' : 'US ✗'} · ${nse.ok ? 'NSE ✓' : 'NSE ✗'}`
+    : '';
+  try { if (stamp) localStorage.setItem(_TD_VERIFY_KEY, stamp); else localStorage.removeItem(_TD_VERIFY_KEY); } catch(e) {}
+  _renderTdSetup();
+}
 
 // ============================================================
 // OHLCV CACHE - localStorage first, IndexedDB fallback
@@ -4158,7 +4307,7 @@ async function fetchSymbolData() {
         ${!hasKey ? `<br><small>• 🔑 <b>Best fix for office use:</b> add a free
           <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)">TwelveData</a> or
           <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Alpha Vantage</a>
-          key in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button>.
+          key - <button onclick="openTdSetup&&openTdSetup()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">walk me through it →</button>.
           The app then calls that provider's own domain directly - no public proxy - which office firewalls rarely block.</small>`
         : `<br><small>• Your API key host may also be blocked here - the test below will show which servers are reachable.</small>`}
         <br><small>• 🏢 If the block is intentional, ask IT to allow the domain(s) shown by the test.</small>
@@ -4177,7 +4326,7 @@ async function fetchSymbolData() {
         <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)"><b>TwelveData key</b></a>
         (800 requests/day, real NSE coverage). It calls TwelveData directly, so none of the public proxies above are involved.
         ${hasKey ? 'Your saved key is a different provider - Alpha Vantage\'s free tier cannot fetch daily history.' : ''}
-        Paste it under <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button>.</small>`;
+        <button onclick="openTdSetup&&openTdSetup()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">Walk me through it (2 min) →</button></small>`;
       const modeHints = {
         india:  `<br><small>• NSE codes: <b>RELIANCE</b>, <b>INFY</b>, <b>TCS</b> (no .NS suffix)</small><br><small>• Try BSE ↔ NSE toggle</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download NSE CSV →</a></small>`,
         us:     `<br><small>• US tickers: <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,

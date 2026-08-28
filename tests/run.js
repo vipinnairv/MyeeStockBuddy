@@ -439,6 +439,117 @@ group('fetch resilience — causes seen in production logs');
   }
 }
 
+// ── TwelveData setup step ──────────────────────────────────────────────────
+group('twelvedata setup step');
+{
+  let JSDOM = null;
+  try { ({ JSDOM } = require('jsdom')); } catch (e) {}
+  if (!JSDOM) {
+    results.push(['SKIP', 'TwelveData setup DOM tests (install jsdom to enable)', '']);
+  } else {
+    const src = slice('const _TD_DISMISS_KEY', '// OHLCV CACHE', 'tdsetup');
+    const dom = new JSDOM('<div id="tdSetupHost"></div><input id="tdApiKey">');
+    const doc = dom.window.document;
+    let LS = {};
+    const storage = {
+      getItem: k => (k in LS ? LS[k] : null),
+      setItem: (k, v) => { LS[k] = String(v); },
+      removeItem: k => { delete LS[k]; },
+    };
+    let FETCH = () => { throw new Error('no fetch stub'); };
+    const api = load(
+      `function _loadKey(id){return (document.getElementById(id)?.value || localStorage.getItem(id) || '').trim();}\n`
+      + src.replace(/^const /gm, 'var '),
+      ['_renderTdSetup','dismissTdSetup','openTdSetup','closeTdSetup','_tdVerifyKey','_tdSetupState','_TD_SIGNUP_URL'],
+      { document: doc, localStorage: storage, window: dom.window,
+        AbortController: dom.window.AbortController, setTimeout, clearTimeout,
+        fetch: (...a) => FETCH(...a), Date, encodeURIComponent, Promise });
+    const { _renderTdSetup, dismissTdSetup, openTdSetup, closeTdSetup, _tdVerifyKey, _tdSetupState, _TD_SIGNUP_URL } = api;
+    const host = doc.getElementById('tdSetupHost');
+
+    // ── state machine ──
+    eq('no key, not dismissed -> prompt', _tdSetupState(), 'prompt');
+    _renderTdSetup();
+    ok('prompt card offers the guided setup', /openTdSetup\(\)/.test(host.innerHTML), host.innerHTML.slice(0, 80));
+    ok('prompt card explains why (proxies fail)', /prox/i.test(host.textContent), host.textContent.slice(0, 90));
+
+    dismissTdSetup();
+    eq('skipping is remembered', _tdSetupState(), 'dismissed');
+    eq('dismissed card renders nothing', host.innerHTML, '');
+
+    LS['tdApiKey'] = 'abc123';
+    eq('a saved key outranks the dismissal', _tdSetupState(), 'keyed');
+    _renderTdSetup();
+    ok('keyed card confirms the direct connection', /no public proxy/i.test(host.textContent), host.textContent);
+
+    // ── the modal ──
+    delete LS['tdApiKey'];
+    openTdSetup();
+    const modal = doc.getElementById('tdSetupModal');
+    ok('modal opens', !!modal, 'no modal');
+    ok('modal links the real signup page', modal.innerHTML.includes(_TD_SIGNUP_URL), 'signup link missing');
+    ok('paste field saves to tdApiKey', /_saveKey\('tdApiKey'/.test(modal.innerHTML), 'field not wired');
+    openTdSetup();
+    eq('re-opening does not stack modals', doc.querySelectorAll('#tdSetupModal').length, 1);
+    closeTdSetup();
+    ok('closing removes the modal', !doc.getElementById('tdSetupModal'), 'modal still present');
+
+    // ── key verification is honest about what came back ──
+    const reply = map => (url) => Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve(url.includes('exchange=NSE') ? map.nse : map.us) });
+    const runVerify = async (map, key) => {
+      LS = key === undefined ? {} : { tdApiKey: key };
+      FETCH = reply(map);
+      openTdSetup();
+      doc.getElementById('tdSetupInput').value = key || '';
+      await _tdVerifyKey();
+      const txt = doc.getElementById('tdVerifyOut').textContent;
+      closeTdSetup();
+      return txt;
+    };
+    const ERR = { status: 'error', code: 403, message: 'plan does not include NSE' };
+    pending.push((async () => {
+      let txt = await runVerify({ us: { close: '229.1' }, nse: { close: '1402.5' } }, 'k1');
+      ok('both markets working is reported as such', /both US and NSE/i.test(txt), txt);
+
+      txt = await runVerify({ us: { close: '229.1' }, nse: ERR }, 'k1');
+      ok('a valid key with no NSE is not called a success', !/works for both/i.test(txt), txt);
+      ok('NSE refusal is named plainly', /NSE was refused/i.test(txt), txt);
+      ok('and it says India still falls back to proxies', /fall back to the public proxies/i.test(txt), txt);
+
+      txt = await runVerify({ us: ERR, nse: ERR }, 'k1');
+      ok('a dead key is reported as failing', /did not work/i.test(txt), txt);
+      ok('the error text from TwelveData is shown', /plan does not include NSE/.test(txt), txt);
+
+      txt = await runVerify({ us: { close: '1' }, nse: { close: '1' } }, undefined);
+      ok('an empty key asks for a key instead of probing', /Paste a key first/i.test(txt), txt);
+
+      // A network failure must not be misread as a working key.
+      LS = { tdApiKey: 'k1' };
+      FETCH = () => Promise.reject(new Error('Failed to fetch'));
+      openTdSetup();
+      await _tdVerifyKey();
+      const off = doc.getElementById('tdVerifyOut').textContent;
+      closeTdSetup();
+      ok('an unreachable host is not a pass', /did not work/i.test(off), off);
+      ok('and names the host it could not reach', /api\.twelvedata\.com/.test(off), off);
+    })());
+  }
+}
+
+// The failure paths must route to the guided setup, not the bare key panel.
+group('fetch failure routes to the setup step');
+{
+  ok('the "no data" hint opens the walkthrough',
+     SRC.includes('Walk me through it (2 min)') && SRC.includes('openTdSetup&&openTdSetup()'),
+     'still pointing at the raw key panel');
+  ok('the network-block hint opens the walkthrough too',
+     (SRC.match(/openTdSetup&&openTdSetup\(\)/g) || []).length >= 2, 'only one entry point');
+  ok('the setup card is mounted in the fetch panel', SRC.includes('id="tdSetupHost"'), 'no mount point');
+  ok('saving a key re-renders the setup card', /_updateByokStatus\(\);\n  try \{ _renderTdSetup\(\)/.test(SRC),
+     'card can go stale after a key is saved');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
