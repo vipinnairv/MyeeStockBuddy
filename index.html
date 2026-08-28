@@ -3931,21 +3931,23 @@ async function fetchSymbolData() {
 
   // ── Helper: fetch one strategy, return {rows, strat} or throw ────────────
   const _hostOf = u => { try { return new URL(u).host; } catch(e) { return String(u).slice(0,40); } };
-  const _whyOf = e => {
+  const _whyOf = (e, budgetMs) => {
     const m = ((e && (e.message || e.name)) || '') + '';
     if (/failed to fetch|networkerror|load failed/i.test(m)) return 'blocked / unreachable';
-    if (/abort/i.test(m)) return 'timed out (7s)';
+    // Report the budget actually used. This said "7s" after the budget moved
+    // to 15s, which made a slow relay look twice as healthy as it was.
+    if (/abort/i.test(m)) return 'timed out (' + Math.round((budgetMs || 8000) / 1000) + 's)';
     // A bare "Error" is the default name with no message - not worth reporting.
     if (!m || m === 'Error') return 'unknown';
     return m.slice(0, 70);
   };
   async function _tryOne(strat) {
     const ctrl  = new AbortController();
+    strat._budgetMs = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs)/.test(strat.url) ? 15000 : 8000;
     // A proxy has to fetch ~400 days of JSON from Yahoo and relay it, so it
     // needs a longer budget than a direct API call. allorigins was timing out
     // at 7s on real user traffic, taking the main fallback out of the race.
-    const _budget = /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs)/.test(strat.url) ? 15000 : 8000;
-    const timer = setTimeout(() => ctrl.abort(), _budget);
+    const timer = setTimeout(() => ctrl.abort(), strat._budgetMs);
     let res;
     try { res = await fetch(strat.url, { signal: ctrl.signal }); }
     finally { clearTimeout(timer); }
@@ -3959,8 +3961,12 @@ async function fetchSymbolData() {
       if (raw['Note'])        throw new Error('AV rate-limit');
       if (raw['Information']) {
         const _i = String(raw['Information']);
+        // The app already requests the free TIME_SERIES_DAILY endpoint. If Alpha
+        // Vantage still answers "premium", this key genuinely cannot fetch daily
+        // history - no amount of retrying changes that, so say so and name the
+        // alternative instead of implying a reload might help.
         throw new Error(/premium/i.test(_i)
-          ? 'AV: this key cannot use that endpoint (premium) - the app now asks for the free daily series, so reload if this persists'
+          ? 'AV: free key cannot fetch daily history - use a TwelveData key instead'
           : 'AV: ' + _i);
       }
       const ts = raw['Time Series (Daily)'];
@@ -4059,7 +4065,7 @@ async function fetchSymbolData() {
   try {
     const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s).then(
       r => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:true }); return r; },
-      e => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:false, why:_whyOf(e) });
+      e => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:false, why:_whyOf(e, s._budgetMs) });
              throw e; })));
 
     parsedData = rows;
@@ -4161,7 +4167,17 @@ async function fetchSymbolData() {
       </div>`;
     } else {
       // Servers reachable but no data - most likely a wrong symbol/exchange.
-      const keyHint = !hasKey ? `<br><small>• 🔑 <strong>Tip:</strong> Add a free <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)">TwelveData key</a> (800 req/day) or <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">Alpha Vantage key</a> for reliable direct access - no proxy needed.</small>` : '';
+      // The public CORS proxies this app falls back on have now failed three
+      // separate times, and a free Alpha Vantage key cannot fetch daily history
+      // at all. TwelveData is the one free source that is direct-CORS and
+      // actually covers NSE, so recommend it first and keep recommending it
+      // even when some other key is already saved.
+      const _tdKeyed = !!tdKey;
+      const keyHint = _tdKeyed ? '' : `<br><small>• 🔑 <strong>The reliable fix:</strong> add a free
+        <a href="https://twelvedata.com/pricing" target="_blank" style="color:var(--accent)"><b>TwelveData key</b></a>
+        (800 requests/day, real NSE coverage). It calls TwelveData directly, so none of the public proxies above are involved.
+        ${hasKey ? 'Your saved key is a different provider - Alpha Vantage\'s free tier cannot fetch daily history.' : ''}
+        Paste it under <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button>.</small>`;
       const modeHints = {
         india:  `<br><small>• NSE codes: <b>RELIANCE</b>, <b>INFY</b>, <b>TCS</b> (no .NS suffix)</small><br><small>• Try BSE ↔ NSE toggle</small><br><small>• Fallback: <a href="https://www.nseindia.com/report-detail/eq_security" target="_blank" style="color:var(--accent)">Download NSE CSV →</a></small>`,
         us:     `<br><small>• US tickers: <b>AAPL</b>, <b>TSLA</b>, <b>NVDA</b> (no exchange prefix)</small><br><small>• Fallback: <a href="https://finance.yahoo.com/quote/${yahooSym}/history/" target="_blank" style="color:var(--accent)">📥 Yahoo Finance CSV →</a></small>`,
