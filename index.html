@@ -4018,16 +4018,22 @@ async function fetchSymbolData() {
   }
 
   // ── 3. Race all strategies - cache winner ────────────────────────────────
+  // Annotate each rejection with the source and host it came from. Without
+  // this, Promise.any collapses eight different failures into one opaque
+  // AggregateError and a real outage cannot be told apart from a bad symbol.
+  //
+  // This MUST live outside the try. It previously sat inside, published to
+  // window only on the line after the await - which never runs when every
+  // source fails, i.e. exactly the case the breakdown exists for. The array is
+  // shared by reference, so publishing it up front keeps it live as attempts
+  // settle.
+  const _attempts = [];
+  window._lastFetchAttempts = _attempts;
   try {
-    // Annotate each rejection with the source and host it came from. Without
-    // this, Promise.any collapses eight different failures into one opaque
-    // AggregateError and a real outage cannot be told apart from a bad symbol.
-    const _attempts = [];
     const { rows, strat } = await Promise.any(strategies.map(s => _tryOne(s).then(
       r => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:true }); return r; },
       e => { _attempts.push({ label:s.label, host:_hostOf(s.url), ok:false, why:_whyOf(e) });
              throw e; })));
-    window._lastFetchAttempts = _attempts;
 
     parsedData = rows;
     _cachePut(cacheKey, rows); // fire-and-forget cache write
@@ -4049,7 +4055,7 @@ async function fetchSymbolData() {
     // the cache fallback, which meant anyone with a cached copy - i.e. most
     // returning users - never saw it, and the one piece of information needed
     // to diagnose an outage was unreachable exactly when it was needed.
-    const _att = (window._lastFetchAttempts || []).filter(a => !a.ok);
+    const _att = _attempts.filter(a => !a.ok);
     const _breakdown = _att.map(a => `${a.label} (${a.host}): ${a.why}`).join(' · ');
     try { _logErr(new Error(`fetch ${yahooSym} failed - ${_breakdown || 'no attempts recorded'}`), 'fetchSymbolData'); } catch(e) {}
     const _breakdownHTML = _att.length

@@ -13,6 +13,9 @@ function ok(name, cond, detail) {
 function eq(name, got, want) { ok(name, got === want, `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`); }
 function near(name, got, want, tol) { ok(name, Math.abs(got - want) <= tol, `got ${got} want ~${want}`); }
 function group(g) { results.push(['GROUP', g, '']); }
+// Async assertions register here; the report waits for them. Never `return`
+// from module scope in this file - it silently ends the run with no output.
+const pending = [];
 
 const line = (a, b, n) => Array.from({ length: n }, (_, i) => a + (b - a) * i / (n - 1));
 const osc  = (mid, amp, n) => Array.from({ length: n }, (_, i) => mid + amp * Math.sin(i / 6));
@@ -323,6 +326,45 @@ group('fetch diagnostics — say which source failed and why');
     }, 0);
     eq('no early return leaves the Fetch button stuck', leaks, 0);
   }
+  // The attempts array MUST be declared outside the try. It previously sat
+  // inside and was published to window on the line after the await - which
+  // never runs when Promise.any rejects, i.e. exactly when every source failed
+  // and the breakdown is the only thing the user has. It rendered empty every
+  // time. Structural guard plus a behavioural proof of the control flow.
+  {
+    const a = SRC.indexOf('const _attempts = []');
+    const tryIdx = SRC.indexOf('try {', SRC.indexOf('3. Race all strategies'));
+    ok('attempts array is declared before the try', a >= 0 && a < tryIdx, `decl=${a} try=${tryIdx}`);
+    ok('catch reads the in-scope array', SRC.includes('const _att = _attempts.filter'), 'catch uses the global instead');
+  }
+  {
+    // Behavioural: publishing after the await loses everything on total failure.
+    const fails = n => Array.from({ length: n }, (_, i) => () => Promise.reject(new Error('HTTP ' + (429 + i))));
+    const afterAwait = async strats => {           // the old, broken shape
+      let published = null;
+      try {
+        const at = [];
+        await Promise.any(strats.map(s => s().then(r => { at.push({ ok:true }); return r; },
+                                                   e => { at.push({ ok:false }); throw e; })));
+        published = at;
+      } catch (e) { return (published || []).filter(x => !x.ok); }
+      return [];
+    };
+    const hoisted = async strats => {               // the shipped shape
+      const at = [];
+      try {
+        await Promise.any(strats.map(s => s().then(r => { at.push({ ok:true }); return r; },
+                                                   e => { at.push({ ok:false }); throw e; })));
+      } catch (e) { return at.filter(x => !x.ok); }
+      return [];
+    };
+    pending.push((async () => {
+      eq('old shape loses every failure', (await afterAwait(fails(4))).length, 0);
+      eq('hoisted shape captures all failures', (await hoisted(fails(4))).length, 4);
+      eq('hoisted shape reports none on success',
+         (await hoisted([() => Promise.reject(new Error('x')), () => Promise.resolve('ok')])).length, 0);
+    })());
+  }
   ok('main fetch escapes the symbol', SRC.includes('chart/${encodeURIComponent(yahooSym)}'), 'symbol not escaped');
 }
 
@@ -337,11 +379,15 @@ group('build — index.html matches src/');
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────
-const W = 52;
-for (const [kind, name, detail] of results) {
-  if (kind === 'GROUP') { console.log(`\n\x1b[1m${name}\x1b[0m`); continue; }
-  const tag = kind === 'PASS' ? '\x1b[32mPASS\x1b[0m' : kind === 'SKIP' ? '\x1b[33mSKIP\x1b[0m' : '\x1b[31mFAIL\x1b[0m';
-  console.log(`  ${tag}  ${name.padEnd(W)}${detail ? '  ' + detail : ''}`);
-}
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+(async () => {
+  await Promise.all(pending);
+  const W = 52;
+  for (const [kind, name, detail] of results) {
+    if (kind === 'GROUP') { console.log(`\n\x1b[1m${name}\x1b[0m`); continue; }
+    const tag = kind === 'PASS' ? '\x1b[32mPASS\x1b[0m' : kind === 'SKIP' ? '\x1b[33mSKIP\x1b[0m' : '\x1b[31mFAIL\x1b[0m';
+    console.log(`  ${tag}  ${name.padEnd(W)}${detail ? '  ' + detail : ''}`);
+  }
+  if (!pass && !fail) { console.error('\nNo assertions ran - the suite is broken.'); process.exit(1); }
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})();
