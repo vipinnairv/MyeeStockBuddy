@@ -390,10 +390,15 @@ group('fetch resilience — causes seen in production logs');
   ok('empty AV series explains the exchange', SRC.includes('no NSE feed'), 'generic message only');
 
   // Proxies were timing out at 7s on real traffic.
-  const budget = url => /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|r\.jina|api\.cors)/.test(url) ? 15000 : 8000;
+  const budget = url => /^https:\/\/(api\.allorigins|corsproxy|api\.codetabs|thingproxy|cors\.eu\.org)/.test(url) ? 15000 : 8000;
   eq('allorigins gets the longer budget', budget('https://api.allorigins.win/raw?url=x'), 15000);
   eq('codetabs gets the longer budget', budget('https://api.codetabs.com/v1/proxy?quest=x'), 15000);
   eq('corsproxy gets the longer budget', budget('https://corsproxy.io/?url=x'), 15000);
+  eq('thingproxy gets the longer budget', budget('https://thingproxy.freeboard.io/fetch/x'), 15000);
+  eq('cors.eu.org gets the longer budget', budget('https://cors.eu.org/x'), 15000);
+  // The app's regex must match this mirror, or the budgets silently diverge.
+  ok('app budgets thingproxy and cors.eu.org as slow relays',
+     /thingproxy\|cors\\\.eu\\\.org/.test(SRC), 'new relays not in the budget regex');
   eq('direct Alpha Vantage stays short', budget('https://www.alphavantage.co/query?f=x'), 8000);
   eq('direct TwelveData stays short', budget('https://api.twelvedata.com/time_series?x'), 8000);
   ok('the app actually applies a per-host budget', SRC.includes('strat._budgetMs ='), 'no budget logic');
@@ -418,6 +423,18 @@ group('fetch resilience — causes seen in production logs');
   // unreachable and r.jina.ai returns Markdown, not JSON.
   ok('no dead relays remain in the strategy list',
      !/url:`https:\/\/api\.cors\.lol/.test(SRC) && !/url:`https:\/\/r\.jina\.ai/.test(SRC), 'dead relay still active');
+
+  // Two fresh, independent relay hosts widen the pool. thingproxy and
+  // cors.eu.org take the RAW upstream URL - encoding it would break them.
+  ok('thingproxy relay is wired with the raw Yahoo URL',
+     SRC.includes('https://thingproxy.freeboard.io/fetch/${yfQ2}'), 'thingproxy missing or encoded');
+  ok('cors.eu.org relay is wired with the raw Yahoo URL',
+     SRC.includes('https://cors.eu.org/${yfQ2}'), 'cors.eu.org missing or encoded');
+  ok('the fresh relays cover Stooq too',
+     SRC.includes('https://thingproxy.freeboard.io/fetch/${stooqUrl}') && SRC.includes('https://cors.eu.org/${stooqUrl}'),
+     'Stooq not mirrored');
+  ok('the fresh relays are not double-encoded',
+     !SRC.includes('thingproxy.freeboard.io/fetch/${enc(') && !SRC.includes('cors.eu.org/${enc('), 'relay URL is encoded');
 
   // Truncating at 300 chars cut the breakdown off mid-sentence.
   ok('diagnostics keep the full breakdown', SRC.includes('slice(0,900)'), 'still truncating at 300');
