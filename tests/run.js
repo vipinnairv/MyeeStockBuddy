@@ -588,8 +588,11 @@ group('self-hosted proxy (Cloudflare Worker)');
 
   // App wiring: the Worker is opt-in, tried first, and appends ?url=.
   ok('app defines the built-in Worker constant', SRC.includes('const SELF_PROXY_BUILTIN'), 'constant missing');
-  ok('app ships with it empty (no accidental hardcoded URL)',
-     /const SELF_PROXY_BUILTIN = '';/.test(SRC), 'a URL got committed - intended?');
+  ok('the owner Worker URL is hardcoded so all users get it',
+     /const SELF_PROXY_BUILTIN = 'https:\/\/miyeestockbuddy\.audit-vipin\.workers\.dev';/.test(SRC),
+     'SELF_PROXY_BUILTIN is not set to the deployed Worker');
+  ok('the hardcoded Worker URL has no trailing slash',
+     !/const SELF_PROXY_BUILTIN = '[^']*\/';/.test(SRC), 'trailing slash would double up with /?url=');
   ok('a per-browser override reads localStorage', SRC.includes("localStorage.getItem('self_proxy_url')"), 'no override');
   ok('trailing slash is stripped before appending ?url=', SRC.includes("replace(/\\/+$/, '')"), 'slash not stripped');
   ok('the proxy is raced FIRST, ahead of the public relays',

@@ -3955,7 +3955,7 @@ async function _cachePut(sym, rows) {
 // and every visitor fetches keyless through a proxy you control, tried first.
 // Empty = fall back to the public relay pool. A per-browser override lives in
 // localStorage('self_proxy_url') so you can test a Worker before hardcoding it.
-const SELF_PROXY_BUILTIN = '';
+const SELF_PROXY_BUILTIN = 'https://miyeestockbuddy.audit-vipin.workers.dev';
 function _selfProxyUrl() {
   let v = SELF_PROXY_BUILTIN;
   try { v = (localStorage.getItem('self_proxy_url') || '').trim() || v; } catch(e) {}
