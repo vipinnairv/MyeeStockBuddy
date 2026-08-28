@@ -293,7 +293,15 @@ group('fetch diagnostics — say which source failed and why');
   eq('host from codetabs URL', _hostOf('https://api.codetabs.com/v1/proxy?quest=y'), 'api.codetabs.com');
   eq('malformed URL still returns a string', typeof _hostOf('not a url'), 'string');
   eq('CORS / offline is classified', _whyOf(new TypeError('Failed to fetch')), 'blocked / unreachable');
-  eq('timeout is classified', _whyOf(Object.assign(new Error('aborted'), { name:'AbortError' })), 'timed out (7s)');
+  // The message must report the budget actually used. It said "7s" long after
+  // the proxy budget moved to 15s, making a slow relay look twice as healthy.
+  eq('proxy timeout reports its real budget',
+     _whyOf(Object.assign(new Error('aborted'), { name:'AbortError' }), 15000), 'timed out (15s)');
+  eq('direct-call timeout reports its real budget',
+     _whyOf(Object.assign(new Error('aborted'), { name:'AbortError' }), 8000), 'timed out (8s)');
+  eq('missing budget falls back sensibly',
+     _whyOf(Object.assign(new Error('aborted'), { name:'AbortError' })), 'timed out (8s)');
+  ok('no hard-coded 7s message remains', !SRC.includes("timed out (7s)"), 'stale message');
   eq('HTTP status is preserved', _whyOf(new Error('HTTP 429')), 'HTTP 429');
   eq('provider rate-limit is preserved', _whyOf(new Error('AV rate-limit')), 'AV rate-limit');
   eq('empty error is not reported as "Error"', _whyOf(new Error('')), 'unknown');
@@ -388,7 +396,7 @@ group('fetch resilience — causes seen in production logs');
   eq('corsproxy gets the longer budget', budget('https://corsproxy.io/?url=x'), 15000);
   eq('direct Alpha Vantage stays short', budget('https://www.alphavantage.co/query?f=x'), 8000);
   eq('direct TwelveData stays short', budget('https://api.twelvedata.com/time_series?x'), 8000);
-  ok('the app actually applies a per-host budget', SRC.includes('const _budget ='), 'no budget logic');
+  ok('the app actually applies a per-host budget', SRC.includes('strat._budgetMs ='), 'no budget logic');
   ok('7s blanket timeout is gone', !SRC.includes('ctrl.abort(), 7000'), 'still 7s for proxies');
 
   // Alpha Vantage made TIME_SERIES_DAILY_ADJUSTED premium: a free key gets
@@ -397,8 +405,14 @@ group('fetch resilience — causes seen in production logs');
   ok('requests the free daily series', SRC.includes('function=TIME_SERIES_DAILY&'), 'not using the free endpoint');
   ok('does not request the premium endpoint',
      !/function=TIME_SERIES_DAILY_ADJUSTED&/.test(SRC), 'still calling the premium endpoint');
-  ok('premium refusal gives an actionable message',
-     SRC.includes('cannot use that endpoint (premium)'), 'raw vendor text only');
+  // The app already asks for the free endpoint, so a premium refusal means the
+  // key genuinely cannot do this - name the alternative instead of hinting at a
+  // reload that will not help.
+  ok('premium refusal names the alternative',
+     SRC.includes('free key cannot fetch daily history') && SRC.includes('TwelveData key instead'),
+     'still suggesting a reload');
+  ok('TwelveData is recommended even when another key is saved',
+     SRC.includes('_tdKeyed') && SRC.includes('The reliable fix'), 'guidance still gated on hasKey');
 
   // The two relays added on spec in #27 were removed: cors.lol was
   // unreachable and r.jina.ai returns Markdown, not JSON.
