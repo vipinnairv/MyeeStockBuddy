@@ -654,6 +654,64 @@ group('portfolio price refresh');
   })());
 }
 
+// ── Auto-fetch fundamentals (Worker crumb route + mapping) ─────────────────
+group('auto fundamentals');
+{
+  // The Worker gained a fundamentals route that does Yahoo's cookie+crumb
+  // handshake, and a validation regex guarding the symbols param.
+  const fs = require('fs'); const path = require('path');
+  const w = fs.readFileSync(path.join(__dirname, '..', 'proxy', 'worker.js'), 'utf8').replace(/\r\n/g, '\n');
+  ok('worker has a fundamentals route', /params\.get\('fundamentals'\)/.test(w), 'route missing');
+  ok('worker does the crumb handshake', /getcrumb/.test(w) && /_yahooAuth/.test(w), 'no crumb handshake');
+  ok('fundamentals route validates symbols', /\[A-Za-z0-9\.\\-\^,\]\{1,400\}/.test(w), 'no symbol guard');
+  ok('the crumb route only talks to Yahoo',
+     /query1\.finance\.yahoo\.com\/v7\/finance\/quote/.test(w) && /fc\.yahoo\.com/.test(w), 'unexpected host');
+
+  // _mapQuoteToFund: percent + crore conversions, US market cap via USD-INR.
+  const src = slice('function _mapQuoteToFund(q, isUS, usdInr)', '\n// Pull Yahoo fundamentals', 'mapfund');
+  const { _mapQuoteToFund } = load(src, ['_mapQuoteToFund'], { isFinite, Math });
+
+  const ind = _mapQuoteToFund({ trailingPE: 24.531, priceToBook: 3.2, trailingAnnualDividendYield: 0.0123, marketCap: 1.85e13 }, false, 88);
+  eq('India P/E rounded', ind.pe, 24.53);
+  eq('India P/B rounded', ind.pb, 3.2);
+  eq('dividend yield -> percent', ind.dy, 1.23);
+  eq('India market cap -> Rs crore', ind.mcap, Math.round(1.85e13/1e7));  // 1,850,000 Cr
+
+  const us = _mapQuoteToFund({ trailingPE: 30, priceToBook: 12, marketCap: 3.0e12 }, true, 88);
+  eq('US market cap converted via USD-INR to crore', us.mcap, Math.round(3.0e12*88/1e7));
+  eq('no dividend field -> dy omitted', us.dy, undefined);
+
+  // Guards: junk values never populate a field.
+  const junk = _mapQuoteToFund({ trailingPE: 0, priceToBook: -1, marketCap: 0 }, false, 88);
+  eq('zero P/E ignored', junk.pe, undefined);
+  eq('negative P/B ignored', junk.pb, undefined);
+  eq('zero market cap ignored', junk.mcap, undefined);
+
+  // _fetchFundamentalsBulk parses the v7 quoteResponse into a symbol map, and
+  // no-ops with no Worker configured.
+  const bsrc = slice('async function _fetchFundamentalsBulk(yahooSyms)', '\n\n/* ══════════ MODAL', 'bulkfund');
+  const mkBulk = (sp, fetchImpl) => load(
+    `var _selfProxyUrl = () => ${JSON.stringify(sp)};\n` + bsrc,
+    ['_fetchFundamentalsBulk'],
+    { fetch: fetchImpl, AbortController: function(){ this.abort=()=>{}; this.signal={}; },
+      setTimeout: () => 0, clearTimeout: () => {}, encodeURIComponent, Promise })._fetchFundamentalsBulk;
+
+  ok('the app calls the /?fundamentals= route',
+     SRC.includes('/?fundamentals=${encodeURIComponent(chunk.join'), 'wrong endpoint shape');
+  ok('refresh fills fundamentals only when a value is present',
+     SRC.includes('if (f.pe   != null)') && SRC.includes('h.mcap = f.mcap'), 'unconditional overwrite');
+
+  pending.push((async () => {
+    const resp = { ok:true, json: async () => ({ quoteResponse: { result: [
+      { symbol:'RELIANCE.NS', trailingPE: 22 }, { symbol:'AAPL', trailingPE: 30 } ] } }) };
+    const map = await mkBulk('https://w.workers.dev', async () => resp)(['RELIANCE.NS','AAPL']);
+    ok('bulk maps symbols to quotes', map['RELIANCE.NS'] && map['AAPL'], JSON.stringify(map));
+    eq('quote payload preserved', map['AAPL'].trailingPE, 30);
+    const none = await mkBulk('', async () => resp)(['X.NS']);
+    eq('no Worker -> empty map', Object.keys(none).length, 0);
+  })());
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

@@ -10773,8 +10773,32 @@ async function refreshAllPrices() {
     }));
   }
 
+  // ── Fundamentals pass: auto-fill P/E, P/B, Div Yield, Mkt Cap for equities.
+  // Needs the owner Worker (its /?fundamentals= route does Yahoo's cookie+crumb
+  // handshake). One call covers every holding; missing fields are left as-is so
+  // any value you typed by hand survives.
+  let fundUpd = 0;
+  const eqTasks = tasks.filter(t => t.asset === 'indEQ' || t.asset === 'usEQ');
+  if (eqTasks.length && (typeof _selfProxyUrl === 'function') && _selfProxyUrl()) {
+    if (status) status.textContent = 'Fetching fundamentals (P/E, P/B, yield)…';
+    const fmap = await _fetchFundamentalsBulk(eqTasks.map(t => t.ticker));
+    eqTasks.forEach(t => {
+      const q = fmap[t.ticker]; if (!q) return;
+      const isUS = t.asset === 'usEQ';
+      const h = isUS ? S.usEQ[t.idx] : S.indEQ[t.idx]; if (!h) return;
+      const f = _mapQuoteToFund(q, isUS, S.usdInr);
+      let touched = false;
+      if (f.pe   != null) { h.pe   = f.pe;   touched = true; }
+      if (f.pb   != null) { h.pb   = f.pb;   touched = true; }
+      if (f.dy   != null) { h.dy   = f.dy;   touched = true; }
+      if (f.mcap != null) { h.mcap = f.mcap; touched = true; }
+      if (touched) fundUpd++;
+    });
+  }
+
   if (bar) bar.style.width = '100%';
-  if (status) status.textContent = `✅ Updated ${updated}/${total} prices successfully!`;
+  const _fpart = fundUpd ? ` · fundamentals on ${fundUpd}` : '';
+  if (status) status.textContent = `✅ Updated ${updated}/${total} prices${_fpart}!`;
   setTimeout(() => { if (progress) progress.style.display = 'none'; }, 3000);
   if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Refresh All Prices'; }
 
@@ -10782,7 +10806,50 @@ async function refreshAllPrices() {
   if (el) el.textContent = 'Last updated: ' + new Date().toLocaleTimeString('en-IN');
 
   save(); renderLTP();
-  toast(`Updated ${updated} live prices!`, updated > 0 ? 'ok' : 'err');
+  try { if (typeof renderXRay === 'function') renderXRay(); } catch(e) {}
+  toast(`Updated ${updated} prices${fundUpd ? ', '+fundUpd+' fundamentals' : ''}!`, updated > 0 ? 'ok' : 'err');
+}
+
+// Map one Yahoo v7 quote object to the holding's fundamentals fields.
+// dy -> percent; mcap -> Rs crore (US market caps are USD, so x USD-INR / 1e7).
+function _mapQuoteToFund(q, isUS, usdInr) {
+  const o = {};
+  const pe = q && +q.trailingPE;      if (isFinite(pe) && pe > 0) o.pe = +pe.toFixed(2);
+  const pb = q && +q.priceToBook;     if (isFinite(pb) && pb > 0) o.pb = +pb.toFixed(2);
+  if (q && q.trailingAnnualDividendYield != null && isFinite(q.trailingAnnualDividendYield))
+    o.dy = +(q.trailingAnnualDividendYield * 100).toFixed(2);
+  else if (q && q.dividendYield != null && isFinite(+q.dividendYield))
+    o.dy = +(+q.dividendYield).toFixed(2);   // v7 already reports this one as a percent
+  const mc = q && +q.marketCap;
+  if (isFinite(mc) && mc > 0) {
+    const cr = isUS ? mc * (usdInr || 1) / 1e7 : mc / 1e7;
+    o.mcap = Math.round(cr);
+  }
+  return o;
+}
+
+// Pull Yahoo fundamentals for many symbols through the owner Worker in one or
+// two calls. Returns { yahooSymbol: quoteObject }. Empty on any failure.
+async function _fetchFundamentalsBulk(yahooSyms) {
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if (!sp || !yahooSyms.length) return {};
+  const out = {};
+  for (let i = 0; i < yahooSyms.length; i += 25) {
+    const chunk = yahooSyms.slice(i, i + 25);
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 12000);
+      let r;
+      try { r = await fetch(`${sp}/?fundamentals=${encodeURIComponent(chunk.join(','))}`, { signal: ctrl.signal }); }
+      finally { clearTimeout(tid); }
+      if (!r.ok) continue;
+      const j = await r.json();
+      const arr = j && j.quoteResponse && j.quoteResponse.result;
+      if (!Array.isArray(arr)) continue;
+      arr.forEach(q => { if (q && q.symbol) out[q.symbol] = q; });
+    } catch(e) {}
+  }
+  return out;
 }
 
 async function refreshSinglePrice(rowIdx, type, ticker) {
