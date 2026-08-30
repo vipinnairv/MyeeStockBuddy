@@ -616,6 +616,44 @@ group('self-hosted proxy (Cloudflare Worker)');
   eq('trailing slash stripped', mk('https://a.workers.dev/', undefined), 'https://a.workers.dev');
 }
 
+// ── Portfolio price refresh (Worker-first, parallel) ───────────────────────
+group('portfolio price refresh');
+{
+  const src = slice('async function _fetchLivePrice(ticker, type)', '\n\n/* ══════════ MODAL', 'flp');
+  const load2 = (fetchImpl, sp) => load(
+    `var _selfProxyUrl = () => ${JSON.stringify(sp)};\n` + src,
+    ['_fetchLivePrice'],
+    { fetch: fetchImpl, AbortController: function(){ this.abort=()=>{}; this.signal={}; },
+      setTimeout: () => 0, clearTimeout: () => {}, Promise, Number, parseFloat })._fetchLivePrice;
+  const quote = px => ({ ok:true, json: async () => ({ chart:{ result:[{ meta:{ regularMarketPrice: px } }] } }) });
+  const dead  = async () => { throw new Error('Failed to fetch'); };
+
+  // Synchronous structural checks.
+  ok('refresh uses a 1-day range, not full history',
+     SRC.includes('interval=1d&range=1d'), 'still pulling long history for a price');
+  const ra = slice('async function refreshAllPrices()', 'async function refreshSinglePrice', 'refresh');
+  ok('refresh runs holdings in parallel batches', /Promise\.all\(batch\.map/.test(ra), 'still sequential');
+  ok('the old one-at-a-time loop is gone', !/for \(const task of tasks\)/.test(ra), 'sequential loop remains');
+  ok('a concurrency cap is applied', /_CONC\s*=\s*\d+/.test(ra), 'no batch size');
+
+  // Async behaviour (registered on the pending queue; the report awaits it).
+  pending.push((async () => {
+    // 1) Worker present and healthy -> used, and no relay is touched.
+    const hits = [];
+    const f1 = async (u) => { hits.push(u); return quote(1234.5); };
+    eq('returns the Worker price', await load2(f1, 'https://w.workers.dev')('RELIANCE.NS','India EQ'), 1234.5);
+    eq('only the Worker was called (no wasted relay hits)', hits.length, 1);
+    ok('the one call went to the Worker', /w\.workers\.dev\/\?url=/.test(hits[0] || ''), hits[0]);
+    // 2) Worker fails -> falls back to a relay and still returns a price.
+    const f2 = async (u) => u.includes('workers.dev') ? dead() : quote(88.25);
+    eq('falls back to a relay when the Worker is down', await load2(f2, 'https://w.workers.dev')('AAPL','US EQ'), 88.25);
+    // 3) No Worker configured -> straight to relays.
+    eq('works with no Worker set', await load2(async () => quote(50), '')('BTC-INR','Crypto'), 50);
+    // 4) Everything dead -> null (caller skips the row, no crash).
+    eq('all sources dead yields null', await load2(dead, 'https://w.workers.dev')('X.NS','India EQ'), null);
+  })());
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
