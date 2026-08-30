@@ -10751,16 +10751,26 @@ async function refreshAllPrices() {
     toast('No holdings to refresh', 'err'); return;
   }
 
-  for (const task of tasks) {
-    if (status) status.textContent = `Fetching ${task.ticker}… (${done+1}/${total})`;
-    if (bar) bar.style.width = ((done/total)*100)+'%';
-    const price = await _fetchLivePrice(task.ticker, task.type);
-    if (price && price > 0) {
-      if (task.asset === 'indEQ' && S.indEQ[task.idx]) { S.indEQ[task.idx].ltp = price; updated++; }
-      else if (task.asset === 'usEQ' && S.usEQ[task.idx]) { S.usEQ[task.idx].ltp = price; updated++; }
-      else if (task.asset === 'crypto' && S.crypto[task.idx]) { S.crypto[task.idx].price = price; updated++; }
-    }
-    done++;
+  // Fetch in parallel batches. One-at-a-time meant every holding waited out
+  // its own timeout in series (34 holdings x ~8s dead-proxy waits = ~10 min).
+  // Batches of 8 through the owner Worker bring a full refresh to a few seconds
+  // while staying gentle on the upstream.
+  const _CONC = 8;
+  const _apply = (task, price) => {
+    if (!(price && price > 0)) return;
+    if (task.asset === 'indEQ' && S.indEQ[task.idx]) { S.indEQ[task.idx].ltp = price; updated++; }
+    else if (task.asset === 'usEQ' && S.usEQ[task.idx]) { S.usEQ[task.idx].ltp = price; updated++; }
+    else if (task.asset === 'crypto' && S.crypto[task.idx]) { S.crypto[task.idx].price = price; updated++; }
+  };
+  for (let i = 0; i < tasks.length; i += _CONC) {
+    const batch = tasks.slice(i, i + _CONC);
+    if (status) status.textContent = `Fetching ${Math.min(done + batch.length, total)}/${total}…`;
+    await Promise.all(batch.map(async task => {
+      const price = await _fetchLivePrice(task.ticker, task.type);
+      _apply(task, price);
+      done++;
+      if (bar) bar.style.width = ((done/total)*100)+'%';
+    }));
   }
 
   if (bar) bar.style.width = '100%';
@@ -10794,27 +10804,39 @@ async function refreshSinglePrice(rowIdx, type, ticker) {
 }
 
 async function _fetchLivePrice(ticker, type) {
-  // Try Yahoo Finance v8 via multiple CORS proxies
+  // A lightweight last-price fetch (1-day range, not 5 years of candles).
   const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
-    `https://corsproxy.io/?url=${encodeURIComponent(yfUrl)}`,
-  ];
-  for (const proxyUrl of proxies) {
+  const enc = encodeURIComponent;
+  const parse = data => {
+    const result = data && data.chart && data.chart.result && data.chart.result[0];
+    const m = result && result.meta;
+    const raw = m && (m.regularMarketPrice != null ? m.regularMarketPrice
+              : m.regularMarketPreviousClose != null ? m.regularMarketPreviousClose
+              : m.previousClose);
+    const price = (raw != null) ? parseFloat(Number(raw).toFixed(2)) : null;
+    return (price && price > 0) ? price : null;
+  };
+  const hit = async (url, ms) => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
     try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 8000);
-      const resp = await fetch(proxyUrl, { signal: ctrl.signal });
-      clearTimeout(tid);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const result = data?.chart?.result?.[0];
-      const raw = result?.meta?.regularMarketPrice || result?.meta?.regularMarketPreviousClose || result?.meta?.previousClose;
-      const price = raw ? parseFloat(raw.toFixed(2)) : null;
-      if (price && price > 0) return price;
-    } catch(e) { /* try next proxy */ }
-  }
-  return null;
+      const r = await fetch(url, { signal: ctrl.signal });
+      if (!r.ok) throw new Error('http ' + r.status);
+      const p = parse(await r.json());
+      if (p == null) throw new Error('no price');
+      return p;
+    } finally { clearTimeout(tid); }
+  };
+  // 1) The owner Worker first - direct CORS, fast, and actually reachable.
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if (sp) { try { return await hit(`${sp}/?url=${enc(yfUrl)}`, 7000); } catch(e) {} }
+  // 2) Public relays as a fallback, raced so the quickest live one wins.
+  const fb = [
+    `https://api.allorigins.win/raw?url=${enc(yfUrl)}`,
+    `https://corsproxy.io/?url=${enc(yfUrl)}`,
+    `https://thingproxy.freeboard.io/fetch/${yfUrl}`,
+  ];
+  try { return await Promise.any(fb.map(u => hit(u, 8000))); } catch(e) { return null; }
 }
 
 /* ══════════ MODAL ══════════ */
