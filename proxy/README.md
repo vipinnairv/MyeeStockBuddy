@@ -48,10 +48,22 @@ Once you have the Worker URL, plug it into the app one of two ways:
   (`node build.js`), and push. Every visitor then fetches through your Worker
   with no key and no setup. (Tell Claude the URL and it'll wire this in for you.)
 
+## Updating the Worker (new fundamentals route)
+
+If you deployed an earlier version, re-paste `worker.js` and redeploy once to
+get the **fundamentals route**. It adds P/E, P/B, dividend yield and market cap
+to the Portfolio Manager's valuation card, fetched automatically on
+"Refresh All Prices". This route does Yahoo's cookie+crumb handshake (which its
+fundamentals endpoint requires and a browser can't do), and only ever talks to
+Yahoo. Yahoo's fundamentals are flakier than prices, so coverage may be partial.
+
 ## How the app calls it
 
 ```
 GET https://<your-worker-url>/?url=<url-encoded upstream URL>
+```
+```
+GET https://<your-worker-url>/?fundamentals=RELIANCE.NS,AAPL,TCS.NS
 ```
 
 e.g. `…workers.dev/?url=https%3A%2F%2Fquery2.finance.yahoo.com%2Fv8%2F…`
