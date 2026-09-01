@@ -712,6 +712,35 @@ group('auto fundamentals');
   })());
 }
 
+// ── Durable portfolio mirror (IndexedDB) ───────────────────────────────────
+group('durable portfolio mirror');
+{
+  // _pbkParse is the pure core: does a mirror record carry restorable holdings?
+  const src = slice('function _pbkParse(rec){', 'async function _pbkRecover', 'pbk');
+  const { _pbkParse } = load(src, ['_pbkParse'], { JSON });
+
+  const rec = { payload: JSON.stringify({ indEQ:[1,2,3], usEQ:[1], crypto:[], fd:[], mf:[1], txns:[9] }) };
+  const p = _pbkParse(rec);
+  ok('parses a real mirror record', !!p, 'null');
+  eq('counts holdings across classes (txns excluded)', p && p.n, 5);
+
+  eq('null record -> null', _pbkParse(null), null);
+  eq('no payload -> null', _pbkParse({ ts: 1 }), null);
+  eq('corrupt JSON -> null', _pbkParse({ payload: '{not json' }), null);
+  eq('empty portfolio -> null (nothing to restore)',
+     _pbkParse({ payload: JSON.stringify({ indEQ:[], usEQ:[], crypto:[], fd:[], mf:[] }) }), null);
+
+  // Structure: the mirror is written on save, recovered on boot, and guarded.
+  ok('IndexedDB declares a portfolio store', /createObjectStore\('portfolio'/.test(SRC), 'no portfolio store');
+  ok('DB version bumped so the store is created', /indexedDB\.open\('StockCacheDB', 3\)/.test(SRC), 'version not bumped');
+  ok('saveLocal mirrors the payload to IDB', /_pbkSave\(payload\)/.test(SRC), 'no mirror on save');
+  ok('the mirror is written even if localStorage fails',
+     SRC.indexOf('_pbkSave(payload)') < SRC.indexOf('for(let attempt=0'), 'mirror runs after the quota loop');
+  ok('boot attempts recovery', /loadLocal\(\);\s*\n\s*try \{ _pbkRecover\(\)/.test(SRC), 'no boot recovery');
+  ok('recovery never clobbers existing local data',
+     /_pbkRecover[\s\S]*?if\(_holdingsCount\(\)>0\) return false;/.test(SRC), 'no guard against clobber');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

@@ -45,6 +45,7 @@ function saveLocal(){
   let payload;
   try{ payload=JSON.stringify(S); }
   catch(e){ _logErr(e,'saveLocal:serialise'); _saveFailedBanner(true,'The portfolio could not be serialised.'); return false; }
+  _pbkSave(payload);   // durable IndexedDB mirror - independent of the localStorage quota below
   // Attempt, then make room and retry. Portfolio data is never evicted.
   for(let attempt=0; attempt<3; attempt++){
     try{
@@ -60,3 +61,49 @@ function saveLocal(){
   return false;
 }
 
+// ══════════ DURABLE MIRROR (IndexedDB) ══════════
+// localStorage is ~5 MB and can be evicted under quota or wiped when the user
+// clears site data. IndexedDB has a far larger quota and is a separate store,
+// so we mirror the portfolio there too and restore from it on boot when
+// localStorage comes up empty. This cannot help a private window or a local
+// file:// copy (both isolate all storage) - the backup nudge covers those.
+async function _pbkSave(payload){
+  try{
+    const db=await _idbOpen(); if(!db||!db.objectStoreNames.contains('portfolio')) return;
+    db.transaction('portfolio','readwrite').objectStore('portfolio').put({id:'current',payload,ts:Date.now()});
+  }catch(e){}
+}
+async function _pbkLoad(){
+  try{
+    const db=await _idbOpen(); if(!db||!db.objectStoreNames.contains('portfolio')) return null;
+    return await new Promise(res=>{
+      const req=db.transaction('portfolio','readonly').objectStore('portfolio').get('current');
+      req.onsuccess=()=>res(req.result||null); req.onerror=()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+// Pure decision helper (unit-tested): parse a mirror record and count holdings.
+// Returns { d, n } when it carries real data, else null.
+function _pbkParse(rec){
+  if(!rec||!rec.payload) return null;
+  let d; try{ d=JSON.parse(rec.payload); }catch(e){ return null; }
+  const n=(d.indEQ||[]).length+(d.usEQ||[]).length+(d.crypto||[]).length+(d.fd||[]).length+(d.mf||[]).length;
+  return n>0 ? { d, n } : null;
+}
+// Restore from the mirror ONLY when localStorage has no holdings, so good local
+// data is never clobbered by a stale backup.
+async function _pbkRecover(){
+  try{
+    if(_holdingsCount()>0) return false;
+    const parsed=_pbkParse(await _pbkLoad()); if(!parsed) return false;
+    const d=parsed.d;
+    ['indEQ','usEQ','crypto','fd','mf','txns'].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    if(d.usdInr) S.usdInr=d.usdInr;
+    saveLocal();                                    // repopulate localStorage
+    try{ if(typeof renderAll==='function') renderAll(); else if(typeof renderDashboard==='function') renderDashboard(); }catch(e){}
+    try{ if(typeof updateCounts==='function') updateCounts(); }catch(e){}
+    try{ if(typeof toast==='function') toast('Recovered '+parsed.n+' holdings from local backup','ok'); }catch(e){}
+    _logErr(new Error('restored '+parsed.n+' holdings from IndexedDB mirror'),'pbk:recover');
+    return true;
+  }catch(e){ return false; }
+}
