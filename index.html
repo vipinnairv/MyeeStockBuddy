@@ -3814,10 +3814,13 @@ function _idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((res, rej) => {
     try {
-      const req = indexedDB.open('StockCacheDB', 2);
+      const req = indexedDB.open('StockCacheDB', 3);
       req.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('ohlcv')) db.createObjectStore('ohlcv', { keyPath: 'sym' });
+        // Durable mirror of the portfolio - larger quota than localStorage and
+        // survives a localStorage clear/eviction, so it can rescue holdings.
+        if (!db.objectStoreNames.contains('portfolio')) db.createObjectStore('portfolio', { keyPath: 'id' });
       };
       req.onsuccess = e => res(e.target.result);
       req.onerror   = () => res(null); // non-fatal
@@ -10038,6 +10041,7 @@ function saveLocal(){
   let payload;
   try{ payload=JSON.stringify(S); }
   catch(e){ _logErr(e,'saveLocal:serialise'); _saveFailedBanner(true,'The portfolio could not be serialised.'); return false; }
+  _pbkSave(payload);   // durable IndexedDB mirror - independent of the localStorage quota below
   // Attempt, then make room and retry. Portfolio data is never evicted.
   for(let attempt=0; attempt<3; attempt++){
     try{
@@ -10052,7 +10056,53 @@ function saveLocal(){
   try{ if(typeof toast==='function') toast('Could not save - download a backup!','err'); }catch(e){}
   return false;
 }
-
+
+// ══════════ DURABLE MIRROR (IndexedDB) ══════════
+// localStorage is ~5 MB and can be evicted under quota or wiped when the user
+// clears site data. IndexedDB has a far larger quota and is a separate store,
+// so we mirror the portfolio there too and restore from it on boot when
+// localStorage comes up empty. This cannot help a private window or a local
+// file:// copy (both isolate all storage) - the backup nudge covers those.
+async function _pbkSave(payload){
+  try{
+    const db=await _idbOpen(); if(!db||!db.objectStoreNames.contains('portfolio')) return;
+    db.transaction('portfolio','readwrite').objectStore('portfolio').put({id:'current',payload,ts:Date.now()});
+  }catch(e){}
+}
+async function _pbkLoad(){
+  try{
+    const db=await _idbOpen(); if(!db||!db.objectStoreNames.contains('portfolio')) return null;
+    return await new Promise(res=>{
+      const req=db.transaction('portfolio','readonly').objectStore('portfolio').get('current');
+      req.onsuccess=()=>res(req.result||null); req.onerror=()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+// Pure decision helper (unit-tested): parse a mirror record and count holdings.
+// Returns { d, n } when it carries real data, else null.
+function _pbkParse(rec){
+  if(!rec||!rec.payload) return null;
+  let d; try{ d=JSON.parse(rec.payload); }catch(e){ return null; }
+  const n=(d.indEQ||[]).length+(d.usEQ||[]).length+(d.crypto||[]).length+(d.fd||[]).length+(d.mf||[]).length;
+  return n>0 ? { d, n } : null;
+}
+// Restore from the mirror ONLY when localStorage has no holdings, so good local
+// data is never clobbered by a stale backup.
+async function _pbkRecover(){
+  try{
+    if(_holdingsCount()>0) return false;
+    const parsed=_pbkParse(await _pbkLoad()); if(!parsed) return false;
+    const d=parsed.d;
+    ['indEQ','usEQ','crypto','fd','mf','txns'].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    if(d.usdInr) S.usdInr=d.usdInr;
+    saveLocal();                                    // repopulate localStorage
+    try{ if(typeof renderAll==='function') renderAll(); else if(typeof renderDashboard==='function') renderDashboard(); }catch(e){}
+    try{ if(typeof updateCounts==='function') updateCounts(); }catch(e){}
+    try{ if(typeof toast==='function') toast('Recovered '+parsed.n+' holdings from local backup','ok'); }catch(e){}
+    _logErr(new Error('restored '+parsed.n+' holdings from IndexedDB mirror'),'pbk:recover');
+    return true;
+  }catch(e){ return false; }
+}
 /* ══ DIAGNOSTICS ══
    101 empty catch blocks used to swallow every failure, which made user reports
    impossible to act on. Errors now land in a bounded ring buffer that survives
@@ -12742,6 +12792,7 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 
 /* ══ INIT ══ */
 loadLocal();
+try { _pbkRecover(); } catch(e){}   // async: restores from the IDB mirror if localStorage came up empty
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';

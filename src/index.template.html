@@ -3814,10 +3814,13 @@ function _idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((res, rej) => {
     try {
-      const req = indexedDB.open('StockCacheDB', 2);
+      const req = indexedDB.open('StockCacheDB', 3);
       req.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('ohlcv')) db.createObjectStore('ohlcv', { keyPath: 'sym' });
+        // Durable mirror of the portfolio - larger quota than localStorage and
+        // survives a localStorage clear/eviction, so it can rescue holdings.
+        if (!db.objectStoreNames.contains('portfolio')) db.createObjectStore('portfolio', { keyPath: 'id' });
       };
       req.onsuccess = e => res(e.target.result);
       req.onerror   = () => res(null); // non-fatal
@@ -12392,6 +12395,7 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 
 /* ══ INIT ══ */
 loadLocal();
+try { _pbkRecover(); } catch(e){}   // async: restores from the IDB mirror if localStorage came up empty
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';
