@@ -1347,6 +1347,101 @@ group('attribution & harvesting');
   ok('and warns booking has real costs', /spread, brokerage/.test(SRC), 'no cost caveat');
 }
 
+// ── Risk metrics ───────────────────────────────────────────────────────────
+group('risk metrics');
+{
+  const src = slice('const RISK_TRADING_DAYS = 252;', '\n// ── Glue: fetch each holding', 'risk');
+  const { _rkAlignedReturns, _rkStdev, _rkBeta, _rkMetrics } =
+    load(src, ['_rkAlignedReturns','_rkStdev','_rkBeta','_rkMetrics'], { Math, Object, Set, Array, isFinite, Number });
+
+  const day = i => '2026-' + String(1 + Math.floor(i/28)).padStart(2,'0') + '-' + String(1 + (i%28)).padStart(2,'0');
+  const ser = (vals, off=0) => vals.map((c,i) => ({ d: day(i+off), c }));
+
+  // ── stdev ──
+  eq('stdev of a constant series is 0', _rkStdev([1,1,1,1]), 0);
+  eq('too few points -> null', _rkStdev([1]), null);
+  ok('stdev is the sample (n-1) form', Math.abs(_rkStdev([2,4,4,4,5,5,7,9]) - 2.1380899) < 1e-6, String(_rkStdev([2,4,4,4,5,5,7,9])));
+
+  // ── alignment ──
+  {
+    // Two holdings, equal weight, both rising 10% a day -> portfolio +10%/day.
+    const r = _rkAlignedReturns({ A: ser([100,110,121]), B: ser([50,55,60.5]) }, { A:1, B:1 });
+    eq('one return per interval', r.length, 2);
+    ok('equal-weight return is the common move', Math.abs(r[0].r - 0.10) < 1e-9, String(r[0].r));
+  }
+  {
+    // Weighting must actually bite: 90/10 between +10%/day and flat.
+    const r = _rkAlignedReturns({ A: ser([100,110,121]), B: ser([100,100,100]) }, { A:9, B:1 });
+    ok('returns are value-weighted', Math.abs(r[0].r - 0.09) < 1e-9, String(r[0].r));
+  }
+  {
+    // A holding missing a date must not shift the other's returns. Only dates
+    // common to every series are used.
+    const A = [{d:'2026-01-01',c:100},{d:'2026-01-02',c:110},{d:'2026-01-03',c:121}];
+    const B = [{d:'2026-01-01',c:100},                        {d:'2026-01-03',c:100}];
+    const r = _rkAlignedReturns({ A, B }, { A:1, B:1 });
+    eq('only common dates are used', r.length, 1);
+    eq('and it is the shared date', r[0].d, '2026-01-03');
+  }
+  eq('a single-close series yields null', _rkAlignedReturns({ A: ser([100]) }, { A:1 }), null);
+  // A thin holding must not nullify the whole book - alignment just reports the
+  // common days; whether that is enough is _rkMetrics's judgement.
+  ok('two closes still yield one return', _rkAlignedReturns({ A: ser([100,110]) }, { A:1 }).length === 1, 'thin series poisons the book');
+  eq('no weights yields null', _rkAlignedReturns({ A: ser([100,110,120]) }, { A:0 }), null);
+  eq('empty map yields null', _rkAlignedReturns({}, {}), null);
+
+  // ── beta ──
+  {
+    // Portfolio moves exactly twice the benchmark -> beta 2, correlation 1.
+    const b = [], p = [];
+    for(let i=0;i<60;i++){ const x = ((i*37)%11 - 5)/500; b.push({d:day(i), r:x}); p.push({d:day(i), r:2*x}); }
+    const r = _rkBeta(p, b);
+    ok('beta of a 2x tracker is 2', Math.abs(r.beta - 2) < 1e-9, String(r.beta));
+    ok('and correlation is 1', Math.abs(r.corr - 1) < 1e-9, String(r.corr));
+  }
+  {
+    // Fewer than 20 overlapping days is not a measurement.
+    const b = [], p = [];
+    for(let i=0;i<10;i++){ b.push({d:day(i), r:0.01}); p.push({d:day(i), r:0.02}); }
+    eq('too little overlap -> null beta', _rkBeta(p, b), null);
+  }
+  {
+    // A flat benchmark has no variance to regress against.
+    const b = [], p = [];
+    for(let i=0;i<40;i++){ b.push({d:day(i), r:0}); p.push({d:day(i), r:(i%3-1)/100}); }
+    eq('a flat benchmark yields null beta', _rkBeta(p, b), null);
+  }
+
+  // ── metrics ──
+  {
+    const p = [];
+    for(let i=0;i<60;i++) p.push({ d:day(i), r:((i*37)%11 - 5)/500 });
+    const m = _rkMetrics(p, null, 6.5);
+    ok('volatility is annualised and positive', m.vol > 0, String(m.vol));
+    eq('risk-free rate is carried through', m.riskFree, 6.5);
+    eq('beta is null without a benchmark', m.beta, null);
+    ok('sharpe is computed from vol and return', m.sharpe != null, 'no sharpe');
+  }
+  {
+    // A steadily rising, never-wobbling series has ~zero volatility, so Sharpe
+    // must not be reported as a huge number off a divide-by-almost-zero.
+    const p = [];
+    for(let i=0;i<40;i++) p.push({ d:day(i), r:0.001 });
+    const m = _rkMetrics(p, null, 6.5);
+    eq('zero-variance series reports zero volatility', m.vol, 0);
+    eq('and withholds Sharpe rather than dividing by zero', m.sharpe, null);
+  }
+  eq('under 20 days is refused', _rkMetrics([{d:'a',r:0.01},{d:'b',r:0.02}], null, 6.5), null);
+
+  // ── wiring ──
+  ok('risk card renders on the analysis tab', /renderHarvest\(\);renderRisk\(\)/.test(SRC), 'not wired');
+  ok('history is fetched through the owner Worker', /renderRisk[\s\S]{0,700}_selfProxyUrl/.test(SRC), 'not via Worker');
+  ok('it says so when no Worker is configured', /Risk metrics need per-holding price history/.test(SRC), 'no explanation');
+  ok('coverage is reported, not hidden', /<b>\$\{covered\} of \$\{total\}<\/b>/.test(SRC), 'coverage not surfaced');
+  ok('holdings without history are named', /No usable history for:/.test(SRC), 'exclusions not named');
+  ok('it does not present the past as a forecast', /not a forecast/.test(SRC), 'overclaims');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
