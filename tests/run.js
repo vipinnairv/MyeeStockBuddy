@@ -741,6 +741,103 @@ group('durable portfolio mirror');
      /_pbkRecover[\s\S]*?if\(_holdingsCount\(\)>0\) return false;/.test(SRC), 'no guard against clobber');
 }
 
+// ── Portfolio income & true return ─────────────────────────────────────────
+group('portfolio income & XIRR');
+{
+  const src = slice('function _pmCashflows(lots, asOf)', 'function _pmLots()', 'pm');
+  const xsrc = slice('function xirr(cfs){', '\nfunction cMF(', 'xirr');
+  const { _pmCashflows, _pmXirr, _pmIncome } =
+    load(xsrc + '\n' + src, ['_pmCashflows','_pmXirr','_pmIncome'], { Math, Date, isFinite, Array, Number });
+
+  const asOf = new Date('2026-01-01T00:00:00Z');
+  const L = (invested,current,buyDate,dividend) => ({ invested, current, buyDate, dividend });
+
+  // ── cashflow construction ──
+  {
+    const cf = _pmCashflows([L(100000,150000,'2024-01-01',0)], asOf);
+    eq('one lot -> two cashflows', cf.length, 2);
+    eq('purchase is an outflow', cf[0].amount, -100000);
+    eq('terminal is current value', cf[1].amount, 150000);
+    ok('terminal is dated asOf', cf[1].date.getTime() === asOf.getTime(), 'wrong terminal date');
+  }
+  {
+    const cf = _pmCashflows([L(100000,150000,'2024-01-01',5000)], asOf);
+    eq('dividends are added to the terminal inflow', cf[1].amount, 155000);
+  }
+  // Undated / future-dated / junk lots cannot be timed and must be dropped,
+  // never silently priced as if bought today.
+  eq('undated lot is excluded', _pmCashflows([L(1000,2000,null,0)], asOf).length, 0);
+  eq('future-dated lot is excluded', _pmCashflows([L(1000,2000,'2030-01-01',0)], asOf).length, 0);
+  eq('unparseable date is excluded', _pmCashflows([L(1000,2000,'not-a-date',0)], asOf).length, 0);
+  eq('zero-cost lot is excluded', _pmCashflows([L(0,2000,'2024-01-01',0)], asOf).length, 0);
+  {
+    const cf = _pmCashflows([L(1000,2000,'2024-01-01',0), L(500,700,null,0)], asOf);
+    eq('a bad lot does not poison the good ones', cf.length, 2);
+    eq('terminal counts only the dated lot', cf[1].amount, 2000);
+  }
+
+  // ── XIRR values ──
+  {
+    // Exactly doubling over 2 years -> ~41.42% annualised.
+    const r = _pmXirr([L(100000,200000,'2024-01-01',0)], asOf);
+    ok('doubling over 2y is ~41.4%/yr', r > 41 && r < 42, String(r));
+  }
+  {
+    const flat = _pmXirr([L(100000,100000,'2024-01-01',0)], asOf);
+    ok('no gain -> ~0%', Math.abs(flat) < 0.01, String(flat));
+  }
+  {
+    const loss = _pmXirr([L(100000,50000,'2024-01-01',0)], asOf);
+    ok('a loss is negative', loss < 0, String(loss));
+  }
+  {
+    // XIRR must be time-aware: same money, same profit, shorter hold = higher.
+    const slow = _pmXirr([L(100000,150000,'2021-01-01',0)], asOf);
+    const fast = _pmXirr([L(100000,150000,'2025-01-01',0)], asOf);
+    ok('a recent gain annualises higher than an old one', fast > slow, `${fast} !> ${slow}`);
+  }
+  {
+    // Dividends must raise the return, not be ignored.
+    const noDiv = _pmXirr([L(100000,150000,'2024-01-01',0)], asOf);
+    const wDiv  = _pmXirr([L(100000,150000,'2024-01-01',20000)], asOf);
+    ok('dividends increase XIRR', wDiv > noDiv, `${wDiv} !> ${noDiv}`);
+  }
+  eq('no usable lots -> null', _pmXirr([L(1000,2000,null,0)], asOf), null);
+  eq('empty book -> null', _pmXirr([], asOf), null);
+
+  // ── income & yield on cost ──
+  {
+    const inc = _pmIncome([L(100000,0,'2024-01-01',3000), L(200000,0,'2024-01-01',0), L(50000,0,'2024-01-01',1000)]);
+    eq('income sums dividends', inc.total, 4000);
+    eq('counts only paying holdings', inc.paying, 2);
+    eq('yield on cost uses total invested', +inc.yieldOnCost.toFixed(4), +(4000/350000*100).toFixed(4));
+  }
+  eq('no dividends -> null yield', _pmIncome([L(1000,0,'2024-01-01',0)]).yieldOnCost, null);
+  eq('no holdings -> null yield', _pmIncome([]).yieldOnCost, null);
+  ok('junk dividends are ignored',
+     _pmIncome([L(1000,0,'2024-01-01',NaN), L(1000,0,'2024-01-01',-5)]).total === 0, 'junk counted');
+
+  // ── wiring ──
+  ok('income card renders on the analysis tab', /renderXRay\(\);renderIncome\(\)/.test(SRC), 'not wired to the tab');
+  ok('dividend is persisted on save', /div:gn\('m-div'\)\|\|null/.test(SRC), 'div not saved');
+  ok('dividend is importable from CSV', /div:getN\('dividend','div','dividendreceived'\)/.test(SRC), 'not importable');
+  ok('US dividends are converted to INR', /dividend:\(\+h\.div\|\|0\)\*\(S\.usdInr\|\|1\)/.test(SRC), 'US div not converted');
+}
+
+// ── Launch chooser ─────────────────────────────────────────────────────────
+group('launch chooser');
+{
+  ok('launcher section exists', SRC.includes('id="section-launcher"'), 'no launcher');
+  ok('offers both apps', /switchApp\('analyser'\)[\s\S]{0,900}switchApp\('portfolio'\)/.test(SRC), 'both options missing');
+  ok('boot shows the chooser by default', /showLauncher\(\);\s*\n\s*\} catch/.test(SRC), 'not shown on boot');
+  ok('boot honours an explicit skip', /skip === 'portfolio' \|\| skip === 'analyser'/.test(SRC), 'no skip path');
+  ok('choosing an app hides the launcher',
+     /function switchApp\(app\) \{[\s\S]{0,200}L\.style\.display = 'none'/.test(SRC), 'launcher not hidden');
+  ok('the skip preference is only written on an actual choice',
+     /if \(cb\.checked\) localStorage\.setItem\('launchSkip', app\); else localStorage\.removeItem\('launchSkip'\)/.test(SRC),
+     'skip preference not toggled both ways');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

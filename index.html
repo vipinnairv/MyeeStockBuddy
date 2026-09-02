@@ -453,6 +453,18 @@ canvas{max-width:100%;}
   .chart-tabs{flex-wrap:wrap;}
 }
 /* MARKET SELECTOR PAGE */
+.launch-card{
+  text-align:left;background:var(--surface,#fff);border:1px solid var(--border,#e3e8ef);
+  border-top:4px solid var(--lc);border-radius:16px;padding:26px 24px 22px;cursor:pointer;
+  font-family:inherit;transition:transform .16s,box-shadow .16s,border-color .16s;
+  box-shadow:0 2px 10px rgba(16,24,40,.06);display:block;
+}
+.launch-card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(16,24,40,.14);border-color:var(--lc)}
+.launch-ico{font-size:38px;margin-bottom:14px;line-height:1}
+.launch-ttl{font-size:20px;font-weight:800;color:var(--text,#0f1b2d);margin-bottom:8px}
+.launch-sub{font-size:13px;color:var(--text2,#5b6b7f);line-height:1.6;margin-bottom:16px}
+.launch-go{font-size:13px;font-weight:800;color:var(--lc)}
+@media(max-width:640px){ .launch-ttl{font-size:18px} .launch-card{padding:22px 18px 18px} }
 .market-selector-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;}
 .market-hero{text-align:center;margin-bottom:48px;}
 .market-hero-icon{font-size:56px;margin-bottom:16px;filter:drop-shadow(0 0 16px var(--accent));}
@@ -1295,6 +1307,36 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   </div>
 </div>
 <div style="height:44px;flex-shrink:0;"></div>
+
+<!-- ══ LAUNCH CHOOSER ══ Shown on start so the app opens on a deliberate
+     choice rather than whichever half happened to be last. -->
+<div id="section-launcher" style="display:none;min-height:calc(100vh - 96px);align-items:center;justify-content:center;padding:40px 20px;">
+  <div style="max-width:860px;width:100%;">
+    <div style="text-align:center;margin-bottom:38px;">
+      <div style="font-size:52px;margin-bottom:12px;">📊</div>
+      <div style="font-size:34px;font-weight:900;letter-spacing:-.6px;background:linear-gradient(135deg,#006aff,#7C3AED);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:10px;">Welcome to MiyeeStock Buddy</div>
+      <div style="font-size:14.5px;color:var(--text2,#5b6b7f);max-width:520px;margin:0 auto;line-height:1.6;">What would you like to do? You can switch between the two at any time from the header.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px;">
+      <button onclick="switchApp('analyser')" class="launch-card" style="--lc:#006aff">
+        <div class="launch-ico">🔍</div>
+        <div class="launch-ttl">Stock Analysis</div>
+        <div class="launch-sub">Research a single stock: live charts, technical signals, entry &amp; exit levels, DVM scores and fundamentals.</div>
+        <div class="launch-go">Analyse a stock →</div>
+      </button>
+      <button onclick="switchApp('portfolio')" class="launch-card" style="--lc:#7C3AED">
+        <div class="launch-ico">💼</div>
+        <div class="launch-ttl">Portfolio Manager</div>
+        <div class="launch-sub">Track everything you own: equity, crypto, mutual funds and FDs, with live P&amp;L, XIRR, income and taxation.</div>
+        <div class="launch-go">Open my portfolio →</div>
+      </button>
+    </div>
+    <label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:26px;font-size:12.5px;color:var(--text3,#7b8794);cursor:pointer;">
+      <input type="checkbox" id="launch-remember" style="cursor:pointer;width:15px;height:15px;" />
+      Skip this screen next time and open my choice directly
+    </label>
+  </div>
+</div>
 
 <div id="section-analyser" style="display:block">
 <!-- HEADER -->
@@ -2375,6 +2417,10 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Sector / Industry</div><div id="xray-sector"></div></div>
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Market Cap</div><div id="xray-mcap"></div></div>
     </div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #00B386">
+    <div class="ch"><span class="ct">💵 Income &amp; True Return</span><span style="font-size:10.5px;color:var(--T3)">money-weighted · incl. dividends</span></div>
+    <div class="cb" id="ana-income"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -10142,6 +10188,114 @@ function renderDiagnostics(){
     +'</div>').join('');
 }
 
+// ══════════ PORTFOLIO INCOME & TRUE RETURN ══════════
+// Two things the Portfolio Manager could not answer before:
+//   1. "What have I actually earned in dividends?" - the field simply did not
+//      exist, so income was invisible and total return was understated.
+//   2. "What is my real annualised return?" - only MF SIPs had an XIRR. Absolute
+//      return flatters a long hold and punishes a recent one; XIRR is
+//      money-weighted, so a 2020 buy and a 2024 buy are compared honestly.
+// The functions below are pure (they take lots, not globals) so they can be
+// unit-tested; _pmLots() is the only glue that reads S.
+
+// One lot: everything already normalised to INR.
+//   { invested, current, buyDate, dividend }
+function _pmCashflows(lots, asOf){
+  if(!Array.isArray(lots)) return [];
+  const usable = lots.filter(l => {
+    const inv = +l.invested, cur = +l.current;
+    if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return false;
+    const d = l.buyDate ? new Date(l.buyDate) : null;
+    return !!d && !isNaN(d.getTime()) && d <= asOf;   // undated or future-dated lots cannot be timed
+  });
+  if(!usable.length) return [];
+  const cf = usable.map(l => ({ date: new Date(l.buyDate), amount: -(+l.invested) }));
+  // Dividends are tracked as an annual total, not per payment date, so they are
+  // credited at asOf. Money that actually arrived earlier is therefore treated
+  // as arriving later, which UNDERSTATES the true XIRR - deliberately conservative.
+  const terminal = usable.reduce((s,l) => {
+    const div = +l.dividend;
+    return s + (+l.current) + (isFinite(div) && div > 0 ? div : 0);
+  }, 0);
+  cf.push({ date: asOf, amount: terminal });
+  cf.sort((a,b) => a.date - b.date);
+  return cf;
+}
+
+// Money-weighted annualised return across the whole book, as a percent.
+function _pmXirr(lots, asOf){
+  const cf = _pmCashflows(lots, asOf || new Date());
+  if(cf.length < 2) return null;
+  try { return xirr(cf); } catch(e) { return null; }
+}
+
+// Dividend income and yield on cost (income against what you actually paid,
+// not against today's price - that is the number that tells you what the
+// position yields you).
+function _pmIncome(lots){
+  let total = 0, invested = 0, paying = 0;
+  (Array.isArray(lots) ? lots : []).forEach(l => {
+    const d = +l.dividend, inv = +l.invested;
+    if(isFinite(d) && d > 0){ total += d; paying++; }
+    if(isFinite(inv) && inv > 0) invested += inv;
+  });
+  // No recorded dividends means the yield is UNKNOWN, not measured-zero -
+  // reporting 0.00% would imply we checked and you earn nothing.
+  return { total, invested, paying,
+           yieldOnCost: (invested > 0 && total > 0) ? total / invested * 100 : null };
+}
+
+// Glue: build the lot list from S, everything converted to INR.
+function _pmLots(){
+  const out = [];
+  try {
+    (S.indEQ||[]).forEach(h => { const c = cIND(h);
+      out.push({ invested:c.inv, current:c.cur, buyDate:h.buyDate, dividend:+h.div||0, name:h.name }); });
+    (S.usEQ||[]).forEach(h => { const c = cUS(h);
+      // avgCost/ltp/div for US holdings are in USD; cUS already returns INR.
+      out.push({ invested:c.inv, current:c.cur, buyDate:h.buyDate,
+                 dividend:(+h.div||0)*(S.usdInr||1), name:h.name }); });
+    (S.crypto||[]).forEach(c => { const v = cCRY(c);
+      out.push({ invested:+c.invested||0, current:v.cur, buyDate:c.buyDate, dividend:0, name:c.coin }); });
+    (S.mf||[]).forEach(f => { const cv = cMF(f);
+      out.push({ invested:cv.inv, current:cv.cur, buyDate:f.startDate, dividend:0, name:f.name }); });
+  } catch(e) {}
+  return out;
+}
+
+function renderIncome(){
+  const el = document.getElementById('ana-income');
+  if(!el) return;
+  const lots = _pmLots();
+  const inc  = _pmIncome(lots);
+  const xr   = _pmXirr(lots, new Date());
+  const dated = _pmCashflows(lots, new Date()).length;
+  const cov  = lots.length ? Math.round((dated ? dated - 1 : 0) / lots.length * 100) : 0;
+  const tile = (lbl,val,sub,col,tip) => `<div class="tax-sum-box" title="${tip||''}" style="cursor:help">
+    <div class="tax-sum-box-lbl">${lbl}</div>
+    <div class="tax-sum-box-val" style="color:${col}">${val}</div>
+    <div class="tax-sum-box-sub">${sub}</div></div>`;
+  el.innerHTML = `<div class="tax-sum-grid">
+    ${tile('Portfolio XIRR',
+        xr==null ? '—' : (xr>=0?'+':'')+xr.toFixed(2)+'%',
+        xr==null ? 'needs purchase dates' : cov+'% of holdings dated',
+        xr==null ? 'var(--T3)' : (xr>=0?'#00B386':'#D93025'),
+        'Money-weighted annualised return. Unlike absolute return it accounts for WHEN you invested, so an old holding and a recent one are compared fairly. Dividends are credited today, which slightly understates it.')}
+    ${tile('Dividend Income',
+        inc.total>0 ? F.inr(inc.total) : '—',
+        inc.total>0 ? inc.paying+' holding'+(inc.paying===1?'':'s')+' paying' : 'add dividends per holding',
+        inc.total>0 ? '#7C3AED' : 'var(--T3)',
+        'Total dividends recorded against your holdings. Enter it per stock when adding or editing a position.')}
+    ${tile('Yield on Cost',
+        inc.yieldOnCost ? inc.yieldOnCost.toFixed(2)+'%' : '—',
+        inc.yieldOnCost ? 'income vs what you paid' : 'needs dividend data',
+        inc.yieldOnCost ? '#F59E0B' : 'var(--T3)',
+        'Dividends as a percent of your original cost - what the position actually yields you, not what a new buyer gets at the current price.')}
+  </div>
+  <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+    XIRR is money-weighted across equity, crypto and funds using each purchase date. Holdings without a purchase date are excluded from XIRR but still counted in income.
+  </div>`;
+}
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -11000,6 +11154,8 @@ function addForm(cls){
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" placeholder="Optional"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested Amount</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='USEQ') return`
     <div class="fr"><div class="fg"><label class="fl">Stock Name <span>*</span></label><input class="fc" id="m-name" placeholder="Apple Inc."></div>
@@ -11014,6 +11170,8 @@ function addForm(cls){
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" placeholder="Optional"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested (₹) at ₹${S.usdInr}/USD</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='CRYPTO') return`
     <div class="fr"><div class="fg"><label class="fl">Coin Name <span>*</span></label><input class="fc" id="m-name" placeholder="Bitcoin"></div>
@@ -11047,6 +11205,8 @@ function editForm(cls,id){
     <div class="fg"><label class="fl">Avg Cost (₹)</label><input class="fc" id="m-price" type="number" value="${h.avgCost}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Current LTP (₹)</label><input class="fc" id="m-ltp" type="number" value="${h.ltp}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" value="${h.dy||''}"></div>
@@ -11060,6 +11220,8 @@ function editForm(cls,id){
     <div class="fg"><label class="fl">LTP ($)</label><input class="fc" id="m-ltp" type="number" step="any" value="${h.ltp}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Invested (₹)</label><input class="fc" id="m-inrinv" type="number" value="${h.investedINR}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" value="${h.dy||''}"></div>
@@ -11154,13 +11316,13 @@ function submitAdd(cls){
   if(cls==='INDEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
-    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null};
+    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null};
     S.indEQ.push(h);logT('BUY','India EQ',name,ticker,qty,price,h.broker);
   }else if(cls==='USEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
     const inrInv=gn('m-inrinv')||qty*price*S.usdInr;
-    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null});
+    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
     logT('BUY','US EQ',name,ticker,qty,price*S.usdInr,'');
   }else if(cls==='CRYPTO'){
     const coin=gv('m-name'),coinId=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
@@ -11173,8 +11335,8 @@ function submitAdd(cls){
 function submitEdit(cls,id){
   const map={INDEQ:'indEQ',USEQ:'usEQ',CRYPTO:'crypto',FD:'fd'};
   const arr=S[map[cls]],idx=arr.findIndex(x=>x.id===id);if(idx<0)return;
-  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null});
-  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null});
+  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
   else if(cls==='CRYPTO') Object.assign(arr[idx],{coin:gv('m-name'),coinId:gv('m-ticker'),exchange:gv('m-broker'),qty:gn('m-qty'),buyPrice:gn('m-price'),price:gn('m-ltp'),invested:gn('m-qty')*gn('m-price')});
   /* FD edit handled by submitEditFD() */
   closeModal();save();renderAll();toast('Updated!','ok');
@@ -12404,14 +12566,14 @@ function importCSV(cls, inp) {
           const ltp = getN('ltp_inr','ltp','last price','current price') || cost;
           if (!name || !qty || !cost) { errors.push(`Row ${i+2}: missing Name/Qty/AvgCost`); return; }
           const cleanTicker = (ticker || name).replace(/\.NS$|\.BO$/i,'').replace(/^NSE:|^BSE:/i,'').trim();
-          S.indEQ.push({id:uid(),name:name,ticker:cleanTicker,sector:get('sector','industry')||'Other',qty,avgCost:cost,ltp:ltp||cost,buyDate:get('buydate','date','purchase date')||today(),broker:get('broker','exchange')||''});
+          S.indEQ.push({id:uid(),name:name,ticker:cleanTicker,sector:get('sector','industry')||'Other',qty,avgCost:cost,ltp:ltp||cost,buyDate:get('buydate','date','purchase date')||today(),broker:get('broker','exchange')||'',div:getN('dividend','div','dividendreceived')||null});
           added++;
         } else if (cls === 'usEQ') {
           const name=get('name'), ticker=get('ticker'), qty=getN('qty'), cost=getN('avgcost_usd','avgcost','cost');
           if (!name||!qty||!cost) { errors.push(`Row ${i+2}: missing Name/Qty/AvgCost`); return; }
           const ltp=getN('ltp_usd','ltp')||cost;
           const inrInv=getN('investedinr','invested')||qty*cost*S.usdInr;
-          S.usEQ.push({id:uid(),name,ticker:ticker||name,sector:get('sector')||'Other',qty,avgCost:cost,ltp,buyDate:get('buydate','date')||today(),investedINR:inrInv});
+          S.usEQ.push({id:uid(),name,ticker:ticker||name,sector:get('sector')||'Other',qty,avgCost:cost,ltp,buyDate:get('buydate','date')||today(),investedINR:inrInv,div:getN('dividend','div','dividendreceived')||null});
           added++;
         } else if (cls === 'crypto') {
           const coin=get('coinname','name'), coinId=get('coinid','id'), qty=getN('qty'), bp=getN('buyprice_inr','buyprice','cost');
@@ -12753,7 +12915,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -12855,7 +13017,26 @@ function scrollNav(dir) {
 })();
 
 // ─── MiyeeStock Buddy App Switcher ────────────────────────────────────────────
+// Show the chooser and park both apps. Called on boot unless the user asked
+// to skip it.
+function showLauncher() {
+  var L = document.getElementById('section-launcher');
+  var sA = document.getElementById('section-analyser');
+  var sP = document.getElementById('section-portfolio');
+  if (sA) sA.style.display = 'none';
+  if (sP) sP.style.display = 'none';
+  if (L)  L.style.display  = 'flex';
+  var cb = document.getElementById('launch-remember');
+  try { if (cb) cb.checked = !!localStorage.getItem('launchSkip'); } catch(e) {}
+}
 function switchApp(app) {
+  var L = document.getElementById('section-launcher');
+  if (L) L.style.display = 'none';
+  // Honour the "skip next time" tick at the moment a choice is made.
+  try {
+    var cb = document.getElementById('launch-remember');
+    if (cb) { if (cb.checked) localStorage.setItem('launchSkip', app); else localStorage.removeItem('launchSkip'); }
+  } catch(e) {}
   var sA = document.getElementById('section-analyser');
   var sP = document.getElementById('section-portfolio');
   var bA = document.getElementById('btn-analyser');
@@ -12919,9 +13100,10 @@ function addToPortfolioFromAnalysis() {
 
 (function() {
   try {
-    var last = localStorage.getItem('advStockApp');
-    if (last === 'portfolio') switchApp('portfolio');
-  } catch(e) {}
+    var skip = localStorage.getItem('launchSkip');
+    if (skip === 'portfolio' || skip === 'analyser') { switchApp(skip); return; }
+    showLauncher();
+  } catch(e) { try { showLauncher(); } catch(_) {} }
 })();
 
 </script>
