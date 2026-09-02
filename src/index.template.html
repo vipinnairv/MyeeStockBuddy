@@ -2466,6 +2466,14 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     <div class="ch"><span class="ct">⚖️ Risk &amp; Reward</span><span style="font-size:10.5px;color:var(--T3)">were you paid for the swings</span></div>
     <div class="cb" id="ana-risk"></div>
   </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #0EA5E9">
+    <div class="ch"><span class="ct">🧩 True Diversification</span><span style="font-size:10.5px;color:var(--T3)">how many real bets do you have</span></div>
+    <div class="cb" id="ana-diversification"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎯 Rebalancing &amp; Concentration</span><span style="font-size:10.5px;color:var(--T3)">target vs actual</span></div>
+    <div class="cb" id="ana-rebalance"></div>
+  </div>
   <div class="chart-row">
     <div class="card">
       <div class="ch"><span class="ct">💰 Consolidated Valuation</span><span style="font-size:10.5px;color:var(--T3)">value-weighted</span></div>
@@ -9845,6 +9853,8 @@ function loadLocal(){
 // @include js/risk.js
 // @include js/fx.js
 // @include js/tax-ifsold.js
+// @include js/diversification.js
+// @include js/rebalance.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -12473,7 +12483,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:()=>{renderTaxation();renderIfSold();},analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRisk();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:()=>{renderTaxation();renderIfSold();},analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRebalance();renderRisk().then(()=>{try{renderDiversification();}catch(e){}});},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));

@@ -1434,7 +1434,12 @@ group('risk metrics');
   eq('under 20 days is refused', _rkMetrics([{d:'a',r:0.01},{d:'b',r:0.02}], null, 6.5), null);
 
   // ── wiring ──
-  ok('risk card renders on the analysis tab', /renderHarvest\(\);renderRisk\(\)/.test(SRC), 'not wired');
+  ok('risk card renders on the analysis tab', /analysis:\(\)=>\{[^}]*renderRisk\(\)/.test(SRC), 'not wired');
+  // Diversification reuses the price history renderRisk fetches, so it must run
+  // AFTER it resolves rather than racing an empty cache.
+  ok('diversification waits for the risk fetch',
+     /renderRisk\(\)\.then\(\(\)=>\{try\{renderDiversification\(\);\}catch\(e\)\{\}\}\)/.test(SRC),
+     'diversification may race the price fetch');
   ok('history is fetched through the owner Worker', /renderRisk[\s\S]{0,700}_selfProxyUrl/.test(SRC), 'not via Worker');
   ok('it says so when no Worker is configured', /Risk metrics need per-holding price history/.test(SRC), 'no explanation');
   ok('coverage is reported, not hidden', /<b>\$\{covered\} of \$\{total\}<\/b>/.test(SRC), 'coverage not surfaced');
@@ -1546,6 +1551,126 @@ group('fx auto-refresh');
   ok('it only refetches once a day', /_fxIsStale\(rec, today\)/.test(SRC), 'no daily guard');
   ok('manual entry is still possible', /function fxSetManual/.test(SRC), 'manual override removed');
   ok('the badge says it is automatic', /Auto-updated daily\. Click to set it manually\./.test(SRC), 'tooltip not updated');
+}
+
+// ── Diversification ────────────────────────────────────────────────────────
+group('diversification');
+{
+  const src = slice('function _dvCorr(xs, ys){', '\n// ── Render', 'dv');
+  const { _dvCorr, _dvEffective, _dvMatrix, _dvVerdict } =
+    load(src, ['_dvCorr','_dvEffective','_dvMatrix','_dvVerdict'], { Math, Object, Set, Array, isFinite, Number });
+
+  // ── correlation ──
+  {
+    const xs = [], ys = [], zs = [];
+    for(let i=0;i<40;i++){ const v = ((i*13)%7 - 3)/100; xs.push(v); ys.push(v); zs.push(-v); }
+    ok('identical series correlate at 1', Math.abs(_dvCorr(xs,ys) - 1) < 1e-9, String(_dvCorr(xs,ys)));
+    ok('mirrored series correlate at -1', Math.abs(_dvCorr(xs,zs) + 1) < 1e-9, String(_dvCorr(xs,zs)));
+  }
+  eq('too few points -> null', _dvCorr([1,2,3],[1,2,3]), null);
+  {
+    const flat = new Array(40).fill(0), moving = flat.map((_,i) => (i%3-1)/100);
+    eq('a flat series has no correlation', _dvCorr(flat, moving), null);
+  }
+
+  // ── effective holdings: concentration by size ──
+  {
+    const e = _dvEffective([25,25,25,25]);
+    eq('four equal holdings behave like four', +e.effective.toFixed(6), 4);
+    eq('largest weight reported', +e.topWeightPct.toFixed(2), 25);
+  }
+  {
+    // The point of the measure: 20 names, one dominant, behaves like far fewer.
+    const w = [60].concat(new Array(19).fill(40/19));
+    const e = _dvEffective(w);
+    eq('counts the holdings you actually have', e.n, 20);
+    ok('but effective count is far lower', e.effective < 4, String(e.effective));
+    ok('and names the dominant weight', Math.abs(e.topWeightPct - 60) < 1e-9, String(e.topWeightPct));
+  }
+  eq('no holdings -> null', _dvEffective([]), null);
+  eq('zero values -> null', _dvEffective([0,0]), null);
+
+  // ── matrix ──
+  {
+    // Two holdings moving identically: average correlation 1 -> not diversified.
+    const a = [], b = [];
+    for(let i=0;i<40;i++){ const c = 100 * Math.pow(1.01, (i*7)%5); a.push({d:'d'+String(i).padStart(3,'0'), c}); b.push({d:'d'+String(i).padStart(3,'0'), c:c*2}); }
+    const m = _dvMatrix({ A:a, B:b });
+    ok('identical movers average ~1', Math.abs(m.avg - 1) < 1e-6, String(m.avg));
+    eq('one pair for two holdings', m.pairs.length, 1);
+    eq('verdict names the risk', _dvVerdict(m.avg).word, 'Barely diversified');
+  }
+  eq('a single holding cannot be correlated', _dvMatrix({ A:[{d:'a',c:1}] }), null);
+  eq('too-short history -> null', _dvMatrix({ A:[{d:'a',c:1}], B:[{d:'a',c:2}] }), null);
+
+  // ── verdict bands ──
+  eq('high correlation reads as barely diversified', _dvVerdict(0.9).word, 'Barely diversified');
+  eq('mid correlation reads as lightly', _dvVerdict(0.6).word, 'Lightly diversified');
+  eq('low correlation reads as well diversified', _dvVerdict(0.1).word, 'Well diversified');
+  eq('no average -> no verdict', _dvVerdict(null), null);
+
+  ok('the card admits correlation ignores position size', /weight-blind/.test(SRC), 'limitation hidden');
+  ok('and warns correlation rises in a crash', /rises in a crash/.test(SRC), 'no crash caveat');
+}
+
+// ── Rebalancing & concentration ────────────────────────────────────────────
+group('rebalancing');
+{
+  const src = slice('const _RB_CLASSES = [', '\n// ── Render', 'rb');
+  const { _rbDrift, _rbConcentration } = load(src.replace(/^function rbLoadTargets[\s\S]*?\n\}\n/m,''),
+    ['_rbDrift','_rbConcentration'], { Math, Object, Array, isFinite, Number });
+
+  // ── drift ──
+  {
+    const d = _rbDrift({ indEQ:600000, usEQ:200000, crypto:200000 }, { indEQ:50, usEQ:30, crypto:20 });
+    const ind = d.rows.find(r => r.key==='indEQ');
+    eq('actual share computed', +ind.actualPct.toFixed(2), 60);
+    eq('drift is actual minus target', +ind.driftPct.toFixed(2), 10);
+    eq('and sized in rupees to trim', +ind.driftValue.toFixed(0), 100000);
+    const us = d.rows.find(r => r.key==='usEQ');
+    ok('an underweight class shows a negative drift', us.driftPct < 0, String(us.driftPct));
+    ok('targets summing to 100 are accepted', d.targetsSumOk === true, 'flagged a valid target set');
+  }
+  {
+    // Targets that do not sum to 100 cannot all be met - say so rather than
+    // emitting trades that silently contradict each other.
+    const d = _rbDrift({ indEQ:100 }, { indEQ:40, usEQ:40 });
+    ok('mismatched targets are flagged', d.targetsSumOk === false, 'did not flag');
+    eq('and the shortfall is reported', d.targetedPct, 80);
+  }
+  {
+    // An unset target must NOT be read as "should be zero" - that would demand
+    // liquidating a class the user simply had not configured.
+    const d = _rbDrift({ indEQ:500000, crypto:500000 }, { indEQ:50 });
+    const cry = d.rows.find(r => r.key==='crypto');
+    eq('untargeted class has no target', cry.targetPct, null);
+    eq('and therefore no drift', cry.driftPct, null);
+    ok('it is marked untargeted', cry.hasTarget === false, 'treated as targeted');
+  }
+  eq('an empty book yields null', _rbDrift({}, { indEQ:50 }), null);
+  eq('a zero-value book yields null', _rbDrift({ indEQ:0 }, { indEQ:50 }), null);
+
+  // ── concentration ──
+  {
+    const c = _rbConcentration([{name:'Big',value:400},{name:'A',value:200},{name:'B',value:200},{name:'C',value:200}], 25);
+    eq('sorted by weight', c.rows[0].name, 'Big');
+    eq('largest weight is correct', +c.rows[0].pct.toFixed(2), 40);
+    eq('only true breaches are flagged', c.breaches.length, 1);
+    eq('and it is the big one', c.breaches[0].name, 'Big');
+  }
+  {
+    const c = _rbConcentration([{name:'A',value:100},{name:'B',value:100}], 60);
+    eq('nothing breaches a generous limit', c.breaches.length, 0);
+  }
+  eq('an empty list yields null', _rbConcentration([], 15), null);
+  eq('all-zero values yield null', _rbConcentration([{name:'A',value:0}], 15), null);
+
+  // ── wiring ──
+  ok('rebalance card renders on the analysis tab', /renderRebalance\(\)/.test(SRC), 'not wired');
+  ok('blank targets are explained, not assumed zero',
+     /they are not treated as "should be zero"/.test(SRC), 'no explanation');
+  ok('it warns that rebalancing is taxable', /rebalancing realises gains, which is taxable/.test(SRC), 'no tax warning');
+  ok('targets are the user\'s, not advice', /Targets and the limit are yours/.test(SRC), 'presented as advice');
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────
