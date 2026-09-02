@@ -40,6 +40,9 @@ function renderSimpleView(){
   if(!el||!analysisResult) return;
   const ar=analysisResult, s=ar.signals, price=ar.currentPrice;
   const L=s.long||{}, v=s.isChop?'HOLD':s.verdict;
+  // v stays the bare token so the comparisons below keep working; vLabel is
+  // what the user reads, and names the sideways condition rather than hiding it.
+  const vLabel=s.isChop?'HOLD (Sideways)':v;
   const conf=L.confidence!=null?L.confidence:0;
   const col=v==='BUY'?'var(--green)':v==='SELL'?'var(--red)':'var(--accent)';
   const confWord=conf>=60?'High':conf>=30?'Moderate':'Low';
@@ -69,7 +72,7 @@ function renderSimpleView(){
   // ── Honest conflict / low-trust warning ──
   const total=s.bullCount+s.bearCount, split=Math.abs(s.bullCount-s.bearCount);
   let warn='';
-  if(s.isChop) warn=`<div class="sv-warn"><b>⚠ Low-trust setup.</b> ADX is ${s.adxV}, meaning the stock is moving sideways with no trend. This is where technical signals are least reliable, so the call is held at HOLD no matter what the individual indicators say. Waiting is a position.</div>`;
+  if(s.isChop) warn=`<div class="sv-warn"><b>⚠ Low-trust setup.</b> This stock is <b>moving sideways</b> - drifting with no clear up or down trend (ADX ${s.adxV}). This is where technical signals are least reliable, so the call is held at HOLD no matter what the individual indicators say. Waiting is a position.</div>`;
   else if(total&&split<=1) warn=`<div class="sv-warn"><b>⚠ The indicators disagree.</b> ${s.bullCount} point up and ${s.bearCount} point down — that is close to a coin flip, not a setup. A near-even split is a reason to wait, not to take a smaller position.</div>`;
   else if(conf<30) warn=`<div class="sv-warn"><b>⚠ Low confidence.</b> The evidence is thin here. Treat this as one input, not a decision.</div>`;
 
@@ -85,7 +88,7 @@ function renderSimpleView(){
   el.innerHTML=`
     <div class="sv-card">
       <div class="sv-head">
-        <div><div class="sv-call" style="color:${col}">${v}</div><div class="sv-conf">${confWord} confidence · ${conf}%</div></div>
+        <div><div class="sv-call" style="color:${col}">${vLabel}</div><div class="sv-conf">${confWord} confidence · ${conf}%</div></div>
         <div style="flex:1;min-width:200px;font-size:14px;color:var(--text2);line-height:1.5">${plain} for <b>${ar.company}</b> at <b>${CUR()}${fmtNum(price)}</b>.</div>
       </div>
       ${warn}

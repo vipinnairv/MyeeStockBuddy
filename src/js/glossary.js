@@ -6,6 +6,7 @@
 const GLOSSARY = {
   rsi:{n:'RSI (Relative Strength Index)',d:'A 0–100 meter of how hard price has been pushed recently.',w:'It tells you whether a move is <b>stretched</b>. It does not tell you direction on its own.',r:'Above 70 = overbought (rallies often pause). Below 30 = oversold (falls often bounce). 45–55 = no one in control.'},
   macd:{n:'MACD',d:'Compares a fast and a slow average of price to spot momentum turning.',w:'A <b>crossover</b> is an early hint that buyers or sellers are taking over — early, so it misfires often alone.',r:'Trust a crossover far more when the wider trend agrees with it.'},
+  sideways:{n:'Sideways (No Trend)',d:'The stock is drifting up and down inside a range instead of heading clearly up or down.',w:'It is the market saying <b>nobody is in control</b>. Trend-following signals misfire most here, which is why the app holds its call rather than guessing.',r:'Measured by ADX below 20. Wait for a decisive close beyond the range, or for ADX above 25, before treating a signal as real.'},
   adx:{n:'ADX (Trend Strength)',d:'Measures how strong a trend is — not which way it points.',w:'It is the single best filter for <b>when to ignore other signals</b>. In a flat market most indicators misfire.',r:'Below 20 = no trend, signals unreliable. Above 25 = real trend. Above 40 = very strong.'},
   atr:{n:'ATR (Average True Range)',d:'How much the stock typically moves in a single day, in rupees or dollars.',w:'It sizes your <b>stop loss</b>. A stop tighter than one ATR gets hit by ordinary noise.',r:'Stops are commonly placed 1.5–3× ATR away from entry.'},
   supertrend:{n:'Supertrend',d:'A trailing line that sits below price in an uptrend and above it in a downtrend.',w:'A simple, visual <b>trend-following</b> line — it flips side when the trend changes.',r:'Price above the line favours the upside; a close through it is the usual signal to flip.'},
@@ -52,7 +53,7 @@ const _G_PATTERNS=[
   ['Support','support'],['Breakout','breakout'],['Gartley','gartley'],['RSI','rsi'],['MACD','macd'],['ADX','adx'],
   ['ATR','atr'],['MFI','mfi'],['CCI','cci'],['OBV','obv'],['VCP','vcp'],['XIRR','xirr'],['CAGR','cagr'],
   ['NAV','nav'],['DVM','dvm'],['PEG','peg'],['ROE','roe'],['EMA','ema'],['Beta','beta'],
-  ['P/E','pe'],['P/B','pb'],
+  ['P/E','pe'],['P/B','pb'],['Sideways(?: Range)?','sideways'],
 ];
 const _G_RE=new RegExp('\\b(?:'+_G_PATTERNS.map(p=>p[0]).join('|')+')(?![\\w-])','g');
 function _gKeyFor(txt){

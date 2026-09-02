@@ -123,17 +123,17 @@ group('trend vs trading range');
     const drift = first ? (price-first)/first*100 : 0;
     const travel = hi > lo ? Math.abs(first-price)/(hi-lo) : 0;
     const trending = Math.abs(drift) > 15 && travel > 0.55;
-    return trending ? (drift < 0 ? 'Downtrend' : 'Uptrend') : 'Trading Range';
+    return trending ? (drift < 0 ? 'Downtrend' : 'Uptrend') : 'Sideways Range';
   };
   ok('classifier source still present in app', SRC.includes('_travel > 0.55'), 'travel-ratio gate missing');
   eq('reported 51% crash', classify(line(1200,588,150), 1211, 538), 'Downtrend');
   eq('its recent 90-bar leg', classify(line(800,588,90), 800, 538), 'Downtrend');
-  eq('true sideways', classify(osc(670,120,90), 800, 540), 'Trading Range');
-  eq('mild drift', classify(line(600,660,90), 800, 540), 'Trading Range');
+  eq('true sideways', classify(osc(670,120,90), 800, 540), 'Sideways Range');
+  eq('mild drift', classify(line(600,660,90), 800, 540), 'Sideways Range');
   eq('strong uptrend', classify(line(500,900,90), 910, 495), 'Uptrend');
-  eq('volatile but flat', classify(osc(700,250,90), 950, 450), 'Trading Range');
-  eq('V-shaped recovery', classify([...line(900,600,45), ...line(600,890,45)], 910, 595), 'Trading Range');
-  eq('shallow decline', classify(line(700,650,90), 760, 600), 'Trading Range');
+  eq('volatile but flat', classify(osc(700,250,90), 950, 450), 'Sideways Range');
+  eq('V-shaped recovery', classify([...line(900,600,45), ...line(600,890,45)], 910, 595), 'Sideways Range');
+  eq('shallow decline', classify(line(700,650,90), 760, 600), 'Sideways Range');
 }
 
 // ── NAV on a date ──────────────────────────────────────────────────────────
@@ -1180,6 +1180,37 @@ group('targets & alerts');
   ok('target and stop are persisted', /target:gn\('m-target'\)\|\|null,stop:gn\('m-stop'\)\|\|null/.test(SRC), 'not saved');
   ok('the panel says these are user-set levels, not advice',
      /not advice, and not automatic orders/.test(SRC), 'overclaims');
+}
+
+// ── Plain-English labels (no unexplained jargon) ───────────────────────────
+group('plain-English labels');
+{
+  // The verdict chip read "HOLD · CHOP", which means nothing to most users.
+  ok('the CHOP verdict chip is gone', !/HOLD · CHOP/.test(SRC), 'still shows HOLD · CHOP');
+  ok('it now names the condition plainly', /HOLD \(Sideways\)/.test(SRC), 'no Sideways verdict label');
+
+  // "Chop" / "Ranging" as user-facing labels are replaced by "Sideways".
+  ok('no "Ranging (chop)" row label', !/Ranging \(chop\)/.test(SRC), 'chop label remains');
+  ok('no "Ranging / Chop" summary label', !/Ranging \/ Chop/.test(SRC), 'chop label remains');
+  ok('no "choppy/ranging market" phrasing', !/choppy\/ranging market/.test(SRC), 'choppy phrasing remains');
+  ok('the ADX chip says Sideways', /'〰 Sideways'/.test(SRC), 'ADX chip not reworded');
+
+  // The classifier's own label, kept in step with the mirror above.
+  ok('the range pattern is labelled Sideways Range', /'Sideways Range'/.test(SRC), 'pattern not reworded');
+  ok('the old Trading Range label is gone', !/'Trading Range'/.test(SRC), 'old label remains');
+
+  // Explanations should lead with the plain word, not the indicator name.
+  ok('the verdict explanation says "moving sideways"', /moving <b>sideways<\/b>/.test(SRC), 'explanation not reworded');
+  ok('ADX is kept as supporting evidence, not the headline', /ADX \$\{signals\.adxV\}, below 20/.test(SRC), 'ADX evidence dropped');
+
+  // And the term itself is explained on tap, like every other piece of jargon.
+  ok('Sideways is in the glossary', /sideways:\{n:'Sideways \(No Trend\)'/.test(SRC), 'no glossary entry');
+  ok('Sideways is a tappable pattern', /\['Sideways\(\?: Range\)\?','sideways'\]/.test(SRC), 'not tappable');
+
+  // Simple mode shows the same label, without breaking its verdict comparisons.
+  ok('Simple mode shows the sideways qualifier too', /vLabel=s\.isChop\?'HOLD \(Sideways\)'/.test(SRC), 'simple mode still bare HOLD');
+  ok('Simple mode renders the label, not the raw token', /class="sv-call"[^>]*>\$\{vLabel\}/.test(SRC), 'label not rendered');
+  ok('Simple mode keeps the bare token for its logic', /v==='HOLD'\?' if it triggers'/.test(SRC), 'logic token broken');
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────
