@@ -1748,6 +1748,107 @@ group('tax period selection');
   ok('no 10% LTCG claim remains', !/Equity 10% tax above/.test(SRC), 'stale 10% claim');
 }
 
+// ── Financial statements ───────────────────────────────────────────────────
+group('financial statements');
+{
+  const src = slice('function _stNum(o){', '\n// ── Fetch + render', 'stmt');
+  const { _stNum, _stDate, _stTable, _stParse, _stDerived, ST_INCOME } =
+    load(src, ['_stNum','_stDate','_stTable','_stParse','_stDerived','ST_INCOME'],
+         { Date, Math, Array, Object, isFinite, Number });
+
+  // Yahoo wraps values as {raw,fmt}; absent keys and empty objects both occur.
+  eq('unwraps a raw value', _stNum({ raw: 1234, fmt: '1.23k' }), 1234);
+  eq('accepts a bare number', _stNum(5), 5);
+  eq('null stays null', _stNum(null), null);
+  eq('undefined stays null', _stNum(undefined), null);
+  eq('an empty wrapper is null, not zero', _stNum({}), null);
+  eq('a non-finite raw is null', _stNum({ raw: Infinity }), null);
+  eq('zero is preserved as a real zero', _stNum({ raw: 0 }), 0);
+
+  eq('epoch seconds become a date', _stDate({ raw: 1735689600 }), '2025-01-01');
+  eq('a missing date is null', _stDate(null), null);
+
+  // ── table shaping ──
+  const st = (endDate, rev, ni) => ({ endDate:{raw:endDate}, totalRevenue:{raw:rev}, netIncome:{raw:ni} });
+  {
+    const t2 = _stTable([ st(1704067200, 100, 10), st(1735689600, 200, 20) ], ST_INCOME);
+    eq('newest period first', t2.periods[0], '2025-01-01');
+    eq('older period second', t2.periods[1], '2024-01-01');
+    const rev = t2.rows.find(r => r.key === 'totalRevenue');
+    eq('values follow the period order', rev.values.join(','), '200,100');
+    const cost = t2.rows.find(r => r.key === 'costOfRevenue');
+    ok('a line the source omits is null, never 0', cost.values.every(v => v === null), JSON.stringify(cost.values));
+  }
+  eq('no statements -> null', _stTable([], ST_INCOME), null);
+  eq('non-array -> null', _stTable(null, ST_INCOME), null);
+  eq('statements with no dates -> null', _stTable([{ totalRevenue:{raw:5} }], ST_INCOME), null);
+  {
+    // A table where every cell is missing is not a statement - the UI must be
+    // able to say "not available" rather than draw an empty grid.
+    const t2 = _stTable([{ endDate:{raw:1735689600} }], ST_INCOME);
+    eq('an all-empty statement yields null', t2, null);
+  }
+  {
+    const many = [];
+    for(let i=0;i<9;i++) many.push(st(1735689600 - i*31536000, 100+i, 10+i));
+    eq('at most five periods are shown', _stTable(many, ST_INCOME).periods.length, 5);
+  }
+
+  // ── whole-response parsing ──
+  {
+    const json = { quoteSummary: { result: [{
+      incomeStatementHistory: { incomeStatementHistory: [ st(1735689600, 1000, 100) ] },
+      balanceSheetHistory:    { balanceSheetStatements: [ { endDate:{raw:1735689600}, totalAssets:{raw:5000}, totalStockholderEquity:{raw:2000}, longTermDebt:{raw:1000} } ] },
+      cashflowStatementHistory:{ cashflowStatements:    [ { endDate:{raw:1735689600}, totalCashFromOperatingActivities:{raw:150}, capitalExpenditures:{raw:-50} } ] },
+    }]}};
+    const p = _stParse(json, false);
+    ok('income parsed', !!p.income, 'no income');
+    ok('balance parsed', !!p.balance, 'no balance');
+    ok('cashflow parsed', !!p.cashflow, 'no cashflow');
+
+    // ── derived figures ──
+    const d = _stDerived(p);
+    eq('net margin from revenue and net income', +d.netMargin.toFixed(4), 10);
+    eq('ROE from equity', +d.roe.toFixed(4), 5);
+    eq('debt to equity', +d.debtToEquity.toFixed(4), 0.5);
+    // capex arrives negative, so FCF is OCF plus it.
+    eq('free cash flow nets capex', d.freeCashFlow, 100);
+    eq('cash conversion is OCF over net income', +d.cashConversion.toFixed(4), 1.5);
+  }
+  eq('an empty response yields null', _stParse({}, false), null);
+  eq('a result with no statements yields null', _stParse({ quoteSummary:{ result:[{}] } }, false), null);
+  {
+    // Division guards: zero revenue or zero equity must not produce Infinity.
+    const json = { quoteSummary: { result: [{
+      incomeStatementHistory: { incomeStatementHistory: [ { endDate:{raw:1735689600}, totalRevenue:{raw:0}, netIncome:{raw:100} } ] },
+      balanceSheetHistory:    { balanceSheetStatements: [ { endDate:{raw:1735689600}, totalStockholderEquity:{raw:0} } ] },
+    }]}};
+    const d = _stDerived(_stParse(json, false));
+    ok('zero revenue yields no margin, not Infinity', !d || d.netMargin === undefined, JSON.stringify(d));
+    ok('zero equity yields no ROE, not Infinity', !d || d.roe === undefined, JSON.stringify(d));
+  }
+
+  // ── wiring & honesty ──
+  // The Worker is a separate file, so assert against it directly - checking
+  // SRC would silently pass since worker.js is not part of index.html.
+  {
+    const wsrc = require('fs').readFileSync(require('path').join(__dirname,'..','proxy','worker.js'),'utf8');
+    ok('the Worker exposes a statements route', /params\.get\('statements'\)/.test(wsrc), 'no statements route');
+    ok('it requests all three statement modules',
+       /incomeStatementHistory\$\{q\},balanceSheetHistory\$\{q\},cashflowStatementHistory\$\{q\}/.test(wsrc),
+       'modules missing');
+    ok('it supports a quarterly period', /period'\) === 'quarterly'/.test(wsrc), 'no quarterly option');
+    ok('it validates the symbol', /\[A-Za-z0-9\.\\-\^\]\{1,20\}/.test(wsrc), 'symbol not validated');
+    ok('it uses the crumb handshake', /_yahooAuth\(\)[\s\S]{0,300}quoteSummary/.test(wsrc), 'no crumb auth');
+  }
+  ok('a Financials tab exists', /data-rtab="financials"/.test(SRC), 'no tab');
+  ok('statements load lazily on tab open', /if \(name === 'financials'\)/.test(SRC), 'not lazy');
+  ok('a missing line renders as a dash, not zero', /if\(v == null\) return '<span style="color:var\(--text3\)">—<\/span>'/.test(SRC), 'missing renders as a number');
+  ok('the UI explains a dash means absent', /not that the value is zero/.test(SRC), 'ambiguous dash');
+  ok('thin source coverage is named as a source gap', /that is a gap in the source, not an error here/.test(SRC), 'blames the app');
+  ok('it warns the data can lag the filing', /can lag the latest filing/.test(SRC), 'no staleness warning');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
