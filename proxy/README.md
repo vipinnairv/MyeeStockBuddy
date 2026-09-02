@@ -48,10 +48,19 @@ Once you have the Worker URL, plug it into the app one of two ways:
   (`node build.js`), and push. Every visitor then fetches through your Worker
   with no key and no setup. (Tell Claude the URL and it'll wire this in for you.)
 
-## Updating the Worker (new fundamentals route)
+## Updating the Worker (redeploy after each change here)
 
-If you deployed an earlier version, re-paste `worker.js` and redeploy once to
-get the **fundamentals route**. It adds P/E, P/B, dividend yield and market cap
+**If you deployed before the Financials tab existed, redeploy now.** The latest
+`worker.js` adds a **timeseries route** that reads Yahoo's
+`fundamentals-timeseries` endpoint — the one Yahoo's own site uses. The older
+`quoteSummary` history modules it replaces have been hollowed out: for many
+listings they return literal zeros for cost of revenue, gross profit, operating
+expenses and tax, drop the balance sheet entirely, and leave cash flow with
+nothing but net income. The old route is kept only as a fallback for symbols the
+new one misses, and the app labels the tables when it has to use it.
+
+If you deployed an earlier version still, re-paste `worker.js` and redeploy once
+to get the **fundamentals route** too. It adds P/E, P/B, dividend yield and market cap
 to the Portfolio Manager's valuation card, fetched automatically on
 "Refresh All Prices". This route does Yahoo's cookie+crumb handshake (which its
 fundamentals endpoint requires and a browser can't do), and only ever talks to
@@ -64,6 +73,12 @@ GET https://<your-worker-url>/?url=<url-encoded upstream URL>
 ```
 ```
 GET https://<your-worker-url>/?fundamentals=RELIANCE.NS,AAPL,TCS.NS
+```
+```
+GET https://<your-worker-url>/?timeseries=RELIANCE.NS&period=quarterly
+```
+```
+GET https://<your-worker-url>/?statements=RELIANCE.NS      # fallback only
 ```
 
 e.g. `…workers.dev/?url=https%3A%2F%2Fquery2.finance.yahoo.com%2Fv8%2F…`

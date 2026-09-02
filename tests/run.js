@@ -1752,9 +1752,11 @@ group('tax period selection');
 group('financial statements');
 {
   const src = slice('function _stNum(o){', '\n// ── Fetch + render', 'stmt');
-  const { _stNum, _stDate, _stTable, _stParse, _stDerived, ST_INCOME } =
-    load(src, ['_stNum','_stDate','_stTable','_stParse','_stDerived','ST_INCOME'],
-         { Date, Math, Array, Object, isFinite, Number });
+  const { _stNum, _stDate, _stTable, _stParse, _stTsSeries, _stTsParse, _stCells, _stDerived,
+          ST_INCOME } =
+    load(src, ['_stNum','_stDate','_stTable','_stParse','_stTsSeries','_stTsParse','_stCells',
+               '_stDerived','ST_INCOME'],
+         { Date, Math, Array, Object, Set, isFinite, Number });
 
   // Yahoo wraps values as {raw,fmt}; absent keys and empty objects both occur.
   eq('unwraps a raw value', _stNum({ raw: 1234, fmt: '1.23k' }), 1234);
@@ -1768,16 +1770,87 @@ group('financial statements');
   eq('epoch seconds become a date', _stDate({ raw: 1735689600 }), '2025-01-01');
   eq('a missing date is null', _stDate(null), null);
 
-  // ── table shaping ──
+  // ── fundamentals-timeseries: the endpoint that still carries real data ──
+  const tsEntry = (date, v) => ({ asOfDate: date, reportedValue: { raw: v } });
+  const tsRes = (type, entries) => ({ meta: { type: [type] }, [type]: entries });
+  {
+    const json = { timeseries: { result: [
+      tsRes('annualTotalRevenue', [ tsEntry('2024-03-31', 100), tsEntry('2025-03-31', 200) ]),
+      tsRes('annualNetIncome',    [ tsEntry('2024-03-31', 10),  tsEntry('2025-03-31', 20) ]),
+      tsRes('annualStockholdersEquity', [ tsEntry('2025-03-31', 400) ]),
+      tsRes('annualOperatingCashFlow',  [ tsEntry('2025-03-31', 30) ]),
+      tsRes('annualFreeCashFlow',       [ tsEntry('2025-03-31', 25) ]),
+    ]}};
+    const series = _stTsSeries(json);
+    eq('series are keyed by type and date', series.annualTotalRevenue['2025-03-31'], 200);
+    const p = _stTsParse(json, false);
+    eq('the parsed result names its endpoint', p.source, 'timeseries');
+    eq('newest period first', p.income.periods[0], '2025-03-31');
+    const rev = p.income.rows.find(r => r.key === 'TotalRevenue');
+    eq('values follow the period order', rev.values.join(','), '200,100');
+    const cost = p.income.rows.find(r => r.key === 'CostOfRevenue');
+    ok('a line the source omits is null, never 0', cost.values.every(v => v === null), JSON.stringify(cost.values));
+    // A series that only covers the newest period must not smear into the older
+    // column - the older cell is unknown, not a repeat.
+    const eqr = p.balance.rows.find(r => r.key === 'StockholdersEquity');
+    eq('a short series fills only its own period', eqr.values[0], 400);
+    // The reported free cash flow wins over the derived one.
+    eq('reported free cash flow is used as reported', _stDerived(p).freeCashFlow, 25);
+  }
+  eq('an empty timeseries yields null', _stTsParse({ timeseries: { result: [] } }, false), null);
+  eq('a malformed timeseries yields null', _stTsParse({}, false), null);
+  {
+    // Padded entries come through as null and must be skipped, not counted.
+    const json = { timeseries: { result: [
+      tsRes('annualTotalRevenue', [ null, tsEntry('2025-03-31', 200) ]),
+    ]}};
+    const p = _stTsParse(json, false);
+    eq('padded nulls are skipped', p.income.periods.length, 1);
+  }
+  {
+    // The quarterly request must read the quarterly series, not the annual one.
+    const json = { timeseries: { result: [
+      tsRes('annualTotalRevenue',    [ tsEntry('2025-03-31', 900) ]),
+      tsRes('quarterlyTotalRevenue', [ tsEntry('2025-06-30', 250) ]),
+    ]}};
+    const q = _stTsParse(json, true);
+    eq('quarterly reads the quarterly prefix', q.income.periods[0], '2025-06-30');
+    eq('and its values', q.income.rows.find(r => r.key === 'TotalRevenue').values[0], 250);
+    eq('annual reads the annual prefix', _stTsParse(json, false).income.periods[0], '2025-03-31');
+  }
+
+  // ── quoteSummary fallback: table shaping ──
   const st = (endDate, rev, ni) => ({ endDate:{raw:endDate}, totalRevenue:{raw:rev}, netIncome:{raw:ni} });
   {
     const t2 = _stTable([ st(1704067200, 100, 10), st(1735689600, 200, 20) ], ST_INCOME);
     eq('newest period first', t2.periods[0], '2025-01-01');
     eq('older period second', t2.periods[1], '2024-01-01');
-    const rev = t2.rows.find(r => r.key === 'totalRevenue');
-    eq('values follow the period order', rev.values.join(','), '200,100');
-    const cost = t2.rows.find(r => r.key === 'costOfRevenue');
+    const rev = t2.rows.find(r => r.key === 'TotalRevenue');
+    eq('fallback rows carry the shared row key', rev.values.join(','), '200,100');
+    const cost = t2.rows.find(r => r.key === 'CostOfRevenue');
     ok('a line the source omits is null, never 0', cost.values.every(v => v === null), JSON.stringify(cost.values));
+    const fcf = t2.rows.find(r => r.key === 'FreeCashFlow');
+    ok('a line the old endpoint never carried is null', !fcf || fcf.values.every(v => v === null), 'fabricated');
+  }
+  {
+    // The reason this whole route is a fallback: it zero-fills lines it no
+    // longer carries. A line reading exactly zero in every period is that
+    // artefact - reporting it as a confident ₹0 would be a false claim about
+    // the accounts.
+    const z = (endDate) => ({ endDate:{raw:endDate}, totalRevenue:{raw:5000},
+                              costOfRevenue:{raw:0}, grossProfit:{raw:0} });
+    const t2 = _stTable([ z(1704067200), z(1735689600) ], ST_INCOME);
+    const cost = t2.rows.find(r => r.key === 'CostOfRevenue');
+    ok('an all-zero line is reported as unknown', cost.values.every(v => v === null), JSON.stringify(cost.values));
+    const rev = t2.rows.find(r => r.key === 'TotalRevenue');
+    eq('a line with real numbers is untouched', rev.values[0], 5000);
+  }
+  {
+    // ...but a genuine zero alongside real numbers still means zero. A
+    // debt-free company reporting 0 long-term debt is a fact, not a gap.
+    const t2 = _stTable([ { endDate:{raw:1735689600}, totalRevenue:{raw:0}, netIncome:{raw:50} },
+                          { endDate:{raw:1704067200}, totalRevenue:{raw:900}, netIncome:{raw:40} } ], ST_INCOME);
+    eq('a zero in one period survives', t2.rows.find(r => r.key === 'TotalRevenue').values[0], 0);
   }
   eq('no statements -> null', _stTable([], ST_INCOME), null);
   eq('non-array -> null', _stTable(null, ST_INCOME), null);
@@ -1802,9 +1875,11 @@ group('financial statements');
       cashflowStatementHistory:{ cashflowStatements:    [ { endDate:{raw:1735689600}, totalCashFromOperatingActivities:{raw:150}, capitalExpenditures:{raw:-50} } ] },
     }]}};
     const p = _stParse(json, false);
+    eq('the fallback result names its endpoint', p.source, 'quoteSummary');
     ok('income parsed', !!p.income, 'no income');
     ok('balance parsed', !!p.balance, 'no balance');
     ok('cashflow parsed', !!p.cashflow, 'no cashflow');
+    eq('filled cells are counted for the fallback decision', _stCells(p) > 0, true);
 
     // ── derived figures ──
     const d = _stDerived(p);
@@ -1812,16 +1887,23 @@ group('financial statements');
     eq('ROE from equity', +d.roe.toFixed(4), 5);
     eq('debt to equity', +d.debtToEquity.toFixed(4), 0.5);
     // capex arrives negative, so FCF is OCF plus it.
-    eq('free cash flow nets capex', d.freeCashFlow, 100);
+    eq('free cash flow nets capex when none is reported', d.freeCashFlow, 100);
     eq('cash conversion is OCF over net income', +d.cashConversion.toFixed(4), 1.5);
   }
   eq('an empty response yields null', _stParse({}, false), null);
   eq('a result with no statements yields null', _stParse({ quoteSummary:{ result:[{}] } }, false), null);
+  eq('nothing parsed counts as zero cells', _stCells(null), 0);
   {
     // Division guards: zero revenue or zero equity must not produce Infinity.
+    // Both series carry a non-zero older period so the zero is a real reported
+    // zero rather than the all-zero artefact stripped above.
     const json = { quoteSummary: { result: [{
-      incomeStatementHistory: { incomeStatementHistory: [ { endDate:{raw:1735689600}, totalRevenue:{raw:0}, netIncome:{raw:100} } ] },
-      balanceSheetHistory:    { balanceSheetStatements: [ { endDate:{raw:1735689600}, totalStockholderEquity:{raw:0} } ] },
+      incomeStatementHistory: { incomeStatementHistory: [
+        { endDate:{raw:1735689600}, totalRevenue:{raw:0}, netIncome:{raw:100} },
+        { endDate:{raw:1704067200}, totalRevenue:{raw:900}, netIncome:{raw:80} } ] },
+      balanceSheetHistory:    { balanceSheetStatements: [
+        { endDate:{raw:1735689600}, totalStockholderEquity:{raw:0} },
+        { endDate:{raw:1704067200}, totalStockholderEquity:{raw:700} } ] },
     }]}};
     const d = _stDerived(_stParse(json, false));
     ok('zero revenue yields no margin, not Infinity', !d || d.netMargin === undefined, JSON.stringify(d));
@@ -1833,18 +1915,29 @@ group('financial statements');
   // SRC would silently pass since worker.js is not part of index.html.
   {
     const wsrc = require('fs').readFileSync(require('path').join(__dirname,'..','proxy','worker.js'),'utf8');
-    ok('the Worker exposes a statements route', /params\.get\('statements'\)/.test(wsrc), 'no statements route');
+    ok('the Worker exposes a timeseries route', /params\.get\('timeseries'\)/.test(wsrc), 'no timeseries route');
+    ok('it calls the fundamentals-timeseries endpoint', /fundamentals-timeseries\/v1\/finance\/timeseries/.test(wsrc), 'wrong endpoint');
+    ok('it asks for a period window', /period1=\$\{p1\}&period2=\$\{p2\}/.test(wsrc), 'no period window');
+    ok('it prefixes types by period', /pre \+ f/.test(wsrc), 'types not prefixed');
+    for(const f of ['TotalRevenue','CostOfRevenue','StockholdersEquity','OperatingCashFlow','FreeCashFlow'])
+      ok('it requests ' + f, new RegExp("'" + f + "'").test(wsrc), f + ' not requested');
+    ok('the Worker keeps the statements route as a fallback', /params\.get\('statements'\)/.test(wsrc), 'no statements route');
     ok('it requests all three statement modules',
        /incomeStatementHistory\$\{q\},balanceSheetHistory\$\{q\},cashflowStatementHistory\$\{q\}/.test(wsrc),
        'modules missing');
     ok('it supports a quarterly period', /period'\) === 'quarterly'/.test(wsrc), 'no quarterly option');
     ok('it validates the symbol', /\[A-Za-z0-9\.\\-\^\]\{1,20\}/.test(wsrc), 'symbol not validated');
-    ok('it uses the crumb handshake', /_yahooAuth\(\)[\s\S]{0,300}quoteSummary/.test(wsrc), 'no crumb auth');
+    ok('it uses the crumb handshake', /_yahooAuth\(\)[\s\S]{0,400}timeseries/.test(wsrc), 'no crumb auth');
   }
+  // The app must prefer the good endpoint and only fall back when it is thin.
+  ok('the app asks the timeseries route first', /\?timeseries=\$\{enc\}\$\{per\}/.test(SRC), 'timeseries not used');
+  ok('the fallback is conditional, not unconditional', /if\(_stCells\(out\) < 4\)\{/.test(SRC), 'always falls back');
+  ok('the fallback only wins when it carries more', /if\(_stCells\(alt\) > _stCells\(out\)\) out = alt;/.test(SRC), 'thin fallback can overwrite');
   ok('a Financials tab exists', /data-rtab="financials"/.test(SRC), 'no tab');
   ok('statements load lazily on tab open', /if \(name === 'financials'\)/.test(SRC), 'not lazy');
   ok('a missing line renders as a dash, not zero', /if\(v == null\) return '<span style="color:var\(--text3\)">—<\/span>'/.test(SRC), 'missing renders as a number');
   ok('the UI explains a dash means absent', /not that the value is zero/.test(SRC), 'ambiguous dash');
+  ok('the UI says when it fell back to the thinner feed', /older, thinner one — expect gaps/.test(SRC), 'fallback unlabelled');
   ok('thin source coverage is named as a source gap', /that is a gap in the source, not an error here/.test(SRC), 'blames the app');
   ok('it warns the data can lag the filing', /can lag the latest filing/.test(SRC), 'no staleness warning');
 }

@@ -1,14 +1,23 @@
 // ══════════ FINANCIAL STATEMENTS: BALANCE SHEET / P&L / CASH FLOW ══════════
 // Ratios like P/E tell you what the market thinks. The statements tell you what
-// the business actually did. These come from Yahoo's quoteSummary history
-// modules through the owner Worker (the endpoint needs the cookie+crumb
-// handshake a browser cannot perform).
+// the business actually did.
 //
-// Coverage is honest, not assumed: Yahoo's statement history for smaller Indian
-// listings is often partial or absent. Every field is rendered only when the
-// data actually carries it - a missing line shows as a dash, never as zero,
-// because "we do not have this" and "this is zero" are different claims about
-// a company's accounts.
+// These come from Yahoo through the owner Worker (both endpoints need the
+// cookie+crumb handshake a browser cannot perform). There are two of them:
+//
+//   1. fundamentals-timeseries — the endpoint Yahoo's own site uses. It carries
+//      the full line items and simply omits what it does not have.
+//   2. quoteSummary history modules — the older endpoint. Yahoo has hollowed
+//      these out: for many listings it returns literal zeros for cost of
+//      revenue, gross profit, operating expenses and tax, drops the balance
+//      sheet entirely, and leaves cash flow with nothing but net income. It is
+//      kept only as a fallback for symbols the timeseries endpoint misses.
+//
+// Coverage is honest, not assumed. A missing line shows as a dash, never as
+// zero, because "we do not have this" and "this is zero" are different claims
+// about a company's accounts. On the fallback endpoint a line that reads zero
+// in every period is treated as unreported, because that endpoint is known to
+// zero-fill lines it no longer carries.
 
 // Yahoo wraps numbers as { raw, fmt, longFmt }; sometimes the key is absent
 // entirely, and sometimes present as an empty object.
@@ -25,39 +34,98 @@ function _stDate(o){
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0,10);
 }
 
-// Field maps: [label, yahooKey]. Order is the order shown.
+// Field maps: [label, timeseriesKey, quoteSummaryKey]. Order is the order shown.
+// The timeseries key doubles as the row's identity, so derived figures below
+// look the same whichever endpoint supplied the data. A null quoteSummary key
+// means the old endpoint never carried that line at all.
 const ST_INCOME = [
-  ['Revenue',            'totalRevenue'],
-  ['Cost of revenue',    'costOfRevenue'],
-  ['Gross profit',       'grossProfit'],
-  ['Operating expenses', 'totalOperatingExpenses'],
-  ['Operating income',   'operatingIncome'],
-  ['Pre-tax income',     'incomeBeforeTax'],
-  ['Tax',                'incomeTaxExpense'],
-  ['Net income',         'netIncome'],
+  ['Revenue',            'TotalRevenue',     'totalRevenue'],
+  ['Cost of revenue',    'CostOfRevenue',    'costOfRevenue'],
+  ['Gross profit',       'GrossProfit',      'grossProfit'],
+  ['Operating expenses', 'OperatingExpense', 'totalOperatingExpenses'],
+  ['Operating income',   'OperatingIncome',  'operatingIncome'],
+  ['Pre-tax income',     'PretaxIncome',     'incomeBeforeTax'],
+  ['Tax',                'TaxProvision',     'incomeTaxExpense'],
+  ['Net income',         'NetIncome',        'netIncome'],
 ];
 const ST_BALANCE = [
-  ['Cash',               'cash'],
-  ['Short-term invest.', 'shortTermInvestments'],
-  ['Total current assets','totalCurrentAssets'],
-  ['Total assets',       'totalAssets'],
-  ['Total current liab.','totalCurrentLiabilities'],
-  ['Long-term debt',     'longTermDebt'],
-  ['Total liabilities',  'totalLiab'],
-  ['Total equity',       'totalStockholderEquity'],
+  ['Cash',                'CashAndCashEquivalents',              'cash'],
+  ['Short-term invest.',  'OtherShortTermInvestments',           'shortTermInvestments'],
+  ['Total current assets','CurrentAssets',                       'totalCurrentAssets'],
+  ['Total assets',        'TotalAssets',                         'totalAssets'],
+  ['Total current liab.', 'CurrentLiabilities',                  'totalCurrentLiabilities'],
+  ['Long-term debt',      'LongTermDebt',                        'longTermDebt'],
+  ['Total liabilities',   'TotalLiabilitiesNetMinorityInterest', 'totalLiab'],
+  ['Total equity',        'StockholdersEquity',                  'totalStockholderEquity'],
 ];
 const ST_CASHFLOW = [
-  ['Operating cash flow','totalCashFromOperatingActivities'],
-  ['Capital expenditure','capitalExpenditures'],
-  ['Investing cash flow','totalCashflowsFromInvestingActivities'],
-  ['Financing cash flow','totalCashFromFinancingActivities'],
-  ['Net change in cash', 'changeInCash'],
-  ['Net income',         'netIncome'],
+  ['Operating cash flow', 'OperatingCashFlow',   'totalCashFromOperatingActivities'],
+  ['Capital expenditure', 'CapitalExpenditure',  'capitalExpenditures'],
+  ['Investing cash flow', 'InvestingCashFlow',   'totalCashflowsFromInvestingActivities'],
+  ['Financing cash flow', 'FinancingCashFlow',   'totalCashFromFinancingActivities'],
+  ['Net change in cash',  'ChangesInCash',       'changeInCash'],
+  ['Free cash flow',      'FreeCashFlow',        null],
 ];
 
-// Turn one Yahoo module into { periods:[dates], rows:[{label, values:[]}] }.
-// Returns null when the module carries no usable statement at all, so the UI
-// can say "not available" instead of drawing an empty grid.
+// A table is only a statement if at least one cell carries a number.
+function _stFinish(periods, rows){
+  if(!periods.length) return null;
+  if(!rows.some(r => r.values.some(v => v != null))) return null;
+  return { periods, rows };
+}
+
+// ── fundamentals-timeseries ────────────────────────────────────────────────
+// Response shape: timeseries.result[] where each entry has meta.type[0] naming
+// the series and a same-named array of { asOfDate, reportedValue }. Padded
+// entries come through as null and are skipped.
+function _stTsSeries(json){
+  const res = json && json.timeseries && Array.isArray(json.timeseries.result)
+            ? json.timeseries.result : null;
+  if(!res) return null;
+  const out = {};
+  for(const r of res){
+    const type = r && r.meta && Array.isArray(r.meta.type) ? r.meta.type[0] : null;
+    if(!type || !Array.isArray(r[type])) continue;
+    const m = out[type] || (out[type] = {});
+    for(const e of r[type]){
+      if(!e || !e.asOfDate) continue;
+      const v = _stNum(e.reportedValue);
+      if(v != null) m[e.asOfDate] = v;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+function _stTsTable(series, fields, prefix){
+  if(!series) return null;
+  const dates = new Set();
+  for(const f of fields){
+    const m = series[prefix + f[1]];
+    if(m) Object.keys(m).forEach(d => dates.add(d));
+  }
+  const periods = Array.from(dates).sort().reverse().slice(0, 5);   // newest first
+  const rows = fields.map(([label, key]) => ({
+    label, key,
+    values: periods.map(d => {
+      const m = series[prefix + key];
+      return (m && m[d] != null) ? m[d] : null;
+    }),
+  }));
+  return _stFinish(periods, rows);
+}
+function _stTsParse(json, quarterly){
+  const series = _stTsSeries(json);
+  if(!series) return null;
+  const pre = quarterly ? 'quarterly' : 'annual';
+  const out = {
+    source:   'timeseries',
+    income:   _stTsTable(series, ST_INCOME,   pre),
+    balance:  _stTsTable(series, ST_BALANCE,  pre),
+    cashflow: _stTsTable(series, ST_CASHFLOW, pre),
+  };
+  return (out.income || out.balance || out.cashflow) ? out : null;
+}
+
+// ── quoteSummary history modules (fallback) ────────────────────────────────
 function _stTable(list, fields){
   if(!Array.isArray(list) || !list.length) return null;
   const stmts = list.map(s => ({ date: _stDate(s.endDate), s }))
@@ -65,27 +133,39 @@ function _stTable(list, fields){
                     .sort((a,b) => a.date < b.date ? 1 : -1)     // newest first
                     .slice(0, 5);
   if(!stmts.length) return null;
-  const rows = fields.map(([label, key]) => ({
-    label, key,
-    values: stmts.map(x => _stNum(x.s[key])),
-  }));
-  // A table where every cell is missing is not a statement.
-  if(!rows.some(r => r.values.some(v => v != null))) return null;
-  return { periods: stmts.map(x => x.date), rows };
+  const rows = fields.map(([label, key, qsKey]) => {
+    let values = qsKey ? stmts.map(x => _stNum(x.s[qsKey])) : stmts.map(() => null);
+    // This endpoint zero-fills lines it no longer carries. A line that reads
+    // exactly zero in every single period is that artefact, not an account
+    // balance, so it is reported as unknown rather than as a confident zero.
+    if(values.length && values.every(v => v === 0)) values = values.map(() => null);
+    return { label, key, values };
+  });
+  return _stFinish(stmts.map(x => x.date), rows);
 }
-
-// Parse a whole quoteSummary response into the three statements.
 function _stParse(json, quarterly){
   const q = quarterly ? 'Quarterly' : '';
   const res = json && json.quoteSummary && json.quoteSummary.result && json.quoteSummary.result[0];
   if(!res) return null;
   const pick = (mod, key) => (res[mod] && Array.isArray(res[mod][key])) ? res[mod][key] : null;
   const out = {
+    source:   'quoteSummary',
     income:   _stTable(pick('incomeStatementHistory'+q,   'incomeStatementHistory'),   ST_INCOME),
     balance:  _stTable(pick('balanceSheetHistory'+q,      'balanceSheetStatements'),   ST_BALANCE),
     cashflow: _stTable(pick('cashflowStatementHistory'+q, 'cashflowStatements'),       ST_CASHFLOW),
   };
   return (out.income || out.balance || out.cashflow) ? out : null;
+}
+
+// How much of a parsed result is actually filled in. Used to decide whether the
+// timeseries answer was thin enough to be worth trying the fallback.
+function _stCells(t){
+  if(!t) return 0;
+  let n = 0;
+  for(const k of ['income','balance','cashflow']){
+    if(t[k]) for(const r of t[k].rows) for(const v of r.values) if(v != null) n++;
+  }
+  return n;
 }
 
 // Derived figures the statements support and ratios alone do not.
@@ -96,18 +176,21 @@ function _stDerived(t){
     const r = tab.rows.find(x => x.key === key);
     return r ? r.values[0] : null;
   };
-  const rev = first(t.income, 'totalRevenue');
-  const ni  = first(t.income, 'netIncome');
-  const ocf = first(t.cashflow, 'totalCashFromOperatingActivities');
-  const capex = first(t.cashflow, 'capitalExpenditures');
-  const eq  = first(t.balance, 'totalStockholderEquity');
-  const debt = first(t.balance, 'longTermDebt');
+  const rev   = first(t.income, 'TotalRevenue');
+  const ni    = first(t.income, 'NetIncome');
+  const ocf   = first(t.cashflow, 'OperatingCashFlow');
+  const capex = first(t.cashflow, 'CapitalExpenditure');
+  const fcf   = first(t.cashflow, 'FreeCashFlow');
+  const eq    = first(t.balance, 'StockholdersEquity');
+  const debt  = first(t.balance, 'LongTermDebt');
   const out = {};
   if(rev != null && rev !== 0 && ni != null) out.netMargin = ni / rev * 100;
   if(eq  != null && eq  !== 0 && ni != null) out.roe = ni / eq * 100;
   if(eq  != null && eq  !== 0 && debt != null) out.debtToEquity = debt / eq;
-  // capex comes back negative; free cash flow is OCF plus that negative number.
-  if(ocf != null && capex != null) out.freeCashFlow = ocf + capex;
+  // Prefer the reported figure; otherwise derive it. Capex comes back negative,
+  // so free cash flow is operating cash flow plus that negative number.
+  if(fcf != null) out.freeCashFlow = fcf;
+  else if(ocf != null && capex != null) out.freeCashFlow = ocf + capex;
   // Earnings backed by cash, or by accounting? A ratio well under 1 is a flag.
   if(ni != null && ni > 0 && ocf != null) out.cashConversion = ocf / ni;
   return Object.keys(out).length ? out : null;
@@ -116,24 +199,38 @@ function _stDerived(t){
 // ── Fetch + render ─────────────────────────────────────────────────────────
 let _stCache = {};      // key: sym|period
 
+async function _stOne(url){
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if(!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+  finally { clearTimeout(tid); }
+}
+
 async function _stFetch(sym, quarterly){
   const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
   if(!sp || !sym) return null;
   const key = sym + '|' + (quarterly ? 'q' : 'a');
   if(_stCache[key] !== undefined) return _stCache[key];
+  const per = quarterly ? '&period=quarterly' : '';
+  const enc = encodeURIComponent(sym);
+  let out = null;
   try {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 15000);
-    let r;
-    try {
-      r = await fetch(`${sp}/?statements=${encodeURIComponent(sym)}${quarterly ? '&period=quarterly' : ''}`,
-                      { signal: ctrl.signal });
-    } finally { clearTimeout(tid); }
-    if(!r.ok) { _stCache[key] = null; return null; }
-    const parsed = _stParse(await r.json(), quarterly);
-    _stCache[key] = parsed;
-    return parsed;
-  } catch(e) { _stCache[key] = null; return null; }
+    const tsJson = await _stOne(`${sp}/?timeseries=${enc}${per}`);
+    out = tsJson ? _stTsParse(tsJson, quarterly) : null;
+    // Only reach for the hollowed-out endpoint when the good one came back
+    // empty or near-empty — never to "top up" an answer that already stands.
+    if(_stCells(out) < 4){
+      const qsJson = await _stOne(`${sp}/?statements=${enc}${per}`);
+      const alt = qsJson ? _stParse(qsJson, quarterly) : null;
+      if(_stCells(alt) > _stCells(out)) out = alt;
+    }
+  } catch(e) { out = null; }
+  _stCache[key] = out;
+  return out;
 }
 
 function _stFmt(v, isIndia){
@@ -196,12 +293,15 @@ async function renderStatements(){
       ${d.freeCashFlow!=null?chip('Free cash flow', _stFmt(d.freeCashFlow, isIndia),'Operating cash flow after capital expenditure - what is actually left over.'):''}
       ${d.cashConversion!=null?chip('Cash conversion', d.cashConversion.toFixed(2),'Operating cash flow divided by net income. Well below 1 means profits are not turning into cash.'):''}
     </div>` : '';
+  const fallbackNote = t.source === 'quoteSummary'
+    ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
+    : '';
   el.innerHTML = toggle + derived
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:8px 12px;background:var(--surface2);border-radius:8px">
-        Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.
+        Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.${fallbackNote}
         Statement data can lag the latest filing; check the company's own filing before relying on it.
       </div>`;
 }
