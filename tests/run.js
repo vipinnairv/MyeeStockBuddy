@@ -1213,6 +1213,466 @@ group('plain-English labels');
   ok('Simple mode keeps the bare token for its logic', /v==='HOLD'\?' if it triggers'/.test(SRC), 'logic token broken');
 }
 
+// ── Crypto symbol resolution ───────────────────────────────────────────────
+group('crypto symbols');
+{
+  const src = slice('const COIN_TICKERS = {', '\n// Full market symbol', 'coin');
+  const src2 = slice('function cryptoMarketSymbol(h, cur, db){', '\n}', 'coinsym') + '\n}';
+  const { cryptoTicker, cryptoMarketSymbol } =
+    load(src + '\n' + src2, ['cryptoTicker','cryptoMarketSymbol'], { String, Array });
+
+  const DB = [
+    ['Bitcoin','BTC-USD','BTC-USD','L1'], ['Ethereum','ETH-USD','ETH-USD','L1'],
+    ['XRP (Ripple)','XRP-USD','XRP-USD','Payments'], ['Solana','SOL-USD','SOL-USD','L1'],
+  ];
+
+  // The exact bug: upper-casing the id produced symbols that do not exist.
+  eq('bitcoin -> BTC, not BITCOIN', cryptoTicker({coinId:'bitcoin'}, DB), 'BTC');
+  eq('ethereum -> ETH', cryptoTicker({coinId:'ethereum'}, DB), 'ETH');
+  eq('solana -> SOL', cryptoTicker({coinId:'solana'}, DB), 'SOL');
+  // Ripple is the case truncation could never fix: id "ripple", ticker "XRP".
+  eq('ripple -> XRP (not a prefix of the id)', cryptoTicker({coinId:'ripple'}, DB), 'XRP');
+
+  eq('full market symbol is built for the currency', cryptoMarketSymbol({coinId:'bitcoin'}, 'INR', DB), 'BTC-INR');
+  eq('USD pair works too', cryptoMarketSymbol({coinId:'ripple'}, 'USD', DB), 'XRP-USD');
+
+  // Name lookup via the app's own coin list, including the parenthetical alias.
+  eq('resolves by display name', cryptoTicker({coin:'Solana'}, DB), 'SOL');
+  eq('resolves by the alias in brackets', cryptoTicker({coin:'Ripple'}, DB), 'XRP');
+  eq('resolves the bracketed full name', cryptoTicker({coin:'XRP (Ripple)'}, DB), 'XRP');
+
+  // An explicit ticker from the user wins.
+  eq('an explicit ticker is trusted', cryptoTicker({coinId:'bitcoin', ticker:'BTC'}, DB), 'BTC');
+  eq('and is stripped of any pair suffix', cryptoTicker({ticker:'ETH-USD'}, DB), 'ETH');
+
+  // A bare ticker typed into the id field still resolves.
+  eq('a ticker-shaped id resolves', cryptoTicker({coinId:'BTC'}, DB), 'BTC');
+
+  // Unknown coins must return null, NOT a fabricated symbol - fetching a
+  // made-up ticker is what made the old failure silent.
+  eq('an unknown long id is unresolvable', cryptoTicker({coinId:'somenewcoin'}, DB), null);
+  eq('and yields no market symbol', cryptoMarketSymbol({coinId:'somenewcoin'}, 'INR', DB), null);
+  eq('empty holding is unresolvable', cryptoTicker({}, DB), null);
+  eq('null holding is safe', cryptoTicker(null, DB), null);
+  eq('missing db is safe', cryptoTicker({coin:'Solana'}, null), null);
+
+  // ── wiring ──
+  ok('refresh no longer upper-cases the coin id',
+     !/coinId\.toUpperCase\(\)\+'-INR'/.test(SRC), 'old broken symbol build remains');
+  ok('refresh uses the resolver', /cryptoMarketSymbol\(h, 'INR'/.test(SRC), 'resolver not wired');
+  ok('unresolvable coins are reported, not silently skipped',
+     /had no recognised ticker/.test(SRC), 'no report of unresolved coins');
+  ok('a USD pair is tried when the INR pair has no price',
+     /replace\(\/-INR\$\/, '-USD'\)/.test(SRC), 'no USD fallback');
+  ok('single-row refresh uses the resolver too',
+     /No recognised ticker for/.test(SRC), 'single refresh still naive');
+}
+
+// ── Attribution & tax-loss harvesting ──────────────────────────────────────
+group('attribution & harvesting');
+{
+  const src = slice('function _atContribution(lots){', '\n// ── Glue + rendering', 'attr');
+  const { _atContribution, _atHarvest } = load(src, ['_atContribution','_atHarvest'], { Array, Math, isFinite, Number });
+  const L = (name,invested,current,dividend) => ({ name, cls:'India EQ', invested, current, dividend });
+
+  // ── contribution ──
+  {
+    const a = _atContribution([L('Win',100000,160000,0), L('Flat',100000,100000,0), L('Lose',100000,80000,0)]);
+    eq('total P&L nets winners against losers', a.totalPL, 40000);   // +60k -20k
+    eq('return is against total invested', +a.totalRetPct.toFixed(4), +(40000/300000*100).toFixed(4));
+    eq('winners counted', a.winners.length, 1);
+    eq('losers counted', a.losers.length, 1);
+    eq('sorted by rupee contribution', a.rows[0].name, 'Win');
+    eq('the loser sorts last', a.rows[a.rows.length-1].name, 'Lose');
+    eq('shares sum to 100%', +a.rows.reduce((s,r)=>s+(r.sharePct||0),0).toFixed(6), 100);
+  }
+  {
+    // Dividends are part of what a holding contributed.
+    const noDiv = _atContribution([L('A',100000,100000,0)]);
+    const wDiv  = _atContribution([L('A',100000,100000,5000)]);
+    eq('a flat holding with no dividend contributed nothing', noDiv.totalPL, 0);
+    eq('dividends count as contribution', wDiv.totalPL, 5000);
+  }
+  {
+    // When winners and losers cancel, "share of total" is meaningless - we must
+    // not print +infinity% or a wild number.
+    const a = _atContribution([L('Up',100000,150000,0), L('Down',100000,50000,0)]);
+    eq('offsetting book nets to zero', a.totalPL, 0);
+    ok('shares are suppressed, not fabricated', a.shareMeaningful === false, 'claimed a share anyway');
+    ok('and every row reports null', a.rows.every(r => r.sharePct === null), 'a share slipped through');
+  }
+  eq('unpriceable lots are excluded', _atContribution([L('X',0,100,0), L('Y',100000,120000,0)]).rows.length, 1);
+  eq('an empty book yields null', _atContribution([]), null);
+
+  // ── harvesting ──
+  {
+    // 3 lakh LTCG booked; exemption absorbs 1.25L, leaving 1.75L to offset.
+    const h = _atHarvest([L('Down1',100000,60000,0), L('Down2',100000,90000,0), L('Up',100000,140000,0)], 300000, 0);
+    eq('only holdings under water are candidates', h.candidates.length, 2);
+    eq('largest loss first', h.candidates[0].name, 'Down1');
+    eq('total unrealised loss', h.totalLoss, 50000);          // 40k + 10k
+    eq('exemption fully used', h.exemptionUsed, 125000);
+    eq('nothing left of the exemption', h.exemptionLeft, 0);
+    eq('offsettable gain is net of the exemption', h.offsettable, 175000);
+    eq('all the loss is useful here', h.usefulLoss, 50000);
+  }
+  {
+    // Gains below the exemption: nothing to offset, so booking a loss achieves
+    // nothing this year and must not be recommended.
+    const h = _atHarvest([L('Down',100000,50000,0)], 100000, 0);
+    eq('exemption not exhausted', h.exemptionLeft, 25000);
+    eq('no offsettable gain', h.offsettable, 0);
+    eq('so no loss is worth booking', h.usefulLoss, 0);
+  }
+  {
+    // Loss larger than the gains: useful amount is capped at the gains.
+    const h = _atHarvest([L('Down',1000000,100000,0)], 200000, 0);
+    eq('useful loss is capped at offsettable gains', h.usefulLoss, 75000); // 200k-125k
+    ok('but the full loss is still reported', h.totalLoss === 900000, String(h.totalLoss));
+  }
+  {
+    // Short-term gains have no exemption - they are offsettable in full.
+    const h = _atHarvest([L('Down',100000,40000,0)], 0, 90000);
+    eq('STCG is offsettable without exemption', h.offsettable, 90000);
+    eq('exemption untouched by STCG', h.exemptionLeft, 125000);
+  }
+  eq('a book with no losses has no candidates', _atHarvest([L('Up',100,200,0)], 500000, 0).candidates.length, 0);
+  eq('empty book is safe', _atHarvest([], 0, 0).totalLoss, 0);
+
+  // ── wiring ──
+  ok('both cards render on the analysis tab', /renderAttribution\(\);renderHarvest\(\)/.test(SRC), 'not wired');
+  ok('harvesting reuses the FIFO matcher for realised gains',
+     /_atRealisedThisFY[\s\S]{0,400}fifoMatchSells/.test(SRC), 'duplicate realised-gain logic');
+  ok('the panel says the losses are unrealised', /nothing is booked until you actually sell/.test(SRC), 'overclaims');
+  ok('and warns booking has real costs', /spread, brokerage/.test(SRC), 'no cost caveat');
+}
+
+// ── Risk metrics ───────────────────────────────────────────────────────────
+group('risk metrics');
+{
+  const src = slice('const RISK_TRADING_DAYS = 252;', '\n// ── Glue: fetch each holding', 'risk');
+  const { _rkAlignedReturns, _rkStdev, _rkBeta, _rkMetrics } =
+    load(src, ['_rkAlignedReturns','_rkStdev','_rkBeta','_rkMetrics'], { Math, Object, Set, Array, isFinite, Number });
+
+  const day = i => '2026-' + String(1 + Math.floor(i/28)).padStart(2,'0') + '-' + String(1 + (i%28)).padStart(2,'0');
+  const ser = (vals, off=0) => vals.map((c,i) => ({ d: day(i+off), c }));
+
+  // ── stdev ──
+  eq('stdev of a constant series is 0', _rkStdev([1,1,1,1]), 0);
+  eq('too few points -> null', _rkStdev([1]), null);
+  ok('stdev is the sample (n-1) form', Math.abs(_rkStdev([2,4,4,4,5,5,7,9]) - 2.1380899) < 1e-6, String(_rkStdev([2,4,4,4,5,5,7,9])));
+
+  // ── alignment ──
+  {
+    // Two holdings, equal weight, both rising 10% a day -> portfolio +10%/day.
+    const r = _rkAlignedReturns({ A: ser([100,110,121]), B: ser([50,55,60.5]) }, { A:1, B:1 });
+    eq('one return per interval', r.length, 2);
+    ok('equal-weight return is the common move', Math.abs(r[0].r - 0.10) < 1e-9, String(r[0].r));
+  }
+  {
+    // Weighting must actually bite: 90/10 between +10%/day and flat.
+    const r = _rkAlignedReturns({ A: ser([100,110,121]), B: ser([100,100,100]) }, { A:9, B:1 });
+    ok('returns are value-weighted', Math.abs(r[0].r - 0.09) < 1e-9, String(r[0].r));
+  }
+  {
+    // A holding missing a date must not shift the other's returns. Only dates
+    // common to every series are used.
+    const A = [{d:'2026-01-01',c:100},{d:'2026-01-02',c:110},{d:'2026-01-03',c:121}];
+    const B = [{d:'2026-01-01',c:100},                        {d:'2026-01-03',c:100}];
+    const r = _rkAlignedReturns({ A, B }, { A:1, B:1 });
+    eq('only common dates are used', r.length, 1);
+    eq('and it is the shared date', r[0].d, '2026-01-03');
+  }
+  eq('a single-close series yields null', _rkAlignedReturns({ A: ser([100]) }, { A:1 }), null);
+  // A thin holding must not nullify the whole book - alignment just reports the
+  // common days; whether that is enough is _rkMetrics's judgement.
+  ok('two closes still yield one return', _rkAlignedReturns({ A: ser([100,110]) }, { A:1 }).length === 1, 'thin series poisons the book');
+  eq('no weights yields null', _rkAlignedReturns({ A: ser([100,110,120]) }, { A:0 }), null);
+  eq('empty map yields null', _rkAlignedReturns({}, {}), null);
+
+  // ── beta ──
+  {
+    // Portfolio moves exactly twice the benchmark -> beta 2, correlation 1.
+    const b = [], p = [];
+    for(let i=0;i<60;i++){ const x = ((i*37)%11 - 5)/500; b.push({d:day(i), r:x}); p.push({d:day(i), r:2*x}); }
+    const r = _rkBeta(p, b);
+    ok('beta of a 2x tracker is 2', Math.abs(r.beta - 2) < 1e-9, String(r.beta));
+    ok('and correlation is 1', Math.abs(r.corr - 1) < 1e-9, String(r.corr));
+  }
+  {
+    // Fewer than 20 overlapping days is not a measurement.
+    const b = [], p = [];
+    for(let i=0;i<10;i++){ b.push({d:day(i), r:0.01}); p.push({d:day(i), r:0.02}); }
+    eq('too little overlap -> null beta', _rkBeta(p, b), null);
+  }
+  {
+    // A flat benchmark has no variance to regress against.
+    const b = [], p = [];
+    for(let i=0;i<40;i++){ b.push({d:day(i), r:0}); p.push({d:day(i), r:(i%3-1)/100}); }
+    eq('a flat benchmark yields null beta', _rkBeta(p, b), null);
+  }
+
+  // ── metrics ──
+  {
+    const p = [];
+    for(let i=0;i<60;i++) p.push({ d:day(i), r:((i*37)%11 - 5)/500 });
+    const m = _rkMetrics(p, null, 6.5);
+    ok('volatility is annualised and positive', m.vol > 0, String(m.vol));
+    eq('risk-free rate is carried through', m.riskFree, 6.5);
+    eq('beta is null without a benchmark', m.beta, null);
+    ok('sharpe is computed from vol and return', m.sharpe != null, 'no sharpe');
+  }
+  {
+    // A steadily rising, never-wobbling series has ~zero volatility, so Sharpe
+    // must not be reported as a huge number off a divide-by-almost-zero.
+    const p = [];
+    for(let i=0;i<40;i++) p.push({ d:day(i), r:0.001 });
+    const m = _rkMetrics(p, null, 6.5);
+    eq('zero-variance series reports zero volatility', m.vol, 0);
+    eq('and withholds Sharpe rather than dividing by zero', m.sharpe, null);
+  }
+  eq('under 20 days is refused', _rkMetrics([{d:'a',r:0.01},{d:'b',r:0.02}], null, 6.5), null);
+
+  // ── wiring ──
+  ok('risk card renders on the analysis tab', /analysis:\(\)=>\{[^}]*renderRisk\(\)/.test(SRC), 'not wired');
+  // Diversification reuses the price history renderRisk fetches, so it must run
+  // AFTER it resolves rather than racing an empty cache.
+  ok('diversification waits for the risk fetch',
+     /renderRisk\(\)\.then\(\(\)=>\{try\{renderDiversification\(\);\}catch\(e\)\{\}\}\)/.test(SRC),
+     'diversification may race the price fetch');
+  ok('history is fetched through the owner Worker', /renderRisk[\s\S]{0,700}_selfProxyUrl/.test(SRC), 'not via Worker');
+  ok('it says so when no Worker is configured', /Risk metrics need per-holding price history/.test(SRC), 'no explanation');
+  ok('coverage is reported, not hidden', /<b>\$\{covered\} of \$\{total\}<\/b>/.test(SRC), 'coverage not surfaced');
+  ok('holdings without history are named', /No usable history for:/.test(SRC), 'exclusions not named');
+  ok('it does not present the past as a forecast', /not a forecast/.test(SRC), 'overclaims');
+}
+
+// ── Estimated tax if sold today ────────────────────────────────────────────
+group('tax if sold today');
+{
+  const src = slice('function _ifSoldRows(lots, asOf, ltDays){', '\nfunction renderIfSold()', 'ifsold');
+  const { _ifSoldRows, _ifSoldTax } = load(src, ['_ifSoldRows','_ifSoldTax'], { Array, Math, Date, isFinite, Object, Number });
+  const asOf = new Date('2026-04-01T00:00:00Z');
+  const L = (name,cls,invested,current,buyDate) => ({ name, cls, invested, current, buyDate });
+
+  // ── classification by real holding period ──
+  {
+    const { rows } = _ifSoldRows([
+      L('Old','India EQ',100000,200000,'2020-01-01'),
+      L('New','India EQ',100000,120000,'2026-02-01'),
+    ], asOf, 365);
+    eq('both are datable', rows.length, 2);
+    ok('a 6-year hold is long term', rows[0].isLTCG === true, 'not LTCG');
+    ok('a 2-month hold is short term', rows[1].isLTCG === false, 'not STCG');
+  }
+  {
+    // Undated holdings cannot be classified and must be excluded, not guessed.
+    const { rows, undated } = _ifSoldRows([L('NoDate','India EQ',100000,200000,null)], asOf, 365);
+    eq('undated is not classified', rows.length, 0);
+    eq('and is reported separately', undated.length, 1);
+  }
+  eq('a future purchase date is excluded', _ifSoldRows([L('F','India EQ',1,2,'2030-01-01')], asOf, 365).rows.length, 0);
+  eq('zero-cost lots are ignored', _ifSoldRows([L('Z','India EQ',0,100,'2020-01-01')], asOf, 365).rows.length, 0);
+
+  // ── tax arithmetic ──
+  {
+    // 3L long-term gain: 1.25L exempt, 1.75L @12.5% = 21,875.
+    const r = _ifSoldTax([L('A','India EQ',100000,400000,'2020-01-01')], asOf);
+    eq('LTCG total', r.ltcgTotal, 300000);
+    eq('taxable after exemption', r.ltcgTaxable, 175000);
+    eq('LTCG tax at 12.5%', r.ltcgTax, 21875);
+    eq('no STCG', r.stcgTax, 0);
+    eq('cess is 4% on top', +r.totalWithCess.toFixed(2), +(21875*1.04).toFixed(2));
+  }
+  {
+    // Short-term gain 1L @20% = 20,000, with no exemption.
+    const r = _ifSoldTax([L('B','India EQ',100000,200000,'2026-02-01')], asOf);
+    eq('STCG tax at 20%', r.stcgTax, 20000);
+    eq('exemption does not apply to STCG', r.ltcgTax, 0);
+  }
+  {
+    // A long-term gain under the exemption is untaxed.
+    const r = _ifSoldTax([L('C','India EQ',100000,180000,'2020-01-01')], asOf);
+    eq('gain below the exemption is untaxed', r.ltcgTax, 0);
+  }
+  {
+    // Losses reduce the taxable total rather than being taxed.
+    const r = _ifSoldTax([
+      L('Win','India EQ',100000,500000,'2020-01-01'),
+      L('Lose','India EQ',100000,50000,'2020-01-01'),
+    ], asOf);
+    eq('long-term gains and losses net off', r.ltcgTotal, 350000);
+    eq('tax applies to the net after exemption', r.ltcgTax, (350000-125000)*0.125);
+  }
+  {
+    // Crypto is taxed on gains only - a VDA loss cannot reduce a VDA gain.
+    const r = _ifSoldTax([
+      L('BTC','Crypto',100000,300000,'2020-01-01'),
+      L('ALT','Crypto',100000,20000,'2020-01-01'),
+    ], asOf);
+    eq('VDA gains only', r.vdaGain, 200000);
+    eq('VDA tax at 30%', r.vdaTax, 60000);
+    eq('crypto is kept out of the equity buckets', r.ltcgTotal, 0);
+  }
+  {
+    const r = _ifSoldTax([L('N','India EQ',100000,90000,'2020-01-01')], asOf);
+    eq('an overall loss owes no tax', r.total, 0);
+  }
+
+  // ── wiring & honesty ──
+  ok('the panel renders with the taxation tab', /renderTaxation\(\);renderIfSold\(\)/.test(SRC), 'not wired');
+  ok('it is presented as a what-if, not a bill', /A <b>what-if<\/b> estimate/.test(SRC), 'overclaims');
+  ok('the averaged-cost limitation is disclosed',
+     /actual tax on sale is computed FIFO lot by lot and will differ/.test(SRC), 'limitation hidden');
+  ok('undated holdings are surfaced as excluded', /cannot be classified long or short term/.test(SRC), 'exclusions hidden');
+}
+
+// ── USD/INR auto-refresh ───────────────────────────────────────────────────
+group('fx auto-refresh');
+{
+  const src = slice('function _fxIsStale(rec, today){', '\n// Record a manual entry', 'fx');
+  const { _fxIsStale, _fxPlausible } = load(src, ['_fxIsStale','_fxPlausible'], { isFinite, Number });
+
+  eq('same day is not stale', _fxIsStale({d:'2026-09-02',v:88}, '2026-09-02'), false);
+  eq('yesterday is stale', _fxIsStale({d:'2026-09-01',v:88}, '2026-09-02'), true);
+  eq('no record is stale', _fxIsStale(null, '2026-09-02'), true);
+  eq('a record with no date is stale', _fxIsStale({v:88}, '2026-09-02'), true);
+
+  // A wrong symbol or a bad parse could return a share price or a percentage.
+  // Adopting it silently would corrupt every US valuation and the tax figures.
+  ok('a realistic rate is accepted', _fxPlausible(88.4), 'rejected a good rate');
+  ok('an absurdly high value is refused', !_fxPlausible(24000), 'accepted a share price');
+  ok('an absurdly low value is refused', !_fxPlausible(1.2), 'accepted a ratio');
+  ok('zero is refused', !_fxPlausible(0), 'accepted zero');
+  ok('NaN is refused', !_fxPlausible(NaN), 'accepted NaN');
+
+  ok('the rate refreshes on boot', /try \{ fxRefresh\(\); \} catch\(e\)\{\}/.test(SRC), 'not refreshed on boot');
+  ok('it fetches the USD/INR pair', /_FX_SYM\s*=\s*'USDINR=X'/.test(SRC), 'wrong symbol');
+  ok('it only refetches once a day', /_fxIsStale\(rec, today\)/.test(SRC), 'no daily guard');
+  ok('manual entry is still possible', /function fxSetManual/.test(SRC), 'manual override removed');
+  ok('the badge says it is automatic', /Auto-updated daily\. Click to set it manually\./.test(SRC), 'tooltip not updated');
+}
+
+// ── Diversification ────────────────────────────────────────────────────────
+group('diversification');
+{
+  const src = slice('function _dvCorr(xs, ys){', '\n// ── Render', 'dv');
+  const { _dvCorr, _dvEffective, _dvMatrix, _dvVerdict } =
+    load(src, ['_dvCorr','_dvEffective','_dvMatrix','_dvVerdict'], { Math, Object, Set, Array, isFinite, Number });
+
+  // ── correlation ──
+  {
+    const xs = [], ys = [], zs = [];
+    for(let i=0;i<40;i++){ const v = ((i*13)%7 - 3)/100; xs.push(v); ys.push(v); zs.push(-v); }
+    ok('identical series correlate at 1', Math.abs(_dvCorr(xs,ys) - 1) < 1e-9, String(_dvCorr(xs,ys)));
+    ok('mirrored series correlate at -1', Math.abs(_dvCorr(xs,zs) + 1) < 1e-9, String(_dvCorr(xs,zs)));
+  }
+  eq('too few points -> null', _dvCorr([1,2,3],[1,2,3]), null);
+  {
+    const flat = new Array(40).fill(0), moving = flat.map((_,i) => (i%3-1)/100);
+    eq('a flat series has no correlation', _dvCorr(flat, moving), null);
+  }
+
+  // ── effective holdings: concentration by size ──
+  {
+    const e = _dvEffective([25,25,25,25]);
+    eq('four equal holdings behave like four', +e.effective.toFixed(6), 4);
+    eq('largest weight reported', +e.topWeightPct.toFixed(2), 25);
+  }
+  {
+    // The point of the measure: 20 names, one dominant, behaves like far fewer.
+    const w = [60].concat(new Array(19).fill(40/19));
+    const e = _dvEffective(w);
+    eq('counts the holdings you actually have', e.n, 20);
+    ok('but effective count is far lower', e.effective < 4, String(e.effective));
+    ok('and names the dominant weight', Math.abs(e.topWeightPct - 60) < 1e-9, String(e.topWeightPct));
+  }
+  eq('no holdings -> null', _dvEffective([]), null);
+  eq('zero values -> null', _dvEffective([0,0]), null);
+
+  // ── matrix ──
+  {
+    // Two holdings moving identically: average correlation 1 -> not diversified.
+    const a = [], b = [];
+    for(let i=0;i<40;i++){ const c = 100 * Math.pow(1.01, (i*7)%5); a.push({d:'d'+String(i).padStart(3,'0'), c}); b.push({d:'d'+String(i).padStart(3,'0'), c:c*2}); }
+    const m = _dvMatrix({ A:a, B:b });
+    ok('identical movers average ~1', Math.abs(m.avg - 1) < 1e-6, String(m.avg));
+    eq('one pair for two holdings', m.pairs.length, 1);
+    eq('verdict names the risk', _dvVerdict(m.avg).word, 'Barely diversified');
+  }
+  eq('a single holding cannot be correlated', _dvMatrix({ A:[{d:'a',c:1}] }), null);
+  eq('too-short history -> null', _dvMatrix({ A:[{d:'a',c:1}], B:[{d:'a',c:2}] }), null);
+
+  // ── verdict bands ──
+  eq('high correlation reads as barely diversified', _dvVerdict(0.9).word, 'Barely diversified');
+  eq('mid correlation reads as lightly', _dvVerdict(0.6).word, 'Lightly diversified');
+  eq('low correlation reads as well diversified', _dvVerdict(0.1).word, 'Well diversified');
+  eq('no average -> no verdict', _dvVerdict(null), null);
+
+  ok('the card admits correlation ignores position size', /weight-blind/.test(SRC), 'limitation hidden');
+  ok('and warns correlation rises in a crash', /rises in a crash/.test(SRC), 'no crash caveat');
+}
+
+// ── Rebalancing & concentration ────────────────────────────────────────────
+group('rebalancing');
+{
+  const src = slice('const _RB_CLASSES = [', '\n// ── Render', 'rb');
+  const { _rbDrift, _rbConcentration } = load(src.replace(/^function rbLoadTargets[\s\S]*?\n\}\n/m,''),
+    ['_rbDrift','_rbConcentration'], { Math, Object, Array, isFinite, Number });
+
+  // ── drift ──
+  {
+    const d = _rbDrift({ indEQ:600000, usEQ:200000, crypto:200000 }, { indEQ:50, usEQ:30, crypto:20 });
+    const ind = d.rows.find(r => r.key==='indEQ');
+    eq('actual share computed', +ind.actualPct.toFixed(2), 60);
+    eq('drift is actual minus target', +ind.driftPct.toFixed(2), 10);
+    eq('and sized in rupees to trim', +ind.driftValue.toFixed(0), 100000);
+    const us = d.rows.find(r => r.key==='usEQ');
+    ok('an underweight class shows a negative drift', us.driftPct < 0, String(us.driftPct));
+    ok('targets summing to 100 are accepted', d.targetsSumOk === true, 'flagged a valid target set');
+  }
+  {
+    // Targets that do not sum to 100 cannot all be met - say so rather than
+    // emitting trades that silently contradict each other.
+    const d = _rbDrift({ indEQ:100 }, { indEQ:40, usEQ:40 });
+    ok('mismatched targets are flagged', d.targetsSumOk === false, 'did not flag');
+    eq('and the shortfall is reported', d.targetedPct, 80);
+  }
+  {
+    // An unset target must NOT be read as "should be zero" - that would demand
+    // liquidating a class the user simply had not configured.
+    const d = _rbDrift({ indEQ:500000, crypto:500000 }, { indEQ:50 });
+    const cry = d.rows.find(r => r.key==='crypto');
+    eq('untargeted class has no target', cry.targetPct, null);
+    eq('and therefore no drift', cry.driftPct, null);
+    ok('it is marked untargeted', cry.hasTarget === false, 'treated as targeted');
+  }
+  eq('an empty book yields null', _rbDrift({}, { indEQ:50 }), null);
+  eq('a zero-value book yields null', _rbDrift({ indEQ:0 }, { indEQ:50 }), null);
+
+  // ── concentration ──
+  {
+    const c = _rbConcentration([{name:'Big',value:400},{name:'A',value:200},{name:'B',value:200},{name:'C',value:200}], 25);
+    eq('sorted by weight', c.rows[0].name, 'Big');
+    eq('largest weight is correct', +c.rows[0].pct.toFixed(2), 40);
+    eq('only true breaches are flagged', c.breaches.length, 1);
+    eq('and it is the big one', c.breaches[0].name, 'Big');
+  }
+  {
+    const c = _rbConcentration([{name:'A',value:100},{name:'B',value:100}], 60);
+    eq('nothing breaches a generous limit', c.breaches.length, 0);
+  }
+  eq('an empty list yields null', _rbConcentration([], 15), null);
+  eq('all-zero values yield null', _rbConcentration([{name:'A',value:0}], 15), null);
+
+  // ── wiring ──
+  ok('rebalance card renders on the analysis tab', /renderRebalance\(\)/.test(SRC), 'not wired');
+  ok('blank targets are explained, not assumed zero',
+     /they are not treated as "should be zero"/.test(SRC), 'no explanation');
+  ok('it warns that rebalancing is taxable', /rebalancing realises gains, which is taxable/.test(SRC), 'no tax warning');
+  ok('targets are the user\'s, not advice', /Targets and the limit are yours/.test(SRC), 'presented as advice');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

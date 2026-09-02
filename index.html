@@ -2350,7 +2350,11 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         <div class="cb" id="stcg-panel"><p style="color:var(--T3);font-size:13px">No STCG transactions found for this FY.</p></div>
       </div>
     </div>
-    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div></div>
+    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div>
+    </div>
+    <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+      <div class="ch"><span class="ct">🔮 If You Sold Today</span><span style="font-size:10.5px;color:var(--T3)">estimated tax on unrealised gains</span></div>
+      <div class="cb" id="tax-ifsold"></div></div>
     <div class="card"><div class="ch"><span class="ct">All Realised Transactions - Sells Logged</span></div>
       <div class="cb"><div class="ts"><table style="min-width:700px">
         <thead><tr><th>Date</th><th>Asset</th><th>Class</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Gain/Loss</th><th>Type</th></tr></thead>
@@ -2449,6 +2453,26 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
     <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
     <div class="cb" id="ana-growth"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎖 What Drove Your Return</span><span style="font-size:10.5px;color:var(--T3)">contribution by holding</span></div>
+    <div class="cb" id="ana-attribution"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #D93025">
+    <div class="ch"><span class="ct">🌾 Tax-Loss Harvesting</span><span style="font-size:10.5px;color:var(--T3)">unrealised losses vs booked gains</span></div>
+    <div class="cb" id="ana-harvest"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
+    <div class="ch"><span class="ct">⚖️ Risk &amp; Reward</span><span style="font-size:10.5px;color:var(--T3)">were you paid for the swings</span></div>
+    <div class="cb" id="ana-risk"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #0EA5E9">
+    <div class="ch"><span class="ct">🧩 True Diversification</span><span style="font-size:10.5px;color:var(--T3)">how many real bets do you have</span></div>
+    <div class="cb" id="ana-diversification"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎯 Rebalancing &amp; Concentration</span><span style="font-size:10.5px;color:var(--T3)">target vs actual</span></div>
+    <div class="cb" id="ana-rebalance"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -10758,6 +10782,848 @@ function renderAlerts(){
     <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price — not advice, and not automatic orders.</div>
   </div>`;
 }
+// ══════════ CRYPTO SYMBOL RESOLUTION ══════════
+// Holdings store a CoinGecko-style id ('bitcoin', 'ripple'); price feeds want
+// an exchange ticker ('BTC', 'XRP'). The refresh used to just upper-case the id
+// and append the currency, producing BITCOIN-INR / RIPPLE-INR - symbols that do
+// not exist - so every crypto price silently failed to update while the toast
+// still reported success for the equities.
+//
+// Ripple shows why truncation cannot work: its id is 'ripple' but its ticker is
+// XRP. A real lookup is needed.
+
+const COIN_TICKERS = {
+  bitcoin:'BTC', ethereum:'ETH', tether:'USDT', binancecoin:'BNB', solana:'SOL',
+  ripple:'XRP', 'usd-coin':'USDC', cardano:'ADA', dogecoin:'DOGE', tron:'TRX',
+  'avalanche-2':'AVAX', avalanche:'AVAX', chainlink:'LINK', polkadot:'DOT',
+  'matic-network':'MATIC', polygon:'MATIC', 'shiba-inu':'SHIB', litecoin:'LTC',
+  'bitcoin-cash':'BCH', stellar:'XLM', uniswap:'UNI', cosmos:'ATOM',
+  monero:'XMR', 'ethereum-classic':'ETC', filecoin:'FIL', aptos:'APT',
+  arbitrum:'ARB', optimism:'OP', 'near-protocol':'NEAR', near:'NEAR',
+  algorand:'ALGO', vechain:'VET', hedera:'HBAR', 'internet-computer':'ICP',
+  maker:'MKR', aave:'AAVE', sui:'SUI', toncoin:'TON', pepe:'PEPE',
+};
+
+// Resolve one holding to an exchange ticker, or null when it cannot be known.
+// Returning null is deliberate: fetching a made-up symbol wastes a request and
+// produces a silent failure, which is exactly the bug this replaces.
+function cryptoTicker(h, db){
+  if(!h) return null;
+  const explicit = (h.ticker || h.symbol || '').trim();
+  if(explicit){                                   // user typed a ticker - trust it
+    const base = explicit.toUpperCase().split('-')[0].trim();
+    if(/^[A-Z0-9]{2,6}$/.test(base)) return base;
+  }
+  const id = String(h.coinId || '').trim().toLowerCase();
+  if(id && COIN_TICKERS[id]) return COIN_TICKERS[id];
+
+  // Fall back to the app's own coin list, matched on display name. Entries look
+  // like ['XRP (Ripple)','XRP-USD',...] so a parenthetical alias also matches.
+  const want = String(h.coin || '').trim().toLowerCase();
+  if(want && Array.isArray(db)){
+    for(const row of db){
+      const name = String(row[0] || '').toLowerCase();
+      const sym  = String(row[1] || '').toUpperCase().split('-')[0];
+      if(!sym) continue;
+      const alias = (name.match(/\(([^)]+)\)/) || [])[1];
+      const bare  = name.replace(/\s*\([^)]*\)\s*/g,'').trim();
+      if(name === want || bare === want || (alias && alias === want)) return sym;
+    }
+  }
+  // Last resort: the id already IS a ticker (someone typed BTC, not bitcoin).
+  if(/^[a-z0-9]{2,6}$/.test(id) && !/^[a-z]{7,}$/.test(id)) return id.toUpperCase();
+  return null;
+}
+
+// Full market symbol for a quote feed, e.g. BTC-INR. Returns null when the
+// ticker cannot be resolved.
+function cryptoMarketSymbol(h, cur, db){
+  const t = cryptoTicker(h, db);
+  return t ? t + '-' + (cur || 'INR') : null;
+}
+// ══════════ RETURN ATTRIBUTION & TAX-LOSS HARVESTING ══════════
+// Two questions a portfolio review always answers and this app could not:
+//   1. WHICH holdings produced the return? "+18% overall" hides that two names
+//      carried the book and five lost money. Contribution splits the total P&L
+//      by holding, in rupees and as a share of the whole.
+//   2. WHAT can I book before year end? Unrealised losses can offset realised
+//      gains, and the Rs 1.25 lakh LTCG exemption is use-it-or-lose-it. Both
+//      are invisible until you go looking, usually too late in March.
+// Pure functions over lots; the glue reads S separately.
+
+// lots: [{ name, invested, current, dividend, buyDate, cls }] all in INR.
+// Contribution is measured against TOTAL INVESTED, so the parts sum to the
+// portfolio's own return - the only definition that makes the shares add up.
+function _atContribution(lots){
+  const rows = [];
+  let invested = 0, current = 0, income = 0;
+  (Array.isArray(lots) ? lots : []).forEach(l => {
+    const inv = +l.invested, cur = +l.current;
+    if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return;   // unpriceable: no claim
+    const div = isFinite(+l.dividend) && +l.dividend > 0 ? +l.dividend : 0;
+    const pl = (cur - inv) + div;
+    invested += inv; current += cur; income += div;
+    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+                dividend:div, pl, retPct: inv > 0 ? pl / inv * 100 : null });
+  });
+  if(!rows.length) return null;
+  const totalPL = (current - invested) + income;
+  // Share of the total move. When winners and losers offset, the denominator
+  // can be tiny or zero - reporting a share then is meaningless, so we don't.
+  const denom = Math.abs(totalPL);
+  rows.forEach(r => { r.sharePct = denom > 1e-9 ? r.pl / totalPL * 100 : null; });
+  rows.sort((a,b) => b.pl - a.pl);
+  return {
+    rows, invested, current, income, totalPL,
+    totalRetPct: invested > 0 ? totalPL / invested * 100 : null,
+    winners: rows.filter(r => r.pl > 0), losers: rows.filter(r => r.pl < 0),
+    shareMeaningful: denom > 1e-9,
+  };
+}
+
+// Unrealised losses that could be booked, largest first, against the gains
+// already realised this financial year.
+function _atHarvest(lots, realisedLTCG, realisedSTCG, exemption){
+  const ex = isFinite(+exemption) ? +exemption : 125000;
+  const cand = (Array.isArray(lots) ? lots : []).map(l => {
+    const inv = +l.invested, cur = +l.current;
+    if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return null;
+    const loss = inv - cur;                       // positive when under water
+    return loss > 0 ? { name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+                        loss, lossPct: loss / inv * 100 } : null;
+  }).filter(Boolean).sort((a,b) => b.loss - a.loss);
+
+  const totalLoss = cand.reduce((a,r) => a + r.loss, 0);
+  const ltcg = isFinite(+realisedLTCG) ? +realisedLTCG : 0;
+  const stcg = isFinite(+realisedSTCG) ? +realisedSTCG : 0;
+  // The exemption absorbs long-term gains first; only what is left is worth
+  // offsetting with a booked loss.
+  const ltcgAfterExempt = Math.max(0, ltcg - ex);
+  const offsettable = ltcgAfterExempt + Math.max(0, stcg);
+  return {
+    candidates: cand, totalLoss,
+    realisedLTCG: ltcg, realisedSTCG: stcg,
+    exemption: ex,
+    exemptionUsed: Math.min(Math.max(0, ltcg), ex),
+    exemptionLeft: Math.max(0, ex - Math.max(0, ltcg)),
+    offsettable,
+    usefulLoss: Math.min(totalLoss, offsettable),   // booking beyond this offsets nothing this year
+  };
+}
+
+// ── Glue + rendering ───────────────────────────────────────────────────────
+// Lots carry a name and class so the tables can identify holdings.
+function _atLots(){
+  const out = [];
+  try {
+    (S.indEQ||[]).forEach(h => { const c = cIND(h);
+      out.push({ name:h.name, cls:'India EQ', invested:c.inv, current:c.cur, dividend:+h.div||0 }); });
+    (S.usEQ||[]).forEach(h => { const c = cUS(h);
+      out.push({ name:h.name, cls:'US EQ', invested:c.inv, current:c.cur, dividend:(+h.div||0)*(S.usdInr||1) }); });
+    (S.crypto||[]).forEach(c => { const v = cCRY(c);
+      out.push({ name:c.coin, cls:'Crypto', invested:+c.invested||0, current:v.cur, dividend:0 }); });
+    (S.mf||[]).forEach(f => { const cv = cMF(f);
+      out.push({ name:f.name, cls:'MF', invested:cv.inv, current:cv.cur, dividend:0 }); });
+  } catch(e) {}
+  return out;
+}
+
+// Realised equity gains this FY, reusing the FIFO matcher so the harvesting
+// panel and the Taxation tab can never disagree.
+function _atRealisedThisFY(){
+  try {
+    if(typeof fifoMatchSells !== 'function' || typeof fyBounds !== 'function') return { ltcg:0, stcg:0 };
+    const fy = document.getElementById('tax-fy')?.value || '2025-26';
+    const [a, b] = fyBounds(fy);
+    const m = fifoMatchSells(S.txns||[]).matched.filter(r => {
+      const d = new Date(r.date);
+      return d >= a && d <= b && (r.cls==='India EQ'||r.cls==='US EQ'||r.cls==='MF');
+    });
+    return {
+      ltcg: m.filter(r=>r.isLTCG).reduce((s,r)=>s+r.gain,0),
+      stcg: m.filter(r=>!r.isLTCG).reduce((s,r)=>s+r.gain,0),
+    };
+  } catch(e) { return { ltcg:0, stcg:0 }; }
+}
+
+function renderAttribution(){
+  const el = document.getElementById('ana-attribution');
+  if(!el) return;
+  const a = _atContribution(_atLots());
+  if(!a){ el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No priced holdings yet.</div>`; return; }
+  const pos = a.totalPL >= 0;
+  const bar = r => {
+    const share = a.shareMeaningful ? Math.abs(r.sharePct) : 0;
+    const w = Math.max(1, Math.min(100, share));
+    const col = r.pl >= 0 ? '#00B386' : '#D93025';
+    return `<div class="ab-item">
+      <div class="ab-row">
+        <span class="ab-name">${r.name} <span style="font-size:10px;color:var(--T3)">${r.cls}</span></span>
+        <span class="ab-pct" style="color:${col}">${r.pl>=0?'+':'-'}${F.inr(Math.abs(r.pl))}${a.shareMeaningful?` · ${r.sharePct>=0?'+':''}${r.sharePct.toFixed(0)}%`:''}</span>
+      </div>
+      <div class="ab-track"><div class="ab-fill" style="width:${w.toFixed(1)}%;background:${col}"></div></div>
+    </div>`;
+  };
+  const top = a.rows.slice(0,5), bottom = a.rows.slice(-5).filter(r => r.pl < 0).reverse();
+  el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Total P&amp;L</div>
+        <div class="tax-sum-box-val" style="color:${pos?'#00B386':'#D93025'}">${pos?'+':'-'}${F.inr(Math.abs(a.totalPL))}</div>
+        <div class="tax-sum-box-sub">${a.totalRetPct==null?'':(a.totalRetPct>=0?'+':'')+a.totalRetPct.toFixed(2)+'% on cost'}</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Winners</div>
+        <div class="tax-sum-box-val" style="color:#00B386">${a.winners.length}</div>
+        <div class="tax-sum-box-sub">of ${a.rows.length} holdings</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Losers</div>
+        <div class="tax-sum-box-val" style="color:#D93025">${a.losers.length}</div>
+        <div class="tax-sum-box-sub">${a.losers.length?'costing '+F.inr(Math.abs(a.losers.reduce((s,r)=>s+r.pl,0))):'none'}</div></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:4px 0 8px">Biggest contributors</div>
+    ${top.map(bar).join('')}
+    ${bottom.length?`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:14px 0 8px">Biggest drags</div>${bottom.map(bar).join('')}`:''}
+    <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+      Rupee figures are profit or loss including dividends. ${a.shareMeaningful
+        ? 'Percentages are each holding\'s share of the total move, so they sum to 100%.'
+        : 'Winners and losers almost cancel out, so a "share of total" would be meaningless here and is omitted.'}
+    </div>`;
+}
+
+function renderHarvest(){
+  const el = document.getElementById('ana-harvest');
+  if(!el) return;
+  const r = _atRealisedThisFY();
+  const h = _atHarvest(_atLots(), r.ltcg, r.stcg);
+  const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
+    + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
+  const rows = h.candidates.slice(0,8).map(c => `<tr>
+      <td class="tn">${c.name}</td><td style="font-size:11px;color:var(--T3)">${c.cls}</td>
+      <td class="r tm">${F.inr(c.invested)}</td><td class="r tm">${F.inr(c.current)}</td>
+      <td class="r tm" style="color:var(--R);font-weight:600">-${F.inr(c.loss)}</td>
+      <td class="r" style="font-size:11.5px;color:var(--R)">-${c.lossPct.toFixed(1)}%</td>
+    </tr>`).join('');
+  el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
+      ${tile('Unrealised losses', h.totalLoss>0?F.inr(h.totalLoss):'—',
+             h.candidates.length?h.candidates.length+' holding'+(h.candidates.length===1?'':'s')+' under water':'nothing at a loss',
+             h.totalLoss>0?'#D93025':'#00B386')}
+      ${tile('Gains to offset', h.offsettable>0?F.inr(h.offsettable):'—',
+             h.offsettable>0?'realised, after exemption':'none booked yet this FY','#1A73E8')}
+      ${tile('₹1.25L exemption left', F.inr(h.exemptionLeft),
+             h.exemptionUsed>0?F.inr(h.exemptionUsed)+' used':'none used yet','#F59E0B')}
+      ${tile('Worth booking', h.usefulLoss>0?F.inr(h.usefulLoss):'—',
+             h.usefulLoss>0?'offsets tax this year':'no gains to offset', h.usefulLoss>0?'#7C3AED':'var(--T3)')}
+    </div>
+    ${rows?`<div class="ts"><table style="min-width:560px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Now</th><th class="r">Unrealised loss</th><th class="r">%</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No holdings are currently at a loss.</div>`}
+    <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+      These are <b>unrealised</b> losses — nothing is booked until you actually sell and record the transaction.
+      "Worth booking" is capped at the gains you have already realised this year, because a loss beyond that offsets nothing now.
+      Selling purely for tax has real costs (spread, brokerage, and being out of the position) — check with your CA.
+    </div>`;
+}
+// ══════════ PORTFOLIO RISK: VOLATILITY, BETA, SHARPE ══════════
+// Return alone cannot tell you whether you were skilful or merely lucky with
+// risk. These are the three numbers an advisor puts next to performance:
+//   Volatility - how violently the portfolio swings, annualised.
+//   Beta       - how much it moves for a given move in the index. 1.0 = in line.
+//   Sharpe     - excess return per unit of volatility. Higher is better paid.
+// All are computed from daily returns of a value-weighted portfolio series
+// reconstructed from each holding's own price history.
+
+const RISK_TRADING_DAYS = 252;
+const RISK_FREE_DEFAULT = 6.5;   // India ~10y G-sec, in percent per year
+
+// [{d,c}] ascending -> simple daily returns aligned to the dates present in ALL
+// series. Aligning matters: a holding that stops trading for a day must not
+// shift another holding's returns by one day.
+function _rkAlignedReturns(seriesMap, weights){
+  const names = Object.keys(seriesMap || {});
+  if(!names.length) return null;
+  // Dates common to every series.
+  let common = null;
+  for(const n of names){
+    const s = seriesMap[n];
+    if(!Array.isArray(s) || s.length < 2) return null;   // needs 2 closes to yield a return
+    const set = new Set(s.map(p => p.d));
+    common = common ? new Set([...common].filter(d => set.has(d))) : set;
+  }
+  const dates = [...(common || [])].sort();
+  // Two common dates give one return. Whether that is ENOUGH is _rkMetrics's
+  // call, not this function's - a single thin holding must not silently
+  // nullify the whole portfolio's risk figures.
+  if(dates.length < 2) return null;
+  const closeAt = {};
+  names.forEach(n => { const m = {}; seriesMap[n].forEach(p => { m[p.d] = +p.c; }); closeAt[n] = m; });
+
+  const wSum = names.reduce((s,n) => s + (+weights[n] || 0), 0);
+  if(!(wSum > 0)) return null;
+  const out = [];
+  for(let i = 1; i < dates.length; i++){
+    let r = 0, used = 0;
+    for(const n of names){
+      const p0 = closeAt[n][dates[i-1]], p1 = closeAt[n][dates[i]];
+      const w = (+weights[n] || 0) / wSum;
+      if(!(p0 > 0) || !(p1 > 0) || !(w > 0)) continue;
+      r += w * ((p1 - p0) / p0);
+      used += w;
+    }
+    if(used > 0) out.push({ d: dates[i], r: r / used });   // renormalise if some were missing
+  }
+  return out.length >= 1 ? out : null;
+}
+
+function _rkStdev(xs){
+  const n = xs.length;
+  if(n < 2) return null;
+  const m = xs.reduce((a,b) => a + b, 0) / n;
+  const v = xs.reduce((a,b) => a + (b - m) * (b - m), 0) / (n - 1);   // sample stdev
+  return Math.sqrt(v);
+}
+
+// Beta and correlation of the portfolio against a benchmark, over the dates
+// they share. Returns null when there is nothing to regress against.
+function _rkBeta(portRets, benchRets){
+  if(!Array.isArray(portRets) || !Array.isArray(benchRets)) return null;
+  const bm = {}; benchRets.forEach(p => { bm[p.d] = p.r; });
+  const xs = [], ys = [];
+  portRets.forEach(p => { if(p.d in bm){ ys.push(p.r); xs.push(bm[p.d]); } });
+  if(xs.length < 20) return null;                 // too few overlapping days to mean anything
+  const mx = xs.reduce((a,b)=>a+b,0)/xs.length, my = ys.reduce((a,b)=>a+b,0)/ys.length;
+  let cov = 0, varx = 0, vary = 0;
+  for(let i=0;i<xs.length;i++){
+    const dx = xs[i]-mx, dy = ys[i]-my;
+    cov += dx*dy; varx += dx*dx; vary += dy*dy;
+  }
+  if(!(varx > 0)) return null;
+  const beta = cov / varx;
+  const corr = (varx > 0 && vary > 0) ? cov / Math.sqrt(varx*vary) : null;
+  return { beta, corr, days: xs.length };
+}
+
+// Everything together. rf is the annual risk-free rate in percent.
+function _rkMetrics(portRets, benchRets, rf){
+  if(!Array.isArray(portRets) || portRets.length < 20) return null;   // < 1 month is noise
+  const rs = portRets.map(p => p.r);
+  const sd = _rkStdev(rs);
+  if(sd == null) return null;
+  const rawVol = sd * Math.sqrt(RISK_TRADING_DAYS) * 100;              // annualised %
+  // Floating point leaves a perfectly steady series with a volatility around
+  // 1e-15 rather than exactly zero. Dividing by that produced a Sharpe of ~2e16,
+  // which would render as a spectacular risk-adjusted return. Below this
+  // threshold there is no measurable risk, so Sharpe is undefined, not enormous.
+  const VOL_EPS = 1e-6;
+  const vol = rawVol < VOL_EPS ? 0 : rawVol;
+  const meanDaily = rs.reduce((a,b)=>a+b,0) / rs.length;
+  const annRet = (Math.pow(1 + meanDaily, RISK_TRADING_DAYS) - 1) * 100;
+  const rfPct = isFinite(+rf) ? +rf : RISK_FREE_DEFAULT;
+  const sharpe = vol >= VOL_EPS ? (annRet - rfPct) / vol : null;
+  const b = _rkBeta(portRets, benchRets);
+  return {
+    days: portRets.length, vol, annRet, riskFree: rfPct, sharpe,
+    beta: b ? b.beta : null, corr: b ? b.corr : null, betaDays: b ? b.days : 0,
+  };
+}
+
+// ── Glue: fetch each holding's history through the owner Worker ────────────
+// Reuses _bmFetchIndex, which already speaks to the Worker and drops holiday
+// nulls. Equities and crypto only; funds and FDs have no comparable series.
+function _rkHoldings(){
+  const out = [];
+  try {
+    (S.indEQ||[]).forEach(h => { const c = cIND(h);
+      if(c.cur > 0 && h.ticker) out.push({ key:h.name || h.ticker, sym:_toYahooSymbol(h.ticker,'India EQ'), weight:c.cur }); });
+    (S.usEQ||[]).forEach(h => { const c = cUS(h);
+      if(c.cur > 0 && h.ticker) out.push({ key:h.name || h.ticker, sym:_toYahooSymbol(h.ticker,'US EQ'), weight:c.cur }); });
+    (S.crypto||[]).forEach(c => { const v = cCRY(c);
+      const sym = (typeof cryptoMarketSymbol === 'function')
+        ? cryptoMarketSymbol(c, 'INR', typeof CRYPTO_DB !== 'undefined' ? CRYPTO_DB : null) : null;
+      if(v.cur > 0 && sym) out.push({ key:c.coin || sym, sym, weight:v.cur }); });
+  } catch(e) {}
+  return out;
+}
+
+let _rkCache = null;
+async function renderRisk(){
+  const el = document.getElementById('ana-risk');
+  if(!el) return;
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if(!sp){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Risk metrics need per-holding price history, which comes through the data proxy. Deploy the Worker in <code>proxy/README.md</code> and this fills in automatically.</div>`;
+    return;
+  }
+  const hold = _rkHoldings();
+  if(!hold.length){ el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No priced equity or crypto holdings to measure.</div>`; return; }
+
+  el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Fetching price history for ${hold.length} holdings… (first run only)</div>`;
+  if(!_rkCache){
+    const seriesMap = {}, weights = {}; const missing = [];
+    for(let i = 0; i < hold.length; i += 6){                 // small batches, same as the price refresh
+      const batch = hold.slice(i, i + 6);
+      const got = await Promise.all(batch.map(h => _bmFetchIndex(h.sym, 2).catch(() => null)));
+      got.forEach((s, j) => {
+        const h = batch[j];
+        if(Array.isArray(s) && s.length > 30){ seriesMap[h.key] = s; weights[h.key] = h.weight; }
+        else missing.push(h.key);
+      });
+    }
+    const bench = await _bmFetchIndex(BENCH_SYMBOL, 2).catch(() => null);
+    _rkCache = { seriesMap, weights, bench, missing, covered:Object.keys(seriesMap).length, total:hold.length };
+  }
+  const { seriesMap, weights, bench, missing, covered, total } = _rkCache;
+  const port = _rkAlignedReturns(seriesMap, weights);
+  const benchRets = bench ? _rkAlignedReturns({ b: bench }, { b: 1 }) : null;
+  const m = port ? _rkMetrics(port, benchRets, RISK_FREE_DEFAULT) : null;
+  if(!m){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Not enough overlapping price history yet to measure risk (needs about a month of common trading days across ${covered || 0} holdings).</div>`;
+    return;
+  }
+  const tile = (lbl,val,sub,c,tip) => `<div class="tax-sum-box" title="${tip||''}" style="cursor:help">`
+    + `<div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${val}</div>`
+    + `<div class="tax-sum-box-sub">${sub}</div></div>`;
+  const betaWord = m.beta == null ? '' : m.beta > 1.15 ? 'more volatile than the index'
+                 : m.beta < 0.85 ? 'steadier than the index' : 'moves roughly with the index';
+  const sharpeWord = m.sharpe == null ? '' : m.sharpe >= 1 ? 'well paid for the risk'
+                   : m.sharpe >= 0.5 ? 'reasonably paid' : m.sharpe >= 0 ? 'thinly paid' : 'not paid for the risk';
+  el.innerHTML = `<div class="tax-sum-grid">
+    ${tile('Volatility', m.vol.toFixed(1)+'%', 'annualised swing', '#F59E0B',
+        'How violently the portfolio moves, annualised from daily returns. Higher means bigger swings both ways - it is not itself bad, but it should be paid for.')}
+    ${tile('Beta vs Nifty', m.beta==null?'—':m.beta.toFixed(2), m.beta==null?'needs more overlap':betaWord, '#1A73E8',
+        'How much the portfolio moves for a 1% move in the index. Above 1 amplifies the market; below 1 dampens it.')}
+    ${tile('Sharpe ratio', m.sharpe==null?'—':m.sharpe.toFixed(2), m.sharpe==null?'—':sharpeWord,
+        m.sharpe==null?'var(--T3)':m.sharpe>=0.5?'#00B386':m.sharpe>=0?'#F59E0B':'#D93025',
+        'Return above the risk-free rate, per unit of volatility. It answers whether the swings were worth enduring.')}
+  </div>
+  <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+    From ${m.days} days of common trading history across <b>${covered} of ${total}</b> holdings, weighted by current value.
+    Risk-free rate assumed ${m.riskFree}% a year.
+    ${missing.length ? `No usable history for: ${missing.slice(0,5).join(', ')}${missing.length>5?` +${missing.length-5} more`:''} - these are excluded.` : ''}
+    ${m.beta==null ? 'Beta needs at least 20 days overlapping with the index.' : `Beta measured over ${m.betaDays} shared days.`}
+    These describe the past; they are not a forecast.
+  </div>`;
+}
+// ══════════ USD/INR AUTO-REFRESH ══════════
+// The rate was manual: a prompt() the user had to remember to update. Every US
+// holding's rupee value, the portfolio total and the tax figures all scale by
+// it, so a stale rate quietly skews the whole book. It now refreshes itself
+// once a day through the owner Worker, while staying manually overridable.
+
+const _FX_KEY  = 'usdinr_fetch';     // { d:'YYYY-MM-DD', v:Number, manual:bool }
+const _FX_SYM  = 'USDINR=X';
+
+function _fxLoad(){
+  try { const o = JSON.parse(localStorage.getItem(_FX_KEY) || 'null');
+        return (o && isFinite(+o.v) && +o.v > 0) ? o : null; } catch(e) { return null; }
+}
+function _fxSave(o){ try { localStorage.setItem(_FX_KEY, JSON.stringify(o)); } catch(e) {} }
+
+// A rate is stale once the calendar day has moved on.
+function _fxIsStale(rec, today){
+  if(!rec || !rec.d) return true;
+  return rec.d !== today;
+}
+// Sanity band. A bad parse or a wrong symbol could return something absurd
+// (a share price, a percentage); silently adopting it would corrupt every US
+// valuation. Outside this range we keep the existing rate.
+function _fxPlausible(v){ return isFinite(+v) && +v >= 30 && +v <= 200; }
+
+// Record a manual entry so the daily fetch does not immediately overwrite it
+// on the same day.
+function fxSetManual(v){
+  if(!_fxPlausible(v)) return false;
+  S.usdInr = +v;
+  _fxSave({ d:new Date().toISOString().slice(0,10), v:+v, manual:true });
+  return true;
+}
+
+async function fxRefresh(force){
+  const today = new Date().toISOString().slice(0,10);
+  const rec = _fxLoad();
+  if(!force && rec && !_fxIsStale(rec, today)) return null;      // already done today
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if(!sp) return null;                                           // no proxy, keep manual value
+  let v = null;
+  try {
+    if(typeof _fetchLivePrice === 'function') v = await _fetchLivePrice(_FX_SYM, 'FX');
+  } catch(e) {}
+  if(!_fxPlausible(v)) return null;                              // refuse an implausible rate
+  S.usdInr = +(+v).toFixed(4);
+  _fxSave({ d:today, v:S.usdInr, manual:false });
+  try { if(typeof save === 'function') save(); } catch(e) {}
+  try {
+    const el = document.getElementById('usd-hdr');
+    if(el) el.textContent = '₹' + S.usdInr;
+    if(typeof renderAll === 'function') renderAll();
+  } catch(e) {}
+  return S.usdInr;
+}
+// ══════════ ESTIMATED TAX IF SOLD TODAY ══════════
+// The Taxation tab only reported gains already booked. The question an investor
+// actually asks before selling is "what would this cost me in tax if I sold
+// now?" - which needs unrealised gains classified by holding period and priced
+// at today's value.
+//
+// One honest limitation, surfaced in the UI: the app stores ONE average cost
+// and ONE purchase date per holding, not individual lots. Real tax on a sale is
+// FIFO across lots, so a position built over several purchases is estimated
+// from its average. Where a holding has no purchase date at all it cannot be
+// classified long or short term, and is excluded rather than guessed.
+
+function _ifSoldRows(lots, asOf, ltDays){
+  const LT = isFinite(+ltDays) ? +ltDays : 365;
+  const rows = [], undated = [];
+  (Array.isArray(lots) ? lots : []).forEach(l => {
+    const inv = +l.invested, cur = +l.current;
+    if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return;
+    const d = l.buyDate ? new Date(l.buyDate) : null;
+    if(!d || isNaN(d.getTime()) || d > asOf){
+      undated.push({ name:l.name || '—', cls:l.cls || '', gain:cur - inv });
+      return;                                        // cannot be classified: excluded
+    }
+    const days = Math.round((asOf - d) / 864e5);
+    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+                gain:cur - inv, holdingDays:days, isLTCG: days > LT });
+  });
+  return { rows, undated };
+}
+
+// Aggregate to an estimated liability. Equity uses the LTCG exemption; crypto
+// (VDA) is taxed on gains only with no set-off and no exemption.
+function _ifSoldTax(lots, asOf, rules){
+  const R = Object.assign({ ltcgExempt:125000, ltcgRate:0.125, stcgRate:0.20,
+                            vdaRate:0.30, ltDays:365 }, rules || {});
+  const { rows, undated } = _ifSoldRows(lots, asOf, R.ltDays);
+  const isVda = r => r.cls === 'Crypto';
+  const eq = rows.filter(r => !isVda(r));
+  const vda = rows.filter(isVda);
+
+  const ltcgTotal = eq.filter(r => r.isLTCG).reduce((s,r) => s + r.gain, 0);
+  const stcgTotal = eq.filter(r => !r.isLTCG).reduce((s,r) => s + r.gain, 0);
+  const ltcgTaxable = Math.max(0, ltcgTotal - R.ltcgExempt);
+  const stcgTaxable = Math.max(0, stcgTotal);
+  const ltcgTax = ltcgTaxable * R.ltcgRate;
+  const stcgTax = stcgTaxable * R.stcgRate;
+  // VDA losses cannot be set off against VDA gains, so only gains are taxed.
+  const vdaGain = vda.reduce((s,r) => s + (r.gain > 0 ? r.gain : 0), 0);
+  const vdaTax = vdaGain * R.vdaRate;
+
+  const total = ltcgTax + stcgTax + vdaTax;
+  return {
+    rows, undated,
+    ltcgTotal, stcgTotal, ltcgTaxable, stcgTaxable, ltcgTax, stcgTax,
+    vdaGain, vdaTax, total, cess: total * 0.04, totalWithCess: total * 1.04,
+    exemption: R.ltcgExempt,
+    ltcgRatePct: R.ltcgRate * 100, stcgRatePct: R.stcgRate * 100, vdaRatePct: R.vdaRate * 100,
+    grossGain: rows.reduce((s,r) => s + r.gain, 0),
+  };
+}
+
+function renderIfSold(){
+  const el = document.getElementById('tax-ifsold');
+  if(!el) return;
+  // Built directly from S rather than reusing _atLots, because the holding
+  // period - and therefore the whole LTCG/STCG split - needs the purchase date.
+  const lots = [];
+  try {
+    (S.indEQ||[]).forEach(h => { const c = cIND(h); lots.push({ name:h.name, cls:'India EQ', invested:c.inv, current:c.cur, buyDate:h.buyDate }); });
+    (S.usEQ||[]).forEach(h => { const c = cUS(h); lots.push({ name:h.name, cls:'US EQ', invested:c.inv, current:c.cur, buyDate:h.buyDate }); });
+    (S.crypto||[]).forEach(c => { const v = cCRY(c); lots.push({ name:c.coin, cls:'Crypto', invested:+c.invested||0, current:v.cur, buyDate:c.buyDate }); });
+    (S.mf||[]).forEach(f => { const cv = cMF(f); lots.push({ name:f.name, cls:'MF', invested:cv.inv, current:cv.cur, buyDate:f.startDate }); });
+  } catch(e) {}
+  const r = _ifSoldTax(lots, new Date());
+  const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
+    + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
+  const body = r.rows.sort((a,b) => b.gain - a.gain).map(x => `<tr>
+      <td class="tn">${x.name}</td><td style="font-size:11px;color:var(--T3)">${x.cls}</td>
+      <td class="r tm">${F.inr(x.invested)}</td><td class="r tm">${F.inr(x.current)}</td>
+      <td class="r tm" style="color:${x.gain>=0?'var(--G)':'var(--R)'};font-weight:600">${x.gain>=0?'+':'-'}${F.inr(Math.abs(x.gain))}</td>
+      <td class="r" style="font-size:11px">${x.holdingDays}d</td>
+      <td><span class="chip ${x.cls==='Crypto'?'c-sell':x.isLTCG?'c-active':'c-due'}">${x.cls==='Crypto'?'VDA 30%':x.isLTCG?'LTCG':'STCG'}</span></td>
+    </tr>`).join('');
+  el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
+      ${tile('Unrealised gain', (r.grossGain>=0?'+':'-')+F.inr(Math.abs(r.grossGain)), 'if everything sold today', r.grossGain>=0?'#00B386':'#D93025')}
+      ${tile(`LTCG tax @${r.ltcgRatePct}%`, F.inr(r.ltcgTax), `on ${F.inr(r.ltcgTaxable)} after ₹1.25L exemption`, '#1A73E8')}
+      ${tile(`STCG tax @${r.stcgRatePct}%`, F.inr(r.stcgTax), `on ${F.inr(r.stcgTaxable)}`, '#F59E0B')}
+      ${tile('Estimated total', F.inr(r.totalWithCess), `${F.inr(r.total)} + 4% cess`, r.total>0?'#D93025':'#00B386')}
+    </div>
+    ${r.vdaGain>0?`<div style="font-size:12px;color:var(--T2);margin-bottom:10px">Includes crypto (VDA) gains of ${F.inr(r.vdaGain)} taxed at ${r.vdaRatePct}% — losses cannot be set off.</div>`:''}
+    ${body?`<div class="ts"><table style="min-width:660px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Value now</th><th class="r">Unrealised</th><th class="r">Held</th><th>Category</th></tr></thead><tbody>${body}</tbody></table></div>`
+          :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No datable holdings to estimate.</div>`}
+    ${r.undated.length?`<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
+      ⚠️ <b>${r.undated.length} holding${r.undated.length===1?'':'s'} excluded</b> — no purchase date, so they cannot be classified long or short term. Add a purchase date to include them.
+      <div style="margin-top:5px;font-size:11.5px;color:var(--T2)">${r.undated.slice(0,5).map(u=>u.name).join(', ')}${r.undated.length>5?` +${r.undated.length-5} more`:''}</div>
+    </div>`:''}
+    <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+      A <b>what-if</b> estimate on today's prices — nothing here is booked. The app stores one average cost and one purchase date per holding, so a position built from several purchases is estimated from its average; actual tax on sale is computed FIFO lot by lot and will differ. Prices move, and so will this. Confirm with your CA before acting.
+    </div>`;
+}
+// ══════════ DIVERSIFICATION: CORRELATION & EFFECTIVE HOLDINGS ══════════
+// Owning twenty stocks is not the same as having twenty bets. If they move
+// together, the book behaves like far fewer positions than the count suggests -
+// which is exactly when a "diversified" portfolio falls as one.
+//
+// Two measures, because they answer different questions:
+//   Effective holdings (1 / sum of squared weights) - concentration by SIZE.
+//     Twenty names with one at 60% behaves like ~3 holdings.
+//   Average pairwise correlation - concentration by BEHAVIOUR. Weight-blind:
+//     twenty equal names that all move together are still one bet.
+
+// Pearson correlation of two aligned return arrays.
+function _dvCorr(xs, ys){
+  const n = Math.min(xs.length, ys.length);
+  if(n < 20) return null;                       // too short to mean anything
+  let mx = 0, my = 0;
+  for(let i=0;i<n;i++){ mx += xs[i]; my += ys[i]; }
+  mx /= n; my /= n;
+  let cov = 0, vx = 0, vy = 0;
+  for(let i=0;i<n;i++){
+    const dx = xs[i]-mx, dy = ys[i]-my;
+    cov += dx*dy; vx += dx*dx; vy += dy*dy;
+  }
+  if(!(vx > 0) || !(vy > 0)) return null;       // a flat series has no correlation
+  return cov / Math.sqrt(vx*vy);
+}
+
+// Herfindahl-based effective number of holdings from current values.
+function _dvEffective(weights){
+  const vals = (Array.isArray(weights) ? weights : []).map(Number).filter(v => isFinite(v) && v > 0);
+  const tot = vals.reduce((a,b) => a+b, 0);
+  if(!(tot > 0) || !vals.length) return null;
+  const hhi = vals.reduce((a,v) => a + Math.pow(v/tot, 2), 0);
+  return { n: vals.length, effective: 1/hhi, topWeightPct: Math.max(...vals)/tot*100 };
+}
+
+// Average pairwise correlation across holdings, plus the most-correlated pairs.
+// seriesMap: { name: [{d,c}] }. Returns null when fewer than two holdings have
+// enough overlapping history.
+function _dvMatrix(seriesMap){
+  const names = Object.keys(seriesMap || {});
+  if(names.length < 2) return null;
+  // Common dates across ALL series, so every pair is measured on the same days.
+  let common = null;
+  for(const n of names){
+    const s = seriesMap[n];
+    if(!Array.isArray(s) || s.length < 21) return null;
+    const set = new Set(s.map(p => p.d));
+    common = common ? new Set([...common].filter(d => set.has(d))) : set;
+  }
+  const dates = [...(common || [])].sort();
+  if(dates.length < 21) return null;
+  const rets = {};
+  names.forEach(n => {
+    const m = {}; seriesMap[n].forEach(p => { m[p.d] = +p.c; });
+    const r = [];
+    for(let i=1;i<dates.length;i++){
+      const p0 = m[dates[i-1]], p1 = m[dates[i]];
+      r.push((p0 > 0 && p1 > 0) ? (p1-p0)/p0 : 0);
+    }
+    rets[n] = r;
+  });
+  const pairs = [];
+  let sum = 0, count = 0;
+  for(let i=0;i<names.length;i++){
+    for(let j=i+1;j<names.length;j++){
+      const c = _dvCorr(rets[names[i]], rets[names[j]]);
+      if(c == null) continue;
+      pairs.push({ a:names[i], b:names[j], c });
+      sum += c; count++;
+    }
+  }
+  if(!count) return null;
+  pairs.sort((x,y) => y.c - x.c);
+  return { avg: sum/count, pairs, days: dates.length - 1, holdings: names.length };
+}
+
+// Plain reading of the average correlation.
+function _dvVerdict(avg){
+  if(avg == null) return null;
+  if(avg >= 0.75) return { word:'Barely diversified', why:'these move almost as one', col:'#D93025' };
+  if(avg >= 0.55) return { word:'Lightly diversified', why:'they move together more often than not', col:'#F59E0B' };
+  if(avg >= 0.30) return { word:'Reasonably diversified', why:'partly independent', col:'#1A73E8' };
+  return { word:'Well diversified', why:'they move largely independently', col:'#00B386' };
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderDiversification(){
+  const el = document.getElementById('ana-diversification');
+  if(!el) return;
+  const hold = (typeof _rkHoldings === 'function') ? _rkHoldings() : [];
+  const eff = _dvEffective(hold.map(h => h.weight));
+  const tile = (lbl,val,sub,c,tip) => `<div class="tax-sum-box" title="${tip||''}" style="cursor:help">`
+    + `<div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${val}</div>`
+    + `<div class="tax-sum-box-sub">${sub}</div></div>`;
+
+  // Size concentration needs no price history, so show it either way.
+  const effHtml = eff ? tile('Effective holdings', eff.effective.toFixed(1),
+      `you hold ${eff.n} · largest is ${eff.topWeightPct.toFixed(0)}%`,
+      eff.effective < eff.n/2 ? '#F59E0B' : '#00B386',
+      'How many equally-sized holdings your book behaves like. Far below your actual count means a few positions dominate.') : '';
+
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if(!sp || !_rkCache){
+    el.innerHTML = `<div class="tax-sum-grid">${effHtml}</div>
+      <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+        ${sp ? 'Correlation appears once the Risk &amp; Reward card above has loaded its price history.'
+             : 'Correlation needs price history via the data proxy — deploy the Worker in <code>proxy/README.md</code>.'}
+      </div>`;
+    return;
+  }
+  const m = _dvMatrix(_rkCache.seriesMap);
+  if(!m){
+    el.innerHTML = `<div class="tax-sum-grid">${effHtml}</div>
+      <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+        Not enough overlapping history yet to correlate holdings (needs about a month of common trading days across at least two of them).
+      </div>`;
+    return;
+  }
+  const v = _dvVerdict(m.avg);
+  const top = m.pairs.slice(0,5);
+  const rows = top.map(p => `<tr>
+      <td class="tn">${p.a}</td><td class="tn">${p.b}</td>
+      <td class="r tm" style="color:${p.c>=0.75?'var(--R)':p.c>=0.5?'#F59E0B':'var(--T2)'};font-weight:600">${p.c.toFixed(2)}</td>
+    </tr>`).join('');
+  el.innerHTML = `<div class="tax-sum-grid">
+      ${effHtml}
+      ${tile('Average correlation', m.avg.toFixed(2), v ? v.why : '', v ? v.col : 'var(--T3)',
+        'How closely your holdings move together on average. 1.00 means identical, 0 means unrelated. High correlation means fewer real bets than the count suggests.')}
+      ${tile('Verdict', v ? v.word : '—', `${m.holdings} holdings · ${m.days} days`, v ? v.col : 'var(--T3)',
+        'A plain reading of the average correlation.')}
+    </div>
+    ${rows ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:12px 0 6px">Most closely linked pairs</div>
+    <div class="ts"><table style="min-width:420px"><thead><tr><th>Holding</th><th>Holding</th><th class="r">Correlation</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+      Correlation is measured on daily moves over ${m.days} shared days and is <b>weight-blind</b> — it says nothing about position size, which is what "effective holdings" covers. Past correlation rises in a crash; treat a comfortable number with caution.
+    </div>`;
+}
+// ══════════ REBALANCING & CONCENTRATION ══════════
+// A portfolio drifts: winners grow into an outsized share and the mix you chose
+// quietly becomes a mix you did not. This compares your target allocation
+// against reality, sizes the drift in rupees, and flags any single holding or
+// sector that has grown past a limit you set.
+//
+// Targets are yours; nothing here is a recommendation to trade.
+
+const _RB_KEY = 'rebalance_targets';   // { indEQ:%, usEQ:%, crypto:%, mf:%, fd:% }
+const _RB_CLASSES = [
+  ['indEQ','India Equity'], ['usEQ','US Equity'], ['crypto','Crypto'],
+  ['mf','Mutual Funds'], ['fd','FD / Bonds'],
+];
+
+function rbLoadTargets(){
+  try { const o = JSON.parse(localStorage.getItem(_RB_KEY) || 'null');
+        return (o && typeof o === 'object') ? o : null; } catch(e) { return null; }
+}
+function rbSaveTargets(o){ try { localStorage.setItem(_RB_KEY, JSON.stringify(o)); } catch(e) {} }
+
+// Compare actual against target. Percentages are of the whole book.
+// Classes with no target set are reported as untargeted rather than assumed 0 -
+// treating an unset target as "should be zero" would demand selling everything
+// the user simply had not configured yet.
+function _rbDrift(actualByClass, targets){
+  const act = actualByClass || {};
+  const tgt = targets || {};
+  const total = Object.keys(act).reduce((s,k) => s + (+act[k] || 0), 0);
+  if(!(total > 0)) return null;
+  const rows = [];
+  let targetedPct = 0;
+  _RB_CLASSES.forEach(([key,label]) => {
+    const value = +act[key] || 0;
+    const actualPct = value / total * 100;
+    const hasTarget = isFinite(+tgt[key]) && +tgt[key] >= 0 && tgt[key] !== '' && tgt[key] != null;
+    const targetPct = hasTarget ? +tgt[key] : null;
+    if(hasTarget) targetedPct += targetPct;
+    rows.push({
+      key, label, value, actualPct, targetPct, hasTarget,
+      driftPct: hasTarget ? actualPct - targetPct : null,
+      driftValue: hasTarget ? value - (targetPct/100 * total) : null,
+    });
+  });
+  return {
+    total, rows, targetedPct,
+    anyTarget: rows.some(r => r.hasTarget),
+    // A target set that does not add to 100 cannot be acted on coherently.
+    targetsSumOk: !rows.some(r => r.hasTarget) || Math.abs(targetedPct - 100) < 0.5,
+  };
+}
+
+// Holdings or sectors that exceed a concentration limit.
+function _rbConcentration(items, limitPct){
+  const lim = isFinite(+limitPct) && +limitPct > 0 ? +limitPct : 15;
+  const list = (Array.isArray(items) ? items : []).filter(x => isFinite(+x.value) && +x.value > 0);
+  const total = list.reduce((s,x) => s + (+x.value), 0);
+  if(!(total > 0)) return null;
+  const rows = list.map(x => ({ name:x.name, value:+x.value, pct:+x.value/total*100 }))
+                   .sort((a,b) => b.pct - a.pct);
+  return { limit: lim, rows, breaches: rows.filter(r => r.pct > lim), total,
+           top5Pct: rows.slice(0,5).reduce((s,r) => s + r.pct, 0) };
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function rbSetTarget(key, val){
+  const t = rbLoadTargets() || {};
+  const v = parseFloat(val);
+  if(val === '' || isNaN(v) || v < 0) delete t[key]; else t[key] = Math.min(100, v);
+  rbSaveTargets(t);
+  renderRebalance();
+}
+function rbSetLimit(val){
+  const t = rbLoadTargets() || {};
+  const v = parseFloat(val);
+  t._limit = (isNaN(v) || v <= 0) ? 15 : Math.min(100, v);
+  rbSaveTargets(t);
+  renderRebalance();
+}
+
+function renderRebalance(){
+  const el = document.getElementById('ana-rebalance');
+  if(!el) return;
+  let g; try { g = grand(); } catch(e) { return; }
+  const actual = { indEQ:g.iC, usEQ:g.uC, crypto:g.crC, mf:g.mfC, fd:g.fdC };
+  const targets = rbLoadTargets() || {};
+  const d = _rbDrift(actual, targets);
+  if(!d){ el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings to rebalance yet.</div>`; return; }
+
+  const rows = d.rows.map(r => {
+    const over = r.driftPct != null && r.driftPct > 0;
+    const col = r.driftPct == null ? 'var(--T3)' : Math.abs(r.driftPct) < 2 ? '#00B386' : over ? '#F59E0B' : '#1A73E8';
+    return `<tr>
+      <td class="tn">${r.label}</td>
+      <td class="r tm">${r.actualPct.toFixed(1)}%</td>
+      <td class="r"><input type="number" min="0" max="100" step="any" value="${r.hasTarget ? r.targetPct : ''}"
+          placeholder="—" onchange="rbSetTarget('${r.key}', this.value)"
+          style="width:74px;text-align:right;padding:4px 7px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px"></td>
+      <td class="r tm" style="color:${col};font-weight:600">${r.driftPct == null ? '—' : (r.driftPct>=0?'+':'')+r.driftPct.toFixed(1)+'%'}</td>
+      <td class="r tm" style="color:${col}">${r.driftValue == null ? '—'
+          : (r.driftValue>=0 ? 'trim '+F.inr(r.driftValue) : 'add '+F.inr(Math.abs(r.driftValue)))}</td>
+    </tr>`;
+  }).join('');
+
+  // Single-holding concentration across the equity book.
+  const items = [];
+  try {
+    (S.indEQ||[]).forEach(h => items.push({ name:h.name, value:cIND(h).cur }));
+    (S.usEQ||[]).forEach(h => items.push({ name:h.name, value:cUS(h).cur }));
+  } catch(e) {}
+  const lim = isFinite(+targets._limit) ? +targets._limit : 15;
+  const conc = _rbConcentration(items, lim);
+
+  el.innerHTML = `<div class="ts"><table style="min-width:560px">
+      <thead><tr><th>Asset class</th><th class="r">Actual</th><th class="r">Target %</th><th class="r">Drift</th><th class="r">To reach target</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    ${d.anyTarget && !d.targetsSumOk ? `<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
+      ⚠️ Your targets add up to <b>${d.targetedPct.toFixed(1)}%</b>, not 100%. The drift figures are still shown, but they cannot all be satisfied at once until the targets balance.
+    </div>` : ''}
+    ${!d.anyTarget ? `<div style="font-size:12px;color:var(--T3);margin-top:10px">Set a target % against any class to see drift. Classes left blank are simply untargeted — they are not treated as "should be zero".</div>` : ''}
+    ${conc ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:16px 0 6px">
+        Single-holding concentration · limit
+        <input type="number" min="1" max="100" step="any" value="${lim}" onchange="rbSetLimit(this.value)"
+          style="width:64px;text-align:right;padding:3px 6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px">%
+      </div>
+      ${conc.breaches.length ? `<div style="font-size:12.5px;color:var(--T1);padding:10px 13px;background:var(--AUL,#FEF3C7);border:1px solid var(--AU,#F59E0B);border-radius:var(--r3)">
+          <b>${conc.breaches.length} holding${conc.breaches.length===1?'':'s'} above ${lim}% of your equity book:</b>
+          ${conc.breaches.map(b=>`${b.name} <b>${b.pct.toFixed(1)}%</b>`).join(' · ')}
+        </div>`
+        : `<div style="font-size:12.5px;color:var(--T2)">No single holding exceeds ${lim}% of the equity book. Top 5 together are ${conc.top5Pct.toFixed(1)}%.</div>`}` : ''}
+    <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+      Targets and the limit are yours and stay on this device. "To reach target" is arithmetic on today's values, not advice — and rebalancing realises gains, which is taxable. Check the Taxation tab before acting.
+    </div>`;
+}
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -11408,7 +12274,14 @@ async function refreshAllPrices() {
   const tasks = [];
   S.indEQ.forEach((h,i) => tasks.push({type:'India EQ', ticker:_toYahooSymbol(h.ticker,'India EQ'), idx:i, asset:'indEQ'}));
   S.usEQ.forEach((h,i)  => tasks.push({type:'US EQ',    ticker:_toYahooSymbol(h.ticker,'US EQ'),    idx:i, asset:'usEQ'}));
-  S.crypto.forEach((h,i)=> tasks.push({type:'Crypto',   ticker:h.coinId.toUpperCase()+'-INR', idx:i, asset:'crypto'}));
+  // Resolve each coin to a real exchange ticker. Unresolvable coins are counted
+  // and reported rather than fetched as a made-up symbol that always fails.
+  let _cryptoUnresolved = [];
+  S.crypto.forEach((h,i) => {
+    const sym = cryptoMarketSymbol(h, 'INR', typeof CRYPTO_DB !== 'undefined' ? CRYPTO_DB : null);
+    if(!sym){ _cryptoUnresolved.push(h.coin || h.coinId || 'unknown'); return; }
+    tasks.push({type:'Crypto', ticker:sym, idx:i, asset:'crypto', holding:h});
+  });
 
   let done = 0, updated = 0;
   const total = tasks.length;
@@ -11433,7 +12306,13 @@ async function refreshAllPrices() {
     const batch = tasks.slice(i, i + _CONC);
     if (status) status.textContent = `Fetching ${Math.min(done + batch.length, total)}/${total}…`;
     await Promise.all(batch.map(async task => {
-      const price = await _fetchLivePrice(task.ticker, task.type);
+      let price = await _fetchLivePrice(task.ticker, task.type);
+      if((price == null || !(price > 0)) && task.asset === 'crypto'){
+        // Not every coin has an INR pair; fall back to USD at the app's rate.
+        const usdSym = task.ticker.replace(/-INR$/, '-USD');
+        const usd = await _fetchLivePrice(usdSym, task.type);
+        if(usd != null && usd > 0) price = usd * (S.usdInr || 1);
+      }
       _apply(task, price);
       done++;
       if (bar) bar.style.width = ((done/total)*100)+'%';
@@ -11465,7 +12344,8 @@ async function refreshAllPrices() {
 
   if (bar) bar.style.width = '100%';
   const _fpart = fundUpd ? ` · fundamentals on ${fundUpd}` : '';
-  if (status) status.textContent = `✅ Updated ${updated}/${total} prices${_fpart}!`;
+  const _cpart = _cryptoUnresolved.length ? ` · ${_cryptoUnresolved.length} coin(s) had no recognised ticker: ${_cryptoUnresolved.join(', ')}` : '';
+  if (status) status.textContent = `✅ Updated ${updated}/${total} prices${_fpart}${_cpart}`;
   setTimeout(() => { if (progress) progress.style.display = 'none'; }, 3000);
   if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Refresh All Prices'; }
 
@@ -11522,7 +12402,14 @@ async function _fetchFundamentalsBulk(yahooSyms) {
 async function refreshSinglePrice(rowIdx, type, ticker) {
   const btn = document.querySelector(`#ltp-row-${rowIdx} button`);
   if (btn) btn.textContent = '⏳';
-  const yfTicker = type === 'Crypto' ? ticker.toUpperCase()+'-INR' : _toYahooSymbol(ticker, type);
+  let yfTicker;
+  if(type === 'Crypto'){
+    const c = S.crypto.find(x => x.coinId === ticker) || { coinId: ticker };
+    yfTicker = cryptoMarketSymbol(c, 'INR', typeof CRYPTO_DB !== 'undefined' ? CRYPTO_DB : null);
+    if(!yfTicker){ toast(`No recognised ticker for ${ticker}`, 'err'); if(btn) btn.textContent='🔄'; return; }
+  } else {
+    yfTicker = _toYahooSymbol(ticker, type);
+  }
   const price = await _fetchLivePrice(yfTicker, type);
   if (price && price > 0) {
     if (type === 'India EQ') { const h = S.indEQ.find(x => x.ticker === ticker); if (h) { h.ltp = price; } }
@@ -13365,7 +14252,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:()=>{renderTaxation();renderIfSold();},analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRebalance();renderRisk().then(()=>{try{renderDiversification();}catch(e){}});},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -13396,16 +14283,21 @@ function renderAll(){
 /* ══ USD/INR LIVE PROMPT ══ */
 function updateUSDINR(){
   const v=parseFloat(prompt('Enter current USD/INR rate:',S.usdInr));
-  if(!isNaN(v)&&v>0){S.usdInr=v;save();renderAll();toast('USD/INR updated to ₹'+v,'ok');}
+  if(!isNaN(v)&&v>0){
+    if(typeof fxSetManual==='function' && !fxSetManual(v)){ toast('That rate looks wrong - ignored','err'); return; }
+    else if(typeof fxSetManual!=='function'){ S.usdInr=v; }
+    save();renderAll();toast('USD/INR updated to ₹'+S.usdInr,'ok');
+  }
 }
 document.getElementById('usd-hdr').addEventListener('click',updateUSDINR);
 document.getElementById('usd-badge').style.cursor='pointer';
-document.getElementById('usd-badge').title='Click to update USD/INR rate';
+document.getElementById('usd-badge').title='Auto-updated daily. Click to set it manually.';
 
 /* ══ INIT ══ */
 loadLocal();
 try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
 try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
+try { fxRefresh(); } catch(e){}       // USD/INR, once a day, via the Worker
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';

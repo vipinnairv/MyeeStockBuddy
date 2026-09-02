@@ -2350,7 +2350,11 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         <div class="cb" id="stcg-panel"><p style="color:var(--T3);font-size:13px">No STCG transactions found for this FY.</p></div>
       </div>
     </div>
-    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div></div>
+    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div>
+    </div>
+    <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+      <div class="ch"><span class="ct">🔮 If You Sold Today</span><span style="font-size:10.5px;color:var(--T3)">estimated tax on unrealised gains</span></div>
+      <div class="cb" id="tax-ifsold"></div></div>
     <div class="card"><div class="ch"><span class="ct">All Realised Transactions - Sells Logged</span></div>
       <div class="cb"><div class="ts"><table style="min-width:700px">
         <thead><tr><th>Date</th><th>Asset</th><th>Class</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Gain/Loss</th><th>Type</th></tr></thead>
@@ -2449,6 +2453,26 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
     <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
     <div class="cb" id="ana-growth"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎖 What Drove Your Return</span><span style="font-size:10.5px;color:var(--T3)">contribution by holding</span></div>
+    <div class="cb" id="ana-attribution"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #D93025">
+    <div class="ch"><span class="ct">🌾 Tax-Loss Harvesting</span><span style="font-size:10.5px;color:var(--T3)">unrealised losses vs booked gains</span></div>
+    <div class="cb" id="ana-harvest"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
+    <div class="ch"><span class="ct">⚖️ Risk &amp; Reward</span><span style="font-size:10.5px;color:var(--T3)">were you paid for the swings</span></div>
+    <div class="cb" id="ana-risk"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #0EA5E9">
+    <div class="ch"><span class="ct">🧩 True Diversification</span><span style="font-size:10.5px;color:var(--T3)">how many real bets do you have</span></div>
+    <div class="cb" id="ana-diversification"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎯 Rebalancing &amp; Concentration</span><span style="font-size:10.5px;color:var(--T3)">target vs actual</span></div>
+    <div class="cb" id="ana-rebalance"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -9824,6 +9848,13 @@ function loadLocal(){
 // @include js/benchmark.js
 // @include js/growth-history.js
 // @include js/alerts.js
+// @include js/crypto-symbols.js
+// @include js/attribution.js
+// @include js/risk.js
+// @include js/fx.js
+// @include js/tax-ifsold.js
+// @include js/diversification.js
+// @include js/rebalance.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -10474,7 +10505,14 @@ async function refreshAllPrices() {
   const tasks = [];
   S.indEQ.forEach((h,i) => tasks.push({type:'India EQ', ticker:_toYahooSymbol(h.ticker,'India EQ'), idx:i, asset:'indEQ'}));
   S.usEQ.forEach((h,i)  => tasks.push({type:'US EQ',    ticker:_toYahooSymbol(h.ticker,'US EQ'),    idx:i, asset:'usEQ'}));
-  S.crypto.forEach((h,i)=> tasks.push({type:'Crypto',   ticker:h.coinId.toUpperCase()+'-INR', idx:i, asset:'crypto'}));
+  // Resolve each coin to a real exchange ticker. Unresolvable coins are counted
+  // and reported rather than fetched as a made-up symbol that always fails.
+  let _cryptoUnresolved = [];
+  S.crypto.forEach((h,i) => {
+    const sym = cryptoMarketSymbol(h, 'INR', typeof CRYPTO_DB !== 'undefined' ? CRYPTO_DB : null);
+    if(!sym){ _cryptoUnresolved.push(h.coin || h.coinId || 'unknown'); return; }
+    tasks.push({type:'Crypto', ticker:sym, idx:i, asset:'crypto', holding:h});
+  });
 
   let done = 0, updated = 0;
   const total = tasks.length;
@@ -10499,7 +10537,13 @@ async function refreshAllPrices() {
     const batch = tasks.slice(i, i + _CONC);
     if (status) status.textContent = `Fetching ${Math.min(done + batch.length, total)}/${total}…`;
     await Promise.all(batch.map(async task => {
-      const price = await _fetchLivePrice(task.ticker, task.type);
+      let price = await _fetchLivePrice(task.ticker, task.type);
+      if((price == null || !(price > 0)) && task.asset === 'crypto'){
+        // Not every coin has an INR pair; fall back to USD at the app's rate.
+        const usdSym = task.ticker.replace(/-INR$/, '-USD');
+        const usd = await _fetchLivePrice(usdSym, task.type);
+        if(usd != null && usd > 0) price = usd * (S.usdInr || 1);
+      }
       _apply(task, price);
       done++;
       if (bar) bar.style.width = ((done/total)*100)+'%';
@@ -10531,7 +10575,8 @@ async function refreshAllPrices() {
 
   if (bar) bar.style.width = '100%';
   const _fpart = fundUpd ? ` · fundamentals on ${fundUpd}` : '';
-  if (status) status.textContent = `✅ Updated ${updated}/${total} prices${_fpart}!`;
+  const _cpart = _cryptoUnresolved.length ? ` · ${_cryptoUnresolved.length} coin(s) had no recognised ticker: ${_cryptoUnresolved.join(', ')}` : '';
+  if (status) status.textContent = `✅ Updated ${updated}/${total} prices${_fpart}${_cpart}`;
   setTimeout(() => { if (progress) progress.style.display = 'none'; }, 3000);
   if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Refresh All Prices'; }
 
@@ -10588,7 +10633,14 @@ async function _fetchFundamentalsBulk(yahooSyms) {
 async function refreshSinglePrice(rowIdx, type, ticker) {
   const btn = document.querySelector(`#ltp-row-${rowIdx} button`);
   if (btn) btn.textContent = '⏳';
-  const yfTicker = type === 'Crypto' ? ticker.toUpperCase()+'-INR' : _toYahooSymbol(ticker, type);
+  let yfTicker;
+  if(type === 'Crypto'){
+    const c = S.crypto.find(x => x.coinId === ticker) || { coinId: ticker };
+    yfTicker = cryptoMarketSymbol(c, 'INR', typeof CRYPTO_DB !== 'undefined' ? CRYPTO_DB : null);
+    if(!yfTicker){ toast(`No recognised ticker for ${ticker}`, 'err'); if(btn) btn.textContent='🔄'; return; }
+  } else {
+    yfTicker = _toYahooSymbol(ticker, type);
+  }
   const price = await _fetchLivePrice(yfTicker, type);
   if (price && price > 0) {
     if (type === 'India EQ') { const h = S.indEQ.find(x => x.ticker === ticker); if (h) { h.ltp = price; } }
@@ -12431,7 +12483,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:()=>{renderTaxation();renderIfSold();},analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRebalance();renderRisk().then(()=>{try{renderDiversification();}catch(e){}});},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -12462,16 +12514,21 @@ function renderAll(){
 /* ══ USD/INR LIVE PROMPT ══ */
 function updateUSDINR(){
   const v=parseFloat(prompt('Enter current USD/INR rate:',S.usdInr));
-  if(!isNaN(v)&&v>0){S.usdInr=v;save();renderAll();toast('USD/INR updated to ₹'+v,'ok');}
+  if(!isNaN(v)&&v>0){
+    if(typeof fxSetManual==='function' && !fxSetManual(v)){ toast('That rate looks wrong - ignored','err'); return; }
+    else if(typeof fxSetManual!=='function'){ S.usdInr=v; }
+    save();renderAll();toast('USD/INR updated to ₹'+S.usdInr,'ok');
+  }
 }
 document.getElementById('usd-hdr').addEventListener('click',updateUSDINR);
 document.getElementById('usd-badge').style.cursor='pointer';
-document.getElementById('usd-badge').title='Click to update USD/INR rate';
+document.getElementById('usd-badge').title='Auto-updated daily. Click to set it manually.';
 
 /* ══ INIT ══ */
 loadLocal();
 try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
 try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
+try { fxRefresh(); } catch(e){}       // USD/INR, once a day, via the Worker
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';
