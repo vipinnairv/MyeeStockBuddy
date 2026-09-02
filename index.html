@@ -10315,6 +10315,113 @@ function renderIncome(){
     XIRR is money-weighted across equity, crypto and funds using each purchase date. Holdings without a purchase date are excluded from XIRR but still counted in income.
   </div>`;
 }
+// ══════════ CAPITAL GAINS: FIFO LOT MATCHING ══════════
+// The previous computation had three defects that produced wrong tax numbers:
+//   1. When a sale had no matching BUY it invented a cost basis of 70% of the
+//      sale price - a fabricated 30% profit, reported as fact.
+//   2. That same path hard-coded a 730-day holding period, so every unmatched
+//      sale was classified LTCG and never STCG.
+//   3. It described itself as FIFO but used a weighted average cost with the
+//      OLDEST buy date, which overstates the holding period and biases toward
+//      the lower LTCG rate.
+// This module does real FIFO: a sale consumes buy lots oldest-first, so each
+// slice carries its own cost and its own holding period. One sale can
+// legitimately split across STCG and LTCG. Nothing is ever invented - a sale
+// that cannot be matched is returned as unmatched for the UI to flag.
+
+// Indian equity, post-Budget-2024 (23 July 2024 onwards).
+const TAX_RULES = {
+  ltcgExempt: 125000,   // Section 112A exemption
+  ltcgRate:   0.125,    // 12.5% (was 10% before Budget 2024)
+  stcgRate:   0.20,     // 20% (was 15%)
+  vdaRate:    0.30,     // crypto / VDA, no loss set-off
+  ltDays:     365,      // listed equity: >12 months is long term
+};
+
+// txns: [{id,date,type:'BUY'|'SELL',cls,name,qty,price}]
+// Returns { matched, unmatched }. Amounts are per-slice, not per-transaction.
+function fifoMatchSells(txns, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const list = Array.isArray(txns) ? txns : [];
+  const EPS = 1e-9;
+
+  // Buy lots per asset, oldest first.
+  const lots = {};
+  list.filter(t => t && t.type === 'BUY').forEach(t => {
+    const d = new Date(t.date);
+    if(isNaN(d.getTime())) return;
+    const qty = +t.qty, price = +t.price;
+    if(!isFinite(qty) || qty <= 0 || !isFinite(price)) return;
+    (lots[t.name] = lots[t.name] || []).push({ date:d, price, qty });
+  });
+  Object.keys(lots).forEach(k => lots[k].sort((a,b) => a.date - b.date));
+
+  const sells = list.filter(t => t && t.type === 'SELL' && !isNaN(new Date(t.date).getTime()))
+                    .slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  const matched = [], unmatched = [];
+  sells.forEach(s => {
+    const sd = new Date(s.date);
+    const sellPrice = +s.price;
+    let remaining = +s.qty;
+    if(!isFinite(remaining) || remaining <= 0 || !isFinite(sellPrice)){
+      unmatched.push({ id:s.id, date:s.date, name:s.name, cls:s.cls,
+                       qty:(+s.qty||0), price:(+s.price||0), reason:'invalid quantity or price' });
+      return;
+    }
+    const avail = lots[s.name] || [];
+    for(const lot of avail){
+      if(remaining <= EPS) break;
+      if(lot.qty <= EPS) continue;
+      if(lot.date > sd) continue;              // cannot sell shares bought later
+      const take = Math.min(lot.qty, remaining);
+      const days = Math.round((sd - lot.date) / 864e5);
+      matched.push({
+        id:s.id, date:s.date, name:s.name, cls:s.cls,
+        qty:take, price:sellPrice, sellPrice, buyPrice:lot.price,
+        buyDate:lot.date.toISOString().slice(0,10),
+        holdingDays:days, isLTCG: days > R.ltDays,
+        gain:(sellPrice - lot.price) * take,
+      });
+      lot.qty -= take;
+      remaining -= take;
+    }
+    if(remaining > EPS){
+      // No buy record covers this quantity. Refuse to guess a cost basis.
+      unmatched.push({ id:s.id, date:s.date, name:s.name, cls:s.cls,
+                       qty:remaining, price:sellPrice,
+                       reason:'no BUY transaction covers this quantity' });
+    }
+  });
+  return { matched, unmatched };
+}
+
+// Equity capital-gains tax for a set of matched slices.
+function computeEquityTax(rows, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const ltcg = (rows||[]).filter(r => r.isLTCG);
+  const stcg = (rows||[]).filter(r => !r.isLTCG);
+  const ltcgTotal = ltcg.reduce((a,r) => a + r.gain, 0);
+  const stcgTotal = stcg.reduce((a,r) => a + r.gain, 0);
+  const ltcgTaxable = Math.max(0, ltcgTotal - R.ltcgExempt);
+  const stcgTaxable = Math.max(0, stcgTotal);
+  return {
+    ltcgRows:ltcg, stcgRows:stcg, ltcgTotal, stcgTotal,
+    ltcgTaxable, stcgTaxable,
+    ltcgTax: ltcgTaxable * R.ltcgRate,
+    stcgTax: stcgTaxable * R.stcgRate,
+    ltcgRatePct: R.ltcgRate * 100, stcgRatePct: R.stcgRate * 100,
+    exempt: R.ltcgExempt,
+  };
+}
+
+// Crypto / VDA: gains taxed at 30%, losses cannot be set off against anything,
+// so only positive slices are counted.
+function computeVdaTax(rows, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const gain = (rows||[]).reduce((a,r) => a + (r.gain > 0 ? r.gain : 0), 0);
+  return { gain, tax: gain * R.vdaRate, ratePct: R.vdaRate * 100 };
+}
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -11941,55 +12048,29 @@ function renderTaxation(){
   const fy=document.getElementById('tax-fy')?.value||'2024-25';
   const [fyStart,fyEnd]=fyBounds(fy);
 
-  // ── REALISED GAINS ONLY from sell transactions in selected FY ──
-  const allSells=S.txns.filter(t=>t.type==='SELL'&&new Date(t.date)>=fyStart&&new Date(t.date)<=fyEnd);
-  const eqSells=allSells.filter(t=>t.cls==='India EQ'||t.cls==='US EQ'||t.cls==='MF');
-  const cryptoSells=allSells.filter(t=>t.cls==='Crypto');
+  // ── REALISED GAINS from sell transactions, matched FIFO against buy lots ──
+  // Lots are matched across the whole transaction history (not just this FY),
+  // because the buy that funds a sale is usually in an earlier year.
+  const _fifo = fifoMatchSells(S.txns||[]);
+  const _inFY = r => { const d=new Date(r.date); return d>=fyStart && d<=fyEnd; };
+  const _isEq = r => r.cls==='India EQ'||r.cls==='US EQ'||r.cls==='MF';
+  const eqRows     = _fifo.matched.filter(r => _inFY(r) && _isEq(r));
+  const cryptoRows = _fifo.matched.filter(r => _inFY(r) && r.cls==='Crypto');
+  const unmatched  = _fifo.unmatched.filter(_inFY);
 
-  // ── Match sells to buys using FIFO for each asset ──
-  function computeGain(sell){
-    // Find buys in chronological order (FIFO)
-    const buys=S.txns.filter(b=>b.type==='BUY'&&b.name===sell.name)
-      .sort((a,b)=>new Date(a.date)-new Date(b.date));
-    if(buys.length){
-      // Use weighted average cost (avg cost of all buys before sell date)
-      const relevantBuys=buys.filter(b=>new Date(b.date)<=new Date(sell.date));
-      const totalBuyQty=relevantBuys.reduce((a,b)=>a+b.qty,0);
-      const totalBuyCost=relevantBuys.reduce((a,b)=>a+b.qty*b.price,0);
-      const avgCost=totalBuyQty>0?totalBuyCost/totalBuyQty:sell.price*0.7;
-      const oldestBuy=relevantBuys[0];
-      const buyDate=oldestBuy?new Date(oldestBuy.date):new Date(new Date(sell.date).setFullYear(new Date(sell.date).getFullYear()-2));
-      const holdingDays=Math.round((new Date(sell.date)-buyDate)/864e5);
-      return{buyPrice:avgCost,buyDate:buyDate.toISOString().split('T')[0],holdingDays,gain:(sell.price-avgCost)*sell.qty};
-    }
-    // Fallback: lookup current holding avgCost
-    const holding=S.indEQ.find(h=>h.name===sell.name)||S.usEQ.find(h=>h.name===sell.name);
-    const avgCost=holding?holding.avgCost:sell.price*0.7;
-    const holdingDays=730; // assume 2yr
-    return{buyPrice:avgCost,buyDate:new Date(new Date(sell.date).setFullYear(new Date(sell.date).getFullYear()-2)).toISOString().split('T')[0],holdingDays,gain:(sell.price-avgCost)*sell.qty};
-  }
+  const allSells=(S.txns||[]).filter(t=>t.type==='SELL'&&new Date(t.date)>=fyStart&&new Date(t.date)<=fyEnd);
 
-  let ltcgRows=[],stcgRows=[];
-  eqSells.forEach(t=>{
-    const g=computeGain(t);
-    const isLTCG=g.holdingDays>365;
-    const row={...t,...g,isLTCG};
-    if(isLTCG) ltcgRows.push(row); else stcgRows.push(row);
-  });
+  const _eqTax = computeEquityTax(eqRows);
+  const ltcgRows=_eqTax.ltcgRows, stcgRows=_eqTax.stcgRows;
 
-  const ltcgTotal=ltcgRows.reduce((a,r)=>a+r.gain,0);
-  const stcgTotal=stcgRows.reduce((a,r)=>a+r.gain,0);
-  const ltcgTaxable=Math.max(0,ltcgTotal-125000);
-  const ltcgTax=ltcgTaxable*0.10;
-  const stcgTaxable=Math.max(0,stcgTotal);
-  const stcgTax=stcgTaxable*0.20;
+  const ltcgTotal=_eqTax.ltcgTotal, stcgTotal=_eqTax.stcgTotal;
+  const ltcgTaxable=_eqTax.ltcgTaxable, stcgTaxable=_eqTax.stcgTaxable;
+  const ltcgTax=_eqTax.ltcgTax, stcgTax=_eqTax.stcgTax;
+  const _ltcgRatePct=_eqTax.ltcgRatePct, _stcgRatePct=_eqTax.stcgRatePct;
 
-  // ── Realised Crypto Gains ──
-  let cryptoRealisedGain=0, cryptoTax=0;
-  cryptoSells.forEach(t=>{
-    const g=computeGain(t);
-    if(g.gain>0){ cryptoRealisedGain+=g.gain; cryptoTax+=g.gain*0.30; }
-  });
+  // ── Realised Crypto Gains (VDA: 30%, losses cannot be set off) ──
+  const _vda=computeVdaTax(cryptoRows);
+  const cryptoRealisedGain=_vda.gain, cryptoTax=_vda.tax;
 
   // ── FD Interest ──
   let fdInterest=0;
@@ -12021,22 +12102,22 @@ function renderTaxation(){
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Realised LTCG</div><div class="tax-sum-box-val" style="color:${ltcgTotal>=0?'var(--G)':'var(--R)'}">${F.inr(ltcgTotal)}</div><div class="tax-sum-box-sub">From actual sells</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Exempt Limit</div><div class="tax-sum-box-val">₹1,25,000</div><div class="tax-sum-box-sub">Budget 2024</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Taxable LTCG</div><div class="tax-sum-box-val">${F.inr(ltcgTaxable)}</div><div class="tax-sum-box-sub">After exemption</div></div>
-      <div class="tax-sum-box" style="${ltcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">LTCG Tax @10%</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div></div>
+      <div class="tax-sum-box" style="${ltcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">LTCG Tax @${_ltcgRatePct}%</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div></div>
     </div>
     <div class="ts"><table style="min-width:640px"><thead><tr><th>Sell Date</th><th>Asset</th><th>Class</th><th class="r">Avg Buy Price</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Realised Gain</th><th class="r">Holding Period</th><th>Category</th></tr></thead><tbody>${renderGainRows(ltcgRows)}</tbody></table></div>`;
 
   document.getElementById('stcg-panel').innerHTML=`
     <div class="tax-sum-grid">
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Realised STCG</div><div class="tax-sum-box-val" style="color:${stcgTotal>=0?'var(--G)':'var(--R)'}">${F.inr(stcgTotal)}</div><div class="tax-sum-box-sub">From actual sells</div></div>
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Tax Rate</div><div class="tax-sum-box-val">20%</div><div class="tax-sum-box-sub">Budget 2024 rate</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Tax Rate</div><div class="tax-sum-box-val">${_stcgRatePct}%</div><div class="tax-sum-box-sub">Budget 2024 rate</div></div>
       <div class="tax-sum-box" style="${stcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div></div>
     </div>
     <div class="ts"><table style="min-width:640px"><thead><tr><th>Sell Date</th><th>Asset</th><th>Class</th><th class="r">Avg Buy Price</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Realised Gain</th><th class="r">Holding Period</th><th>Category</th></tr></thead><tbody>${renderGainRows(stcgRows)}</tbody></table></div>`;
 
   document.getElementById('tax-summary-panel').innerHTML=`
     <div class="tax-sum-grid">
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">LTCG Tax</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div><div class="tax-sum-box-sub">Equity @10% above ₹1.25L</div></div>
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div><div class="tax-sum-box-sub">Equity @20%</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">LTCG Tax</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div><div class="tax-sum-box-sub">Equity @${_ltcgRatePct}% above ₹1.25L</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div><div class="tax-sum-box-sub">Equity @${_stcgRatePct}%</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Crypto Tax @30%</div><div class="tax-sum-box-val" style="color:${cryptoTax>0?'var(--R)':'var(--G)'}">${F.inr(cryptoTax)}</div><div class="tax-sum-box-sub">Realised gains only</div></div>
       <div class="tax-sum-box" style="${totalTax>0?'background:var(--RL);border-color:#E57373':''}">
         <div class="tax-sum-box-lbl" style="${totalTax>0?'color:var(--R)':''}">Total Tax Liability</div>
@@ -12044,8 +12125,13 @@ function renderTaxation(){
         <div class="tax-sum-box-sub">${F.inr(totalTax*1.04)} incl. 4% cess</div>
       </div>
     </div>
+    ${unmatched.length ? `<div style="font-size:12px;color:var(--T1);margin-top:8px;padding:11px 14px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
+      ⚠️ <strong>${unmatched.length} sale${unmatched.length===1?'':'s'} could not be matched to a purchase</strong> and ${unmatched.length===1?'is':'are'} <strong>excluded</strong> from the figures above - the cost basis and holding period are unknown, and guessing them would misstate your tax.
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date} — <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">Add the matching <b>BUY</b> in the Transactions tab and this recomputes automatically.</div>
+    </div>` : ''}
     <div style="font-size:11.5px;color:var(--T2);margin-top:8px;padding:10px 14px;background:var(--GL);border-radius:var(--r3);border-left:3px solid var(--G)">
-      ✅ <strong>Realised gains only</strong> - This computation is based on actual SELL transactions recorded. Unrealised holdings are excluded. Consult a CA for final ITR filing.
+      ✅ <strong>Realised gains only</strong> - computed by matching each sale FIFO against your recorded buy lots, so a single sale can split across STCG and LTCG. Unrealised holdings are excluded. Consult a CA for final ITR filing.
     </div>`;
 
   document.getElementById('tax-txn-body').innerHTML=allSells.length?allSells.map(t=>`<tr>

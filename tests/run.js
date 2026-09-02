@@ -855,6 +855,123 @@ group('disclaimer overlay layout');
   ok('very short viewports drop the decorative blocks', /@media \(max-height:620px\)/.test(SRC), 'no very-short rule');
 }
 
+// ── Capital gains: FIFO lot matching ───────────────────────────────────────
+group('capital gains FIFO');
+{
+  const src = slice('const TAX_RULES = {', '\n// Crypto / VDA', 'fifo');
+  const vsrc = slice('function computeVdaTax(rows, rules){', '\n}', 'vda') + '\n}';
+  const { fifoMatchSells, computeEquityTax, computeVdaTax, TAX_RULES } =
+    load(src + '\n' + vsrc, ['fifoMatchSells','computeEquityTax','computeVdaTax','TAX_RULES'],
+         { Date, Math, isFinite, Array, Object, Number });
+
+  const B = (name,date,qty,price) => ({ id:'b'+date, type:'BUY', cls:'India EQ', name, date, qty, price });
+  const S_ = (name,date,qty,price) => ({ id:'s'+date, type:'SELL', cls:'India EQ', name, date, qty, price });
+
+  // ── Nothing is ever invented ──
+  {
+    const r = fifoMatchSells([S_('ORPHAN','2025-06-01',10,500)]);
+    eq('a sale with no buy produces no gain row', r.matched.length, 0);
+    eq('it is reported as unmatched instead', r.unmatched.length, 1);
+    eq('unmatched carries the full quantity', r.unmatched[0].qty, 10);
+    ok('and says why', /no BUY transaction/.test(r.unmatched[0].reason), r.unmatched[0].reason);
+  }
+  {
+    // Partial cover: 10 bought, 15 sold -> 10 matched, 5 flagged.
+    const r = fifoMatchSells([B('X','2024-01-01',10,100), S_('X','2025-06-01',15,200)]);
+    eq('matched only what the lots cover', r.matched[0].qty, 10);
+    eq('the uncovered remainder is flagged', r.unmatched.length, 1);
+    eq('remainder quantity is exact', r.unmatched[0].qty, 5);
+  }
+
+  // ── Real FIFO: oldest lot first, each slice keeps its own basis and period ──
+  {
+    const r = fifoMatchSells([
+      B('X','2020-01-01',10,100),   // old, cheap  -> LTCG
+      B('X','2025-05-01',10,300),   // recent      -> STCG
+      S_('X','2025-06-01',15,400),
+    ]);
+    eq('a sale splits across lots', r.matched.length, 2);
+    eq('oldest lot is consumed first', r.matched[0].buyPrice, 100);
+    eq('first slice takes the whole old lot', r.matched[0].qty, 10);
+    eq('second slice comes from the newer lot', r.matched[1].buyPrice, 300);
+    eq('second slice takes the remainder', r.matched[1].qty, 5);
+    ok('old slice is long term', r.matched[0].isLTCG === true, 'not LTCG');
+    ok('new slice is short term', r.matched[1].isLTCG === false, 'not STCG');
+    eq('per-slice gain uses that slice basis', r.matched[0].gain, (400-100)*10);
+    eq('and the newer basis for the rest', r.matched[1].gain, (400-300)*5);
+    eq('nothing left unmatched', r.unmatched.length, 0);
+  }
+  {
+    // The old code used the OLDEST buy date for everything, which forced LTCG.
+    // A purely recent position must come out entirely short term.
+    const r = fifoMatchSells([B('Y','2025-05-01',5,100), S_('Y','2025-06-01',5,150)]);
+    ok('a 1-month hold is STCG, not LTCG', r.matched[0].isLTCG === false, 'misclassified as LTCG');
+    eq('holding period is real, not assumed 730d', r.matched[0].holdingDays, 31);
+  }
+  {
+    // 365 days is the boundary: >365 is long term, exactly 365 is not.
+    const at365 = fifoMatchSells([B('Z','2024-01-01',1,10), S_('Z','2024-12-31',1,20)]).matched[0];
+    const at366 = fifoMatchSells([B('Z','2024-01-01',1,10), S_('Z','2025-01-02',1,20)]).matched[0];
+    ok('exactly 365 days is short term', at365.isLTCG === false, String(at365.holdingDays));
+    ok('beyond 365 days is long term', at366.isLTCG === true, String(at366.holdingDays));
+  }
+  {
+    // A lot bought AFTER the sale cannot fund it.
+    const r = fifoMatchSells([B('F','2025-12-01',10,100), S_('F','2025-06-01',10,200)]);
+    eq('a later purchase cannot fund an earlier sale', r.matched.length, 0);
+    eq('so the sale is unmatched', r.unmatched.length, 1);
+  }
+  {
+    // Lots are per-asset; another stock's buys must not be consumed.
+    const r = fifoMatchSells([B('AAA','2020-01-01',10,100), S_('BBB','2025-06-01',10,200)]);
+    eq('lots do not leak between assets', r.matched.length, 0);
+    eq('the sale is unmatched', r.unmatched.length, 1);
+  }
+  {
+    // A lot is not reusable across two sales.
+    const r = fifoMatchSells([B('X','2020-01-01',10,100), S_('X','2025-06-01',6,200), S_('X','2025-07-01',6,200)]);
+    eq('first sale takes 6', r.matched[0].qty, 6);
+    eq('second sale gets only the remaining 4', r.matched[1].qty, 4);
+    eq('and 2 are unmatched', r.unmatched[0].qty, 2);
+  }
+  eq('junk quantity is rejected, not guessed',
+     fifoMatchSells([B('X','2020-01-01',10,100), S_('X','2025-06-01',0,200)]).unmatched.length, 1);
+
+  // ── Rates: Budget 2024 ──
+  eq('LTCG rate is 12.5%, not the old 10%', TAX_RULES.ltcgRate, 0.125);
+  eq('STCG rate is 20%', TAX_RULES.stcgRate, 0.20);
+  eq('LTCG exemption is 1.25 lakh', TAX_RULES.ltcgExempt, 125000);
+  {
+    const rows = [{ gain: 325000, isLTCG:true }, { gain: 50000, isLTCG:false }];
+    const tx = computeEquityTax(rows);
+    eq('LTCG taxable is net of the exemption', tx.ltcgTaxable, 200000);
+    eq('LTCG tax at 12.5%', tx.ltcgTax, 25000);
+    eq('STCG tax at 20%', tx.stcgTax, 10000);
+  }
+  {
+    const tx = computeEquityTax([{ gain: 100000, isLTCG:true }]);
+    eq('gains under the exemption are untaxed', tx.ltcgTax, 0);
+  }
+  {
+    const tx = computeEquityTax([{ gain: -50000, isLTCG:false }]);
+    eq('a short-term loss creates no tax', tx.stcgTax, 0);
+  }
+  // Crypto: losses cannot be set off against gains.
+  {
+    const v = computeVdaTax([{ gain: 100000 }, { gain: -80000 }]);
+    eq('VDA counts gains only, ignoring losses', v.gain, 100000);
+    eq('VDA tax at 30%', v.tax, 30000);
+  }
+
+  // ── Wiring: the fabricating code must be gone ──
+  ok('no invented 70% cost basis remains', !/sell\.price\s*\*\s*0\.7/.test(SRC), 'fabricated basis still present');
+  ok('no assumed 730-day holding period remains', !/holdingDays\s*=\s*730/.test(SRC), 'assumed period still present');
+  ok('taxation uses the FIFO matcher', /fifoMatchSells\(S\.txns/.test(SRC), 'not wired');
+  ok('unmatched sales are surfaced to the user', /could not be matched to a purchase/.test(SRC), 'no warning');
+  ok('the LTCG rate label is driven by the rule, not hard-coded 10%',
+     !/LTCG Tax @10%/.test(SRC) && /_ltcgRatePct/.test(SRC), 'rate label still hard-coded');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
