@@ -1442,6 +1442,112 @@ group('risk metrics');
   ok('it does not present the past as a forecast', /not a forecast/.test(SRC), 'overclaims');
 }
 
+// ── Estimated tax if sold today ────────────────────────────────────────────
+group('tax if sold today');
+{
+  const src = slice('function _ifSoldRows(lots, asOf, ltDays){', '\nfunction renderIfSold()', 'ifsold');
+  const { _ifSoldRows, _ifSoldTax } = load(src, ['_ifSoldRows','_ifSoldTax'], { Array, Math, Date, isFinite, Object, Number });
+  const asOf = new Date('2026-04-01T00:00:00Z');
+  const L = (name,cls,invested,current,buyDate) => ({ name, cls, invested, current, buyDate });
+
+  // ── classification by real holding period ──
+  {
+    const { rows } = _ifSoldRows([
+      L('Old','India EQ',100000,200000,'2020-01-01'),
+      L('New','India EQ',100000,120000,'2026-02-01'),
+    ], asOf, 365);
+    eq('both are datable', rows.length, 2);
+    ok('a 6-year hold is long term', rows[0].isLTCG === true, 'not LTCG');
+    ok('a 2-month hold is short term', rows[1].isLTCG === false, 'not STCG');
+  }
+  {
+    // Undated holdings cannot be classified and must be excluded, not guessed.
+    const { rows, undated } = _ifSoldRows([L('NoDate','India EQ',100000,200000,null)], asOf, 365);
+    eq('undated is not classified', rows.length, 0);
+    eq('and is reported separately', undated.length, 1);
+  }
+  eq('a future purchase date is excluded', _ifSoldRows([L('F','India EQ',1,2,'2030-01-01')], asOf, 365).rows.length, 0);
+  eq('zero-cost lots are ignored', _ifSoldRows([L('Z','India EQ',0,100,'2020-01-01')], asOf, 365).rows.length, 0);
+
+  // ── tax arithmetic ──
+  {
+    // 3L long-term gain: 1.25L exempt, 1.75L @12.5% = 21,875.
+    const r = _ifSoldTax([L('A','India EQ',100000,400000,'2020-01-01')], asOf);
+    eq('LTCG total', r.ltcgTotal, 300000);
+    eq('taxable after exemption', r.ltcgTaxable, 175000);
+    eq('LTCG tax at 12.5%', r.ltcgTax, 21875);
+    eq('no STCG', r.stcgTax, 0);
+    eq('cess is 4% on top', +r.totalWithCess.toFixed(2), +(21875*1.04).toFixed(2));
+  }
+  {
+    // Short-term gain 1L @20% = 20,000, with no exemption.
+    const r = _ifSoldTax([L('B','India EQ',100000,200000,'2026-02-01')], asOf);
+    eq('STCG tax at 20%', r.stcgTax, 20000);
+    eq('exemption does not apply to STCG', r.ltcgTax, 0);
+  }
+  {
+    // A long-term gain under the exemption is untaxed.
+    const r = _ifSoldTax([L('C','India EQ',100000,180000,'2020-01-01')], asOf);
+    eq('gain below the exemption is untaxed', r.ltcgTax, 0);
+  }
+  {
+    // Losses reduce the taxable total rather than being taxed.
+    const r = _ifSoldTax([
+      L('Win','India EQ',100000,500000,'2020-01-01'),
+      L('Lose','India EQ',100000,50000,'2020-01-01'),
+    ], asOf);
+    eq('long-term gains and losses net off', r.ltcgTotal, 350000);
+    eq('tax applies to the net after exemption', r.ltcgTax, (350000-125000)*0.125);
+  }
+  {
+    // Crypto is taxed on gains only - a VDA loss cannot reduce a VDA gain.
+    const r = _ifSoldTax([
+      L('BTC','Crypto',100000,300000,'2020-01-01'),
+      L('ALT','Crypto',100000,20000,'2020-01-01'),
+    ], asOf);
+    eq('VDA gains only', r.vdaGain, 200000);
+    eq('VDA tax at 30%', r.vdaTax, 60000);
+    eq('crypto is kept out of the equity buckets', r.ltcgTotal, 0);
+  }
+  {
+    const r = _ifSoldTax([L('N','India EQ',100000,90000,'2020-01-01')], asOf);
+    eq('an overall loss owes no tax', r.total, 0);
+  }
+
+  // ── wiring & honesty ──
+  ok('the panel renders with the taxation tab', /renderTaxation\(\);renderIfSold\(\)/.test(SRC), 'not wired');
+  ok('it is presented as a what-if, not a bill', /A <b>what-if<\/b> estimate/.test(SRC), 'overclaims');
+  ok('the averaged-cost limitation is disclosed',
+     /actual tax on sale is computed FIFO lot by lot and will differ/.test(SRC), 'limitation hidden');
+  ok('undated holdings are surfaced as excluded', /cannot be classified long or short term/.test(SRC), 'exclusions hidden');
+}
+
+// ── USD/INR auto-refresh ───────────────────────────────────────────────────
+group('fx auto-refresh');
+{
+  const src = slice('function _fxIsStale(rec, today){', '\n// Record a manual entry', 'fx');
+  const { _fxIsStale, _fxPlausible } = load(src, ['_fxIsStale','_fxPlausible'], { isFinite, Number });
+
+  eq('same day is not stale', _fxIsStale({d:'2026-09-02',v:88}, '2026-09-02'), false);
+  eq('yesterday is stale', _fxIsStale({d:'2026-09-01',v:88}, '2026-09-02'), true);
+  eq('no record is stale', _fxIsStale(null, '2026-09-02'), true);
+  eq('a record with no date is stale', _fxIsStale({v:88}, '2026-09-02'), true);
+
+  // A wrong symbol or a bad parse could return a share price or a percentage.
+  // Adopting it silently would corrupt every US valuation and the tax figures.
+  ok('a realistic rate is accepted', _fxPlausible(88.4), 'rejected a good rate');
+  ok('an absurdly high value is refused', !_fxPlausible(24000), 'accepted a share price');
+  ok('an absurdly low value is refused', !_fxPlausible(1.2), 'accepted a ratio');
+  ok('zero is refused', !_fxPlausible(0), 'accepted zero');
+  ok('NaN is refused', !_fxPlausible(NaN), 'accepted NaN');
+
+  ok('the rate refreshes on boot', /try \{ fxRefresh\(\); \} catch\(e\)\{\}/.test(SRC), 'not refreshed on boot');
+  ok('it fetches the USD/INR pair', /_FX_SYM\s*=\s*'USDINR=X'/.test(SRC), 'wrong symbol');
+  ok('it only refetches once a day', /_fxIsStale\(rec, today\)/.test(SRC), 'no daily guard');
+  ok('manual entry is still possible', /function fxSetManual/.test(SRC), 'manual override removed');
+  ok('the badge says it is automatic', /Auto-updated daily\. Click to set it manually\./.test(SRC), 'tooltip not updated');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

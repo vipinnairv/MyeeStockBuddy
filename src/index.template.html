@@ -2350,7 +2350,11 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         <div class="cb" id="stcg-panel"><p style="color:var(--T3);font-size:13px">No STCG transactions found for this FY.</p></div>
       </div>
     </div>
-    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div></div>
+    <div class="card"><div class="ch"><span class="ct">Tax Liability Summary</span></div><div class="cb" id="tax-summary-panel"></div>
+    </div>
+    <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+      <div class="ch"><span class="ct">🔮 If You Sold Today</span><span style="font-size:10.5px;color:var(--T3)">estimated tax on unrealised gains</span></div>
+      <div class="cb" id="tax-ifsold"></div></div>
     <div class="card"><div class="ch"><span class="ct">All Realised Transactions - Sells Logged</span></div>
       <div class="cb"><div class="ts"><table style="min-width:700px">
         <thead><tr><th>Date</th><th>Asset</th><th>Class</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Gain/Loss</th><th>Type</th></tr></thead>
@@ -9839,6 +9843,8 @@ function loadLocal(){
 // @include js/crypto-symbols.js
 // @include js/attribution.js
 // @include js/risk.js
+// @include js/fx.js
+// @include js/tax-ifsold.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -12467,7 +12473,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRisk();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:()=>{renderTaxation();renderIfSold();},analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();renderRisk();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -12498,16 +12504,21 @@ function renderAll(){
 /* ══ USD/INR LIVE PROMPT ══ */
 function updateUSDINR(){
   const v=parseFloat(prompt('Enter current USD/INR rate:',S.usdInr));
-  if(!isNaN(v)&&v>0){S.usdInr=v;save();renderAll();toast('USD/INR updated to ₹'+v,'ok');}
+  if(!isNaN(v)&&v>0){
+    if(typeof fxSetManual==='function' && !fxSetManual(v)){ toast('That rate looks wrong - ignored','err'); return; }
+    else if(typeof fxSetManual!=='function'){ S.usdInr=v; }
+    save();renderAll();toast('USD/INR updated to ₹'+S.usdInr,'ok');
+  }
 }
 document.getElementById('usd-hdr').addEventListener('click',updateUSDINR);
 document.getElementById('usd-badge').style.cursor='pointer';
-document.getElementById('usd-badge').title='Click to update USD/INR rate';
+document.getElementById('usd-badge').title='Auto-updated daily. Click to set it manually.';
 
 /* ══ INIT ══ */
 loadLocal();
 try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
 try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
+try { fxRefresh(); } catch(e){}       // USD/INR, once a day, via the Worker
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';
