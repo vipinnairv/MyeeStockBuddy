@@ -1673,6 +1673,81 @@ group('rebalancing');
   ok('targets are the user\'s, not advice', /Targets and the limit are yours/.test(SRC), 'presented as advice');
 }
 
+// ── Tax reporting period ───────────────────────────────────────────────────
+group('tax period selection');
+{
+  const src = slice('function currentFY(now){', '\n// What the UI currently has selected', 'period');
+  const { currentFY, fyOptions, taxPeriod } =
+    load(src, ['currentFY','fyOptions','taxPeriod'], { Date, String, Number, isFinite });
+
+  // India's FY runs 1 Apr - 31 Mar, so Jan-Mar belongs to the PREVIOUS start year.
+  eq('September 2026 is FY 2026-27', currentFY(new Date('2026-09-02')), '2026-27');
+  eq('1 April flips to the new FY', currentFY(new Date('2026-04-01')), '2026-27');
+  eq('31 March is still the old FY', currentFY(new Date('2026-03-31')), '2025-26');
+  eq('January belongs to the previous start year', currentFY(new Date('2026-01-15')), '2025-26');
+  eq('a century-crossing year formats correctly', currentFY(new Date('2099-06-01')), '2099-00');
+
+  // The list must lead with the CURRENT year - the old hard-coded markup
+  // defaulted to a stale FY and offered no way to reach the current one.
+  {
+    const o = fyOptions(new Date('2026-09-02'), 3);
+    eq('current FY is first', o[0].value, '2026-27');
+    ok('FY 2026-27 is offered', o.some(x => x.value === '2026-27'), 'missing 2026-27');
+    eq('previous years follow', o.map(x=>x.value).join(','), '2026-27,2025-26,2024-25,2023-24');
+    ok('label carries the assessment year', /AY 2027-28 \(FY 2026-27\)/.test(o[0].label), o[0].label);
+  }
+
+  // ── FY bounds ──
+  {
+    const p = taxPeriod('2026-27');
+    eq('starts 1 April', p.start.toISOString().slice(0,10), '2026-04-01');
+    eq('ends 31 March', p.end.toISOString().slice(0,10), '2027-03-31');
+    ok('the last day is included in full', p.end.getHours() === 23, String(p.end.getHours()));
+    eq('labelled as an FY', p.label, 'FY 2026-27');
+    ok('not flagged custom', p.custom === false, 'wrongly custom');
+  }
+
+  // ── custom range ──
+  {
+    const p = taxPeriod('custom', '2026-04-01', '2026-06-30');
+    ok('a valid range has no error', !p.error, p.error);
+    eq('start honoured', p.start.toISOString().slice(0,10), '2026-04-01');
+    eq('end honoured', p.end.toISOString().slice(0,10), '2026-06-30');
+    eq('labelled by its dates', p.label, '2026-04-01 to 2026-06-30');
+    ok('flagged custom', p.custom === true, 'not flagged custom');
+  }
+  // A half-filled or inverted range must produce an error, NOT a silently
+  // wrong window that yields plausible-looking tax numbers.
+  ok('missing both dates errors', !!taxPeriod('custom','','').error, 'no error');
+  ok('missing the end date errors', !!taxPeriod('custom','2026-04-01','').error, 'no error');
+  ok('missing the start date errors', !!taxPeriod('custom','','2026-06-30').error, 'no error');
+  {
+    const p = taxPeriod('custom','2026-06-30','2026-04-01');
+    ok('an inverted range errors', !!p.error, 'no error');
+    ok('and says which way round', /start date is after the end date/.test(p.error), p.error);
+  }
+  ok('unreadable dates error', !!taxPeriod('custom','not-a-date','2026-06-30').error, 'no error');
+  ok('a bad FY string errors', !!taxPeriod('nonsense').error, 'no error');
+  {
+    // No selection at all falls back to the current FY rather than a stale one.
+    const p = taxPeriod(undefined);
+    ok('no selection defaults to an FY window', !p.error && p.custom === false, JSON.stringify(p));
+  }
+
+  // ── wiring ──
+  ok('the FY list is built at boot, not hard-coded', /fyOptions\(new Date\(\), 3\)/.test(SRC), 'still hard-coded');
+  ok('a custom option is offered', /<option value="custom">Custom period/.test(SRC), 'no custom option');
+  ok('custom date inputs exist', SRC.includes('id="tax-from"') && SRC.includes('id="tax-to"'), 'no date inputs');
+  ok('taxation refuses to compute on a broken period',
+     /if\(_period\.error\) return;/.test(SRC), 'computes over a bad window');
+  ok('the error is shown to the user', /Nothing is computed until the period is valid/.test(SRC), 'error hidden');
+  ok('harvesting uses the same resolver', /taxPeriodFromUI/.test(SRC), 'periods can diverge');
+  ok('the stale hard-coded FY list is gone', !/AY 2025-26 \(FY 2024-25\)<\/option>/.test(SRC), 'old list remains');
+  // The chip advertised 10% while the code computes 12.5%.
+  ok('the LTCG chip matches the computed rate', /Equity 12\.5% tax above ₹1\.25L/.test(SRC), 'chip still says 10%');
+  ok('no 10% LTCG claim remains', !/Equity 10% tax above/.test(SRC), 'stale 10% claim');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
