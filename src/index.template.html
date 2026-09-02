@@ -2322,7 +2322,8 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
 <!-- ══════════════════════ TAXATION ══════════════════════ -->
 <div class="page" id="page-taxation">
-  <div class="kpi-grid" id="tax-kpis"></div>
+  <div id="tax-period-error"></div>
+    <div class="kpi-grid" id="tax-kpis"></div>
   <div style="display:flex;gap:0;border-bottom:2px solid var(--bd);margin-bottom:20px;overflow-x:auto;scrollbar-width:none">
     <div class="stab active" data-stab="ltcg" onclick="showStab('tax','ltcg')">📊 LTCG / STCG</div>
     <div class="stab" data-stab="crypto-tax" onclick="showStab('tax','crypto-tax')">₿ Crypto Tax</div>
@@ -2332,12 +2333,15 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="stab-panel active" id="stab-ltcg">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:600;color:var(--T2)">Financial Year:</span>
-      <select class="filter-sel" id="tax-fy" onchange="renderTaxation()">
-        <option value="2025-26">AY 2026-27 (FY 2025-26)</option>
-        <option value="2024-25" selected>AY 2025-26 (FY 2024-25)</option>
-        <option value="2023-24">AY 2024-25 (FY 2023-24)</option>
-      </select>
-      <span style="font-size:11.5px;color:var(--T3);background:var(--BL);padding:4px 10px;border-radius:20px">LTCG &gt;12 months · Equity 10% tax above ₹1.25L</span>
+      <select class="filter-sel" id="tax-fy" onchange="taxPeriodToggle()"></select>
+      <span id="tax-custom-range" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--T3)">
+        <input type="date" id="tax-from" onchange="renderTaxation();renderIfSold&&renderIfSold();"
+               style="padding:4px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px">
+        <span>to</span>
+        <input type="date" id="tax-to" onchange="renderTaxation();renderIfSold&&renderIfSold();"
+               style="padding:4px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px">
+      </span>
+      <span style="font-size:11.5px;color:var(--T3);background:var(--BL);padding:4px 10px;border-radius:20px">LTCG &gt;12 months · Equity 12.5% tax above ₹1.25L</span>
       <span style="font-size:11.5px;color:var(--T3);background:var(--AUL);padding:4px 10px;border-radius:20px">STCG ≤12 months · Equity 20% tax (Budget 2024)</span>
     </div>
     <div class="chart-row">
@@ -9855,6 +9859,7 @@ function loadLocal(){
 // @include js/tax-ifsold.js
 // @include js/diversification.js
 // @include js/rebalance.js
+// @include js/tax-period.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -11508,8 +11513,12 @@ function renderFD(){
 
 /* ══════════ TAXATION ══════════ */
 function renderTaxation(){
-  const fy=document.getElementById('tax-fy')?.value||'2024-25';
-  const [fyStart,fyEnd]=fyBounds(fy);
+  const _period = taxPeriodFromUI();
+  const _perrEl = document.getElementById('tax-period-error');
+  if(_perrEl) _perrEl.innerHTML = _period.error
+    ? `<div class="alert alert-error" style="margin-bottom:14px">📅 ${_period.error} Nothing is computed until the period is valid.</div>` : '';
+  if(_period.error) return;
+  const fy=_period.label, fyStart=_period.start, fyEnd=_period.end;
 
   // ── REALISED GAINS from sell transactions, matched FIFO against buy lots ──
   // Lots are matched across the whole transaction history (not just this FY),
@@ -11542,8 +11551,8 @@ function renderTaxation(){
   const totalTax=ltcgTax+stcgTax+cryptoTax;
 
   document.getElementById('tax-kpis').innerHTML=[
-    {lbl:'Realised LTCG',val:F.inr(ltcgTotal),sub:'Equity >12m · FY '+fy,c:'#1A73E8',ico:'📈'},
-    {lbl:'Realised STCG',val:F.inr(stcgTotal),sub:'Equity ≤12m · FY '+fy,c:'#F59E0B',ico:'⚡'},
+    {lbl:'Realised LTCG',val:F.inr(ltcgTotal),sub:'Equity >12m · '+fy,c:'#1A73E8',ico:'📈'},
+    {lbl:'Realised STCG',val:F.inr(stcgTotal),sub:'Equity ≤12m · '+fy,c:'#F59E0B',ico:'⚡'},
     {lbl:'Crypto Realised Gain',val:F.inr(cryptoRealisedGain),sub:'Only on actual sells',c:'#E53935',ico:'₿'},
     {lbl:'FD/Bond Interest',val:F.inr(fdInterest),sub:'Taxable at slab rate',c:'#00B386',ico:'🏦'},
     {lbl:'Total Est. Tax',val:F.inr(totalTax),sub:'LTCG+STCG+Crypto',c:'#D93025',ico:'🧾'},
@@ -11558,7 +11567,7 @@ function renderTaxation(){
     <td class="r tm" style="color:${r.gain>=0?'var(--G)':'var(--R)'};font-weight:600">${r.gain>=0?'+':'-'}${F.inr(Math.abs(r.gain))}</td>
     <td class="r" style="font-size:11px">${r.holdingDays}d (${r.buyDate})</td>
     <td><span class="chip ${r.isLTCG?'c-active':'c-due'}">${r.isLTCG?'LTCG':'STCG'}</span></td>
-  </tr>`).join(''):`<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--T3);font-size:12.5px">📭 No ${rows===ltcgRows?'LTCG':'STCG'} sell transactions recorded in FY ${fy}.<br><span style="font-size:11px">Add SELL transactions in the Transactions tab to see tax computation.</span></td></tr>`;
+  </tr>`).join(''):`<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--T3);font-size:12.5px">📭 No ${rows===ltcgRows?'LTCG':'STCG'} sell transactions recorded in ${fy}.<br><span style="font-size:11px">Add SELL transactions in the Transactions tab to see tax computation.</span></td></tr>`;
 
   document.getElementById('ltcg-panel').innerHTML=`
     <div class="tax-sum-grid">
@@ -11603,7 +11612,7 @@ function renderTaxation(){
     <td class="r tm">${F.inr(t.price)}</td><td class="r tm">${t.qty}</td>
     <td class="r tm" style="font-weight:700">${F.inr(t.total)}</td>
     <td><span class="chip c-sell">SELL</span></td>
-  </tr>`).join(''):`<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--T3);font-size:12.5px">📭 No sell transactions in FY ${fy}.<br><span style="font-size:11px">Record a SELL in the Transactions tab to populate this report.</span></td></tr>`;
+  </tr>`).join(''):`<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--T3);font-size:12.5px">📭 No sell transactions in ${fy}.<br><span style="font-size:11px">Record a SELL in the Transactions tab to populate this report.</span></td></tr>`;
 
   // ── Crypto tax (realised sells only) ──
   document.getElementById('crypto-tax-kpis').innerHTML=[
@@ -12529,6 +12538,15 @@ loadLocal();
 try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
 try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
 try { fxRefresh(); } catch(e){}       // USD/INR, once a day, via the Worker
+try {                                  // FY list, current year first, + custom
+  const _sel = document.getElementById('tax-fy');
+  if(_sel){
+    _sel.innerHTML = fyOptions(new Date(), 3)
+      .map(o => `<option value="${o.value}">${o.label}</option>`).join('')
+      + '<option value="custom">Custom period…</option>';
+    _sel.value = currentFY();
+  }
+} catch(e){}
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';

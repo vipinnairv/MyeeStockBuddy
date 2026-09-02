@@ -89,9 +89,12 @@ function _atLots(){
 // panel and the Taxation tab can never disagree.
 function _atRealisedThisFY(){
   try {
-    if(typeof fifoMatchSells !== 'function' || typeof fyBounds !== 'function') return { ltcg:0, stcg:0 };
-    const fy = document.getElementById('tax-fy')?.value || '2025-26';
-    const [a, b] = fyBounds(fy);
+    if(typeof fifoMatchSells !== 'function' || typeof taxPeriodFromUI !== 'function') return { ltcg:0, stcg:0 };
+    // Same resolver the Taxation tab uses, so the two can never disagree about
+    // which period "realised this year" refers to.
+    const p = taxPeriodFromUI();
+    if(p.error) return { ltcg:0, stcg:0 };
+    const a = p.start, b = p.end;
     const m = fifoMatchSells(S.txns||[]).matched.filter(r => {
       const d = new Date(r.date);
       return d >= a && d <= b && (r.cls==='India EQ'||r.cls==='US EQ'||r.cls==='MF');
