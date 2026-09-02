@@ -972,6 +972,81 @@ group('capital gains FIFO');
      !/LTCG Tax @10%/.test(SRC) && /_ltcgRatePct/.test(SRC), 'rate label still hard-coded');
 }
 
+// ── Benchmark: portfolio vs Nifty ──────────────────────────────────────────
+group('benchmark vs index');
+{
+  const src  = slice('function _bmCloseOnOrBefore(series, dateStr){', 'async function _bmFetchIndex', 'bm');
+  const xsrc = slice('function xirr(cfs){', '\nfunction cMF(', 'xirr');
+  const { _bmCloseOnOrBefore, _bmReplay } =
+    load(xsrc + '\n' + src, ['_bmCloseOnOrBefore','_bmReplay'], { Date, Math, isFinite, Array, Number });
+
+  // A sparse series with a weekend gap: 2024-01-05 (Fri) then 2024-01-08 (Mon).
+  const series = [
+    { d:'2024-01-01', c:100 }, { d:'2024-01-05', c:110 },
+    { d:'2024-01-08', c:120 }, { d:'2026-01-01', c:200 },
+  ];
+
+  // ── nearest close on or before ──
+  eq('exact date hits its own close', _bmCloseOnOrBefore(series,'2024-01-05'), 110);
+  eq('a weekend falls back to the previous close', _bmCloseOnOrBefore(series,'2024-01-06'), 110);
+  eq('a date after the series uses the last close', _bmCloseOnOrBefore(series,'2027-01-01'), 200);
+  eq('a date before the series is unpriceable', _bmCloseOnOrBefore(series,'2020-01-01'), null);
+  eq('an unparseable date is unpriceable', _bmCloseOnOrBefore(series,'nonsense'), null);
+  eq('an empty series is unpriceable', _bmCloseOnOrBefore([],'2024-01-05'), null);
+
+  const asOf = new Date('2026-01-01T00:00:00Z');
+  const L = (invested,current,buyDate,dividend) => ({ invested, current, buyDate, dividend });
+
+  // ── replay ──
+  {
+    // Bought at index 100, index now 200 -> the index would have doubled the money.
+    const r = _bmReplay([L(100000,300000,'2024-01-01',0)], series, asOf);
+    eq('index terminal value doubles the stake', r.benchValue, 200000);
+    eq('portfolio terminal is the real current value', r.portValue, 300000);
+    ok('beating the index shows a positive difference', r.valueDiff === 100000, String(r.valueDiff));
+    ok('your XIRR exceeds the index XIRR here', r.portXirr > r.benchXirr, `${r.portXirr} !> ${r.benchXirr}`);
+  }
+  {
+    // Underperforming must read as behind, not be hidden.
+    const r = _bmReplay([L(100000,150000,'2024-01-01',0)], series, asOf);
+    ok('lagging the index is a negative difference', r.valueDiff < 0, String(r.valueDiff));
+    ok('and a negative XIRR gap', r.xirrDiff < 0, String(r.xirrDiff));
+  }
+  {
+    // Dividends count on your side - they are part of your return.
+    const noDiv = _bmReplay([L(100000,150000,'2024-01-01',0)], series, asOf);
+    const wDiv  = _bmReplay([L(100000,150000,'2024-01-01',25000)], series, asOf);
+    ok('dividends improve your side of the comparison', wDiv.valueDiff > noDiv.valueDiff,
+       `${wDiv.valueDiff} !> ${noDiv.valueDiff}`);
+  }
+  {
+    // Matching performance should land near zero, both sides equal.
+    const r = _bmReplay([L(100000,200000,'2024-01-01',0)], series, asOf);
+    eq('matching the index nets to zero', r.valueDiff, 0);
+    ok('and the XIRR gap is ~0', Math.abs(r.xirrDiff) < 1e-6, String(r.xirrDiff));
+  }
+  // ── exclusions keep it like-for-like ──
+  {
+    const r = _bmReplay([L(100000,200000,'2024-01-01',0), L(50000,60000,null,0)], series, asOf);
+    eq('an undated lot is excluded', r.used, 1);
+    eq('and counted as skipped', r.skipped, 1);
+    eq('it is left out of YOUR value too, not just the index', r.portValue, 200000);
+  }
+  {
+    // A purchase predating the index series cannot be priced on either side.
+    const r = _bmReplay([L(100000,200000,'2020-01-01',0)], series, asOf);
+    eq('a lot older than the series is excluded', r, null);
+  }
+  eq('no lots at all -> null', _bmReplay([], series, asOf), null);
+  eq('no series -> null', _bmReplay([L(1,2,'2024-01-01',0)], [], asOf), null);
+
+  // ── wiring ──
+  ok('benchmark card is on the analysis tab', /renderIncome\(\);renderBenchmark\(\)/.test(SRC), 'not wired');
+  ok('benchmark uses Nifty 50', /BENCH_SYMBOL = '\^NSEI'/.test(SRC), 'wrong index');
+  ok('index history is fetched through the owner Worker', /_bmFetchIndex[\s\S]{0,600}_selfProxyUrl/.test(SRC), 'not via Worker');
+  ok('null closes (market holidays) are dropped', /if\(c == null \|\| !isFinite\(c\)\) continue;/.test(SRC), 'holidays not handled');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

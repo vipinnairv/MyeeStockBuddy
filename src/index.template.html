@@ -2441,6 +2441,10 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     <div class="ch"><span class="ct">💵 Income &amp; True Return</span><span style="font-size:10.5px;color:var(--T3)">money-weighted · incl. dividends</span></div>
     <div class="cb" id="ana-income"></div>
   </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #1A73E8">
+    <div class="ch"><span class="ct">🏁 You vs the Index</span><span style="font-size:10.5px;color:var(--T3)">your cashflows, replayed into Nifty 50</span></div>
+    <div class="cb" id="ana-benchmark"></div>
+  </div>
   <div class="chart-row">
     <div class="card">
       <div class="ch"><span class="ct">💰 Consolidated Valuation</span><span style="font-size:10.5px;color:var(--T3)">value-weighted</span></div>
@@ -9812,6 +9816,7 @@ function loadLocal(){
 // @include js/diagnostics.js
 // @include js/portfolio-analytics.js
 // @include js/tax-fifo.js
+// @include js/benchmark.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -12410,7 +12415,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
