@@ -14,9 +14,15 @@
  *   ?fundamentals=SYM1,SYM2,...   Yahoo quote with the cookie+crumb handshake
  *                                 that its fundamentals endpoint requires
  *                                 (P/E, P/B, dividend yield, market cap, ...).
- *   ?statements=SYM&period=...    Balance sheet, P&L and cash flow history,
- *                                 same handshake. period=quarterly for the
- *                                 quarterly series, otherwise annual.
+ *   ?timeseries=SYM&period=...    Balance sheet, P&L and cash flow history from
+ *                                 Yahoo's fundamentals-timeseries endpoint —
+ *                                 the one that still carries the full line
+ *                                 items. period=quarterly, otherwise annual.
+ *   ?statements=SYM&period=...    The older quoteSummary history modules. Kept
+ *                                 as a fallback: Yahoo has hollowed these out
+ *                                 (zero-filled lines, missing balance sheet),
+ *                                 so the app only falls back to it when the
+ *                                 timeseries route returns nothing.
  *
  * It is NOT an open proxy: only the two data hosts below are allowed on ?url=,
  * and the fundamentals route only ever talks to Yahoo.
@@ -42,6 +48,22 @@ export function isAllowedTarget(rawUrl) {
   if (u.protocol !== 'https:') return false;      // no http, no file, no data:
   return ALLOWED_HOSTS.has(u.hostname);
 }
+
+// Line items requested from fundamentals-timeseries. The endpoint takes an
+// explicit type list; each entry is prefixed with `annual` or `quarterly`.
+// Kept in sync with the field maps in src/js/statements.js.
+const TS_FIELDS = [
+  // Income statement
+  'TotalRevenue', 'CostOfRevenue', 'GrossProfit', 'OperatingExpense',
+  'OperatingIncome', 'PretaxIncome', 'TaxProvision', 'NetIncome',
+  // Balance sheet
+  'CashAndCashEquivalents', 'OtherShortTermInvestments', 'CurrentAssets',
+  'TotalAssets', 'CurrentLiabilities', 'LongTermDebt',
+  'TotalLiabilitiesNetMinorityInterest', 'StockholdersEquity',
+  // Cash flow
+  'OperatingCashFlow', 'CapitalExpenditure', 'InvestingCashFlow',
+  'FinancingCashFlow', 'ChangesInCash', 'FreeCashFlow',
+];
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -98,7 +120,28 @@ export default {
       }
     }
 
-    // ── Financial statements: balance sheet, P&L, cash flow ────────────────
+    // ── Statements via fundamentals-timeseries (the route with real data) ──
+    const tsym = params.get('timeseries');
+    if (tsym) {
+      if (!/^[A-Za-z0-9.\-^]{1,20}$/.test(tsym)) return _text('Bad symbol', 400);
+      const pre = params.get('period') === 'quarterly' ? 'quarterly' : 'annual';
+      const types = TS_FIELDS.map(f => pre + f).join(',');
+      const p2 = Math.floor(Date.now() / 1000);
+      const p1 = p2 - 10 * 365 * 24 * 3600;          // ten years back is plenty
+      try {
+        const { cookie, crumb } = await _yahooAuth();
+        const sym = encodeURIComponent(tsym);
+        const u = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${sym}`
+                + `?symbol=${sym}&type=${types}&period1=${p1}&period2=${p2}`
+                + `&merge=false&padTimeSeries=true&lang=en-US&region=US&crumb=${encodeURIComponent(crumb)}`;
+        const r = await fetch(u, { headers: { 'User-Agent': UA, 'Cookie': cookie, 'Accept': 'application/json' } });
+        return _relay(r);
+      } catch (e) {
+        return _text('Timeseries fetch failed: ' + (e && e.message), 502);
+      }
+    }
+
+    // ── Statements via the older quoteSummary modules (fallback only) ───────
     const ssym = params.get('statements');
     if (ssym) {
       if (!/^[A-Za-z0-9.\-^]{1,20}$/.test(ssym)) return _text('Bad symbol', 400);
