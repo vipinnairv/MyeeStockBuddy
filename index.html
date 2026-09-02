@@ -2048,6 +2048,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
 <!-- ══════════════════════ DASHBOARD ══════════════════════ -->
 <div class="page active" id="page-dashboard">
+  <div id="alerts-host"></div>
   <div class="sum-banner" id="sum-banner"></div>
   <div class="kpi-grid" id="dash-kpis"></div>
   <!-- Quick Actions row -->
@@ -2444,6 +2445,10 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="card" style="margin-bottom:18px;border-top:3px solid #1A73E8">
     <div class="ch"><span class="ct">🏁 You vs the Index</span><span style="font-size:10.5px;color:var(--T3)">your cashflows, replayed into Nifty 50</span></div>
     <div class="cb" id="ana-benchmark"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
+    <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
+    <div class="cb" id="ana-growth"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -10560,6 +10565,195 @@ async function renderBenchmark(){
     ${r.skipped ? ` <b>${r.skipped}</b> holding${r.skipped===1?'':'s'} excluded from both sides (no usable purchase date).` : ''}
   </div>`;
 }
+// ══════════ PORTFOLIO GROWTH HISTORY ══════════
+// The app only ever knew today's value, so there was no way to see the journey:
+// no growth curve, no peak, no drawdown. This records one value snapshot per
+// day in localStorage and charts it. It is a forward-looking record - it cannot
+// reconstruct history that was never captured, and it does not pretend to:
+// the chart says how many days it has been collecting.
+
+const _GH_KEY = 'pf_value_history';
+const _GH_MAX = 1825;                  // ~5 years of daily points
+
+function _ghLoad(){
+  try {
+    const v = JSON.parse(localStorage.getItem(_GH_KEY) || '[]');
+    return Array.isArray(v) ? v.filter(p => p && p.d && isFinite(+p.v)) : [];
+  } catch(e) { return []; }
+}
+function _ghSave(list){
+  try { localStorage.setItem(_GH_KEY, JSON.stringify(list.slice(-_GH_MAX))); } catch(e) {}
+}
+
+// One point per calendar day: a later reading on the same day replaces the
+// earlier one, so the series is end-of-day rather than whatever time you
+// happened to open the app.
+function _ghUpsert(list, day, value, invested){
+  const v = +value, inv = +invested;
+  if(!day || !isFinite(v) || v <= 0) return list;          // never record a zero/garbage day
+  const out = Array.isArray(list) ? list.slice() : [];
+  const i = out.findIndex(p => p.d === day);
+  const point = { d:day, v:+v.toFixed(2), i: isFinite(inv) && inv > 0 ? +inv.toFixed(2) : undefined };
+  if(i >= 0) out[i] = point; else out.push(point);
+  out.sort((a,b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+  return out;
+}
+
+// Peak, current drawdown and worst drawdown across the recorded series.
+function _ghStats(list){
+  const pts = (Array.isArray(list) ? list : []).filter(p => isFinite(+p.v) && +p.v > 0);
+  if(!pts.length) return null;
+  let peak = 0, peakDate = null, maxDD = 0, maxDDDate = null;
+  pts.forEach(p => {
+    const v = +p.v;
+    if(v > peak){ peak = v; peakDate = p.d; }
+    if(peak > 0){
+      const dd = (peak - v) / peak * 100;
+      if(dd > maxDD){ maxDD = dd; maxDDDate = p.d; }
+    }
+  });
+  const first = +pts[0].v, last = +pts[pts.length-1].v;
+  return {
+    days: pts.length, first, last, firstDate: pts[0].d, lastDate: pts[pts.length-1].d,
+    peak, peakDate, maxDD, maxDDDate,
+    currentDD: peak > 0 ? (peak - last) / peak * 100 : 0,
+    change: first > 0 ? (last - first) / first * 100 : null,
+  };
+}
+
+// Record today's value. Called after any save so the series builds itself.
+function ghRecordToday(){
+  try {
+    if(typeof grand !== 'function') return;
+    const g = grand();
+    const day = new Date().toISOString().slice(0,10);
+    _ghSave(_ghUpsert(_ghLoad(), day, g.totC, g.totI));
+  } catch(e) {}
+}
+
+function renderGrowth(){
+  const el = document.getElementById('ana-growth');
+  if(!el) return;
+  const list = _ghLoad();
+  const st = _ghStats(list);
+  if(!st || st.days < 2){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">
+      📈 Building your growth history — <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
+      A point is saved each day you open the app; the curve appears from the second day.
+      <div style="margin-top:5px;font-size:11.5px">This is a forward record: it can't reconstruct value from before tracking began.</div>
+    </div>`;
+    return;
+  }
+  const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
+    + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
+  const w = 640, h = 150, pad = 4;
+  const vals = list.map(p => +p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const pts = list.map((p,i) => {
+    const x = pad + (i / Math.max(1, list.length - 1)) * (w - pad*2);
+    const y = pad + (1 - ((+p.v - lo) / span)) * (h - pad*2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const up = st.last >= st.first;
+  const col = up ? '#00B386' : '#D93025';
+  el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
+    ${tile('Since tracking began', (st.change>=0?'+':'')+st.change.toFixed(2)+'%', `${st.days} days · from ${st.firstDate}`, col)}
+    ${tile('Peak value', F.lac(st.peak), 'on '+st.peakDate, '#1A73E8')}
+    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '—', '#D93025')}
+    ${tile('From peak now', st.currentDD<=0.005?'At peak':'-'+st.currentDD.toFixed(1)+'%', 'current value '+F.lac(st.last), st.currentDD<=0.005?'#00B386':'#F59E0B')}
+  </div>
+  <div style="overflow-x:auto">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:150px;display:block">
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+    One point per day, recorded locally as you use the app. Range ${F.lac(lo)} – ${F.lac(hi)}. Days you don't open the app leave no point.
+  </div>`;
+}
+// ══════════ PRICE TARGETS & ALERTS ══════════
+// The Analyser works out entry/exit levels, but nothing carried that back to
+// the actual book: you had to remember which of 34 holdings was near its
+// target. Each equity holding can now carry a target and a stop; anything that
+// has crossed one is surfaced on the dashboard.
+//
+// These are levels YOU set. Nothing here predicts a price or fires
+// automatically - it reports, in one place, which of your own thresholds
+// today's price has crossed.
+
+// One holding -> alert state, or null when no level is set / price unusable.
+// Levels are in the holding's own currency, the same units as its LTP.
+function _alEvaluate(h){
+  if(!h) return null;
+  const ltp = +h.ltp;
+  if(!isFinite(ltp) || ltp <= 0) return null;              // no price, no claim
+  const tgt = +h.target, stop = +h.stop;
+  const hasT = isFinite(tgt) && tgt > 0;
+  const hasS = isFinite(stop) && stop > 0;
+  if(!hasT && !hasS) return null;
+  const out = { name:h.name, ticker:h.ticker, ltp, target:hasT?tgt:null, stop:hasS?stop:null,
+                hit:null, distPct:null };
+  if(hasT && ltp >= tgt){
+    out.hit = 'target';
+    out.distPct = (ltp - tgt) / tgt * 100;
+  } else if(hasS && ltp <= stop){
+    out.hit = 'stop';
+    out.distPct = (stop - ltp) / stop * 100;
+  } else if(hasT){
+    out.distPct = (tgt - ltp) / ltp * 100;                 // how far still to go
+  } else if(hasS){
+    out.distPct = (ltp - stop) / ltp * 100;                // headroom above the stop
+  }
+  return out;
+}
+
+// Scan the equity book. Returns { hits, watching } - hits first, nearest-first.
+function _alScan(indEQ, usEQ){
+  const rows = [];
+  const add = (list, cls) => (Array.isArray(list) ? list : []).forEach(h => {
+    const a = _alEvaluate(h);
+    if(a){ a.cls = cls; rows.push(a); }
+  });
+  add(indEQ, 'India EQ'); add(usEQ, 'US EQ');
+  const hits = rows.filter(r => r.hit).sort((a,b) => (b.distPct||0) - (a.distPct||0));
+  const watching = rows.filter(r => !r.hit)
+                       .sort((a,b) => Math.abs(a.distPct||1e9) - Math.abs(b.distPct||1e9));
+  return { hits, watching };
+}
+
+function renderAlerts(){
+  const host = document.getElementById('alerts-host');
+  if(!host) return;
+  const { hits, watching } = _alScan(S.indEQ, S.usEQ);
+  if(!hits.length){
+    // Nothing crossed. Say so, and show the closest few so the panel is useful
+    // rather than empty - but never imply an alert that has not happened.
+    if(!watching.length){ host.innerHTML = ''; return; }
+    const near = watching.slice(0,3).map(r =>
+      `<span style="white-space:nowrap"><b>${r.name}</b> ${r.target?`→ ${F.inr(r.target)}`:`↓ ${F.inr(r.stop)}`} (${Math.abs(r.distPct).toFixed(1)}% away)</span>`
+    ).join(' · ');
+    host.innerHTML = `<div style="margin:0 0 14px;background:var(--BL);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--T2)">
+      🎯 <b>No targets hit.</b> Closest: ${near}</div>`;
+    return;
+  }
+  const row = r => {
+    const isT = r.hit === 'target';
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid rgba(0,0,0,.06)">
+      <span style="font-size:15px">${isT?'🎯':'🛑'}</span>
+      <b style="font-size:13px">${r.name}</b>
+      <span style="font-size:11px;color:var(--T3)">${r.cls}</span>
+      <span style="font-size:12px;color:${isT?'#00B386':'#D93025'};font-weight:700">
+        ${isT?'Target hit':'Stop breached'} — ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
+        (${r.distPct>=0?'+':''}${r.distPct.toFixed(1)}%)
+      </span>
+    </div>`;
+  };
+  host.innerHTML = `<div style="margin:0 0 14px;background:var(--AUL,#FEF3C7);border:1px solid var(--AU,#F59E0B);border-radius:10px;padding:11px 14px">
+    <div style="font-size:13px;font-weight:800;color:var(--T1)">🔔 ${hits.length} holding${hits.length===1?'':'s'} crossed a level you set</div>
+    ${hits.map(row).join('')}
+    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price — not advice, and not automatic orders.</div>
+  </div>`;
+}
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -10636,6 +10830,7 @@ function mkChart(id,cfg){destroyChart(id);charts[id]=new Chart(document.getEleme
 
 function renderDashboard(){
   try { _backupNudge(); } catch(e){}
+  try { renderAlerts(); } catch(e){}
   const g=grand();
   const totPL=g.totC-g.totI, totR=g.totI>0?totPL/g.totI*100:0;
   const tot=g.totC||1;
@@ -11419,6 +11614,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested Amount</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='USEQ') return`
@@ -11435,6 +11632,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested (₹) at ₹${S.usdInr}/USD</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='CRYPTO') return`
@@ -11470,6 +11669,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Current LTP (₹)</label><input class="fc" id="m-ltp" type="number" value="${h.ltp}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -11485,6 +11686,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Invested (₹)</label><input class="fc" id="m-inrinv" type="number" value="${h.investedINR}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -11580,13 +11783,13 @@ function submitAdd(cls){
   if(cls==='INDEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
-    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null};
+    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null};
     S.indEQ.push(h);logT('BUY','India EQ',name,ticker,qty,price,h.broker);
   }else if(cls==='USEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
     const inrInv=gn('m-inrinv')||qty*price*S.usdInr;
-    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
     logT('BUY','US EQ',name,ticker,qty,price*S.usdInr,'');
   }else if(cls==='CRYPTO'){
     const coin=gv('m-name'),coinId=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
@@ -11599,8 +11802,8 @@ function submitAdd(cls){
 function submitEdit(cls,id){
   const map={INDEQ:'indEQ',USEQ:'usEQ',CRYPTO:'crypto',FD:'fd'};
   const arr=S[map[cls]],idx=arr.findIndex(x=>x.id===id);if(idx<0)return;
-  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
-  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
+  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
   else if(cls==='CRYPTO') Object.assign(arr[idx],{coin:gv('m-name'),coinId:gv('m-ticker'),exchange:gv('m-broker'),qty:gn('m-qty'),buyPrice:gn('m-price'),price:gn('m-ltp'),invested:gn('m-qty')*gn('m-price')});
   /* FD edit handled by submitEditFD() */
   closeModal();save();renderAll();toast('Updated!','ok');
@@ -12554,7 +12757,7 @@ function loadGSheetUrl(){
 }
 
 /* ══ SAVE ══ */
-function save(){saveLocal();if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
+function save(){saveLocal();try{ghRecordToday();}catch(e){}if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
 
 /* ══ TOAST ══ */
 function toast(msg,type='ok'){
@@ -13158,7 +13361,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -13197,7 +13400,8 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 
 /* ══ INIT ══ */
 loadLocal();
-try { _pbkRecover(); } catch(e){}   // async: restores from the IDB mirror if localStorage came up empty
+try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
+try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';

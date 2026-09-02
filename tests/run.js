@@ -1047,6 +1047,141 @@ group('benchmark vs index');
   ok('null closes (market holidays) are dropped', /if\(c == null \|\| !isFinite\(c\)\) continue;/.test(SRC), 'holidays not handled');
 }
 
+// ── Portfolio growth history ───────────────────────────────────────────────
+group('growth history');
+{
+  const src = slice('function _ghUpsert(list, day, value, invested){', 'function ghRecordToday()', 'gh');
+  const { _ghUpsert, _ghStats } = load(src, ['_ghUpsert','_ghStats'], { Array, Math, isFinite, Number });
+
+  // ── one point per day, latest reading wins ──
+  {
+    let l = [];
+    l = _ghUpsert(l, '2026-01-01', 100000, 80000);
+    eq('records a day', l.length, 1);
+    l = _ghUpsert(l, '2026-01-01', 105000, 80000);
+    eq('same day replaces, never duplicates', l.length, 1);
+    eq('the later reading wins (end-of-day)', l[0].v, 105000);
+    l = _ghUpsert(l, '2026-01-02', 110000, 80000);
+    eq('a new day appends', l.length, 2);
+  }
+  {
+    // Out-of-order writes must still yield a chronological series.
+    let l = [];
+    l = _ghUpsert(l, '2026-01-03', 300, 1);
+    l = _ghUpsert(l, '2026-01-01', 100, 1);
+    l = _ghUpsert(l, '2026-01-02', 200, 1);
+    eq('series stays sorted by date', l.map(p=>p.d).join(','), '2026-01-01,2026-01-02,2026-01-03');
+  }
+  // A zero or junk valuation must never enter the series - it would fake a
+  // catastrophic drawdown on the chart.
+  {
+    let l = [{ d:'2026-01-01', v:100000 }];
+    eq('a zero value is refused', _ghUpsert(l,'2026-01-02',0,1).length, 1);
+    eq('a negative value is refused', _ghUpsert(l,'2026-01-02',-5,1).length, 1);
+    eq('NaN is refused', _ghUpsert(l,'2026-01-02',NaN,1).length, 1);
+    eq('a missing day is refused', _ghUpsert(l,null,5000,1).length, 1);
+  }
+
+  // ── stats ──
+  {
+    const l = [
+      { d:'2026-01-01', v:100 }, { d:'2026-01-02', v:150 },
+      { d:'2026-01-03', v:90  }, { d:'2026-01-04', v:120 },
+    ];
+    const s = _ghStats(l);
+    eq('counts recorded days', s.days, 4);
+    eq('peak is the highest value', s.peak, 150);
+    eq('peak date is right', s.peakDate, '2026-01-02');
+    eq('worst drawdown is peak-to-trough', +s.maxDD.toFixed(2), 40);   // 150 -> 90
+    eq('current drawdown is from peak to latest', +s.currentDD.toFixed(2), 20); // 150 -> 120
+    eq('change is first to last', +s.change.toFixed(2), 20);           // 100 -> 120
+  }
+  {
+    // A monotonically rising book has no drawdown and sits at its peak.
+    const s = _ghStats([{d:'2026-01-01',v:100},{d:'2026-01-02',v:200}]);
+    eq('no drawdown when only rising', s.maxDD, 0);
+    eq('sitting at the peak', s.currentDD, 0);
+  }
+  eq('no points -> null stats', _ghStats([]), null);
+  eq('all-junk points -> null stats', _ghStats([{d:'x',v:0},{d:'y',v:-1}]), null);
+
+  // ── wiring ──
+  ok('growth card is on the analysis tab', /renderBenchmark\(\);renderGrowth\(\)/.test(SRC), 'not wired');
+  ok('a point is recorded on every save', /function save\(\)\{saveLocal\(\);try\{ghRecordToday\(\)/.test(SRC), 'not recorded on save');
+  ok('and once on boot', /loadLocal\(\);[\s\S]{0,200}try \{ ghRecordToday\(\); \} catch\(e\)\{\}/.test(SRC), 'not recorded on boot');
+  ok('history is capped so it cannot grow without bound', /_GH_MAX = 1825/.test(SRC), 'no cap');
+  ok('the UI admits it cannot backfill', /can't reconstruct value from before tracking began/.test(SRC), 'overclaims history');
+}
+
+// ── Price targets & alerts ─────────────────────────────────────────────────
+group('targets & alerts');
+{
+  const src = slice('function _alEvaluate(h){', 'function renderAlerts()', 'alerts');
+  const { _alEvaluate, _alScan } = load(src, ['_alEvaluate','_alScan'], { Array, Math, isFinite, Number });
+
+  const H = (name,ltp,target,stop) => ({ name, ticker:name, ltp, target, stop });
+
+  // ── no level set, or no usable price -> no claim at all ──
+  eq('no target and no stop -> null', _alEvaluate(H('A',100)), null);
+  eq('no price -> null', _alEvaluate(H('A',0,120,80)), null);
+  eq('NaN price -> null', _alEvaluate(H('A',NaN,120,80)), null);
+  eq('null holding -> null', _alEvaluate(null), null);
+  eq('junk levels are ignored', _alEvaluate(H('A',100,0,-5)), null);
+
+  // ── target ──
+  {
+    const a = _alEvaluate(H('A',130,120,80));
+    eq('price above target is a hit', a.hit, 'target');
+    eq('overshoot is reported', +a.distPct.toFixed(4), +((130-120)/120*100).toFixed(4));
+  }
+  eq('price exactly at target counts as hit', _alEvaluate(H('A',120,120,80)).hit, 'target');
+  {
+    const a = _alEvaluate(H('A',100,120,80));
+    eq('below target is not a hit', a.hit, null);
+    eq('distance to target is reported', +a.distPct.toFixed(4), +((120-100)/100*100).toFixed(4));
+  }
+  // ── stop ──
+  {
+    const a = _alEvaluate(H('A',70,120,80));
+    eq('price below stop is a breach', a.hit, 'stop');
+    ok('breach depth is positive', a.distPct > 0, String(a.distPct));
+  }
+  eq('price exactly at stop counts as breach', _alEvaluate(H('A',80,120,80)).hit, 'stop');
+  eq('target takes precedence when both would trigger',
+     _alEvaluate({name:'A',ltp:130,target:120,stop:140}).hit, 'target');
+  // ── a single level works on its own ──
+  eq('target only, hit', _alEvaluate({name:'A',ltp:130,target:120}).hit, 'target');
+  eq('stop only, breached', _alEvaluate({name:'A',ltp:70,stop:80}).hit, 'stop');
+  eq('target only, not hit', _alEvaluate({name:'A',ltp:100,target:120}).hit, null);
+
+  // ── scan ──
+  {
+    const r = _alScan(
+      [H('Hit1',130,120,80), H('Near',118,120,80), H('Far',50,120,10)],
+      [H('Breach',70,200,80)]
+    );
+    eq('only crossed levels are hits', r.hits.length, 2);
+    ok('hits include both the target and the stop',
+       r.hits.some(x=>x.hit==='target') && r.hits.some(x=>x.hit==='stop'), JSON.stringify(r.hits.map(x=>x.hit)));
+    eq('uncrossed holdings are watching, not alerts', r.watching.length, 2);
+    eq('the nearest uncrossed comes first', r.watching[0].name, 'Near');
+    ok('asset class is tagged', r.hits.every(x=>x.cls==='India EQ'||x.cls==='US EQ'), 'missing cls');
+  }
+  {
+    const r = _alScan([H('NoLevels',100)], []);
+    eq('a holding with no levels raises nothing', r.hits.length + r.watching.length, 0);
+  }
+  eq('empty book is safe', _alScan([], []).hits.length, 0);
+  eq('undefined lists are safe', _alScan(undefined, undefined).hits.length, 0);
+
+  // ── wiring ──
+  ok('alerts render on the dashboard', /renderDashboard\(\)\{[\s\S]{0,140}renderAlerts\(\)/.test(SRC), 'not wired');
+  ok('dashboard has a host element', SRC.includes('id="alerts-host"'), 'no host');
+  ok('target and stop are persisted', /target:gn\('m-target'\)\|\|null,stop:gn\('m-stop'\)\|\|null/.test(SRC), 'not saved');
+  ok('the panel says these are user-set levels, not advice',
+     /not advice, and not automatic orders/.test(SRC), 'overclaims');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

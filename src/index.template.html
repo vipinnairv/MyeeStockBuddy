@@ -2048,6 +2048,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
 <!-- ══════════════════════ DASHBOARD ══════════════════════ -->
 <div class="page active" id="page-dashboard">
+  <div id="alerts-host"></div>
   <div class="sum-banner" id="sum-banner"></div>
   <div class="kpi-grid" id="dash-kpis"></div>
   <!-- Quick Actions row -->
@@ -2444,6 +2445,10 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="card" style="margin-bottom:18px;border-top:3px solid #1A73E8">
     <div class="ch"><span class="ct">🏁 You vs the Index</span><span style="font-size:10.5px;color:var(--T3)">your cashflows, replayed into Nifty 50</span></div>
     <div class="cb" id="ana-benchmark"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
+    <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
+    <div class="cb" id="ana-growth"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -9817,6 +9822,8 @@ function loadLocal(){
 // @include js/portfolio-analytics.js
 // @include js/tax-fifo.js
 // @include js/benchmark.js
+// @include js/growth-history.js
+// @include js/alerts.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -9893,6 +9900,7 @@ function mkChart(id,cfg){destroyChart(id);charts[id]=new Chart(document.getEleme
 
 function renderDashboard(){
   try { _backupNudge(); } catch(e){}
+  try { renderAlerts(); } catch(e){}
   const g=grand();
   const totPL=g.totC-g.totI, totR=g.totI>0?totPL/g.totI*100:0;
   const tot=g.totC||1;
@@ -10676,6 +10684,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested Amount</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='USEQ') return`
@@ -10692,6 +10702,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested (₹) at ₹${S.usdInr}/USD</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='CRYPTO') return`
@@ -10727,6 +10739,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Current LTP (₹)</label><input class="fc" id="m-ltp" type="number" value="${h.ltp}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -10742,6 +10756,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Invested (₹)</label><input class="fc" id="m-inrinv" type="number" value="${h.investedINR}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -10837,13 +10853,13 @@ function submitAdd(cls){
   if(cls==='INDEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
-    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null};
+    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null};
     S.indEQ.push(h);logT('BUY','India EQ',name,ticker,qty,price,h.broker);
   }else if(cls==='USEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
     const inrInv=gn('m-inrinv')||qty*price*S.usdInr;
-    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
     logT('BUY','US EQ',name,ticker,qty,price*S.usdInr,'');
   }else if(cls==='CRYPTO'){
     const coin=gv('m-name'),coinId=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
@@ -10856,8 +10872,8 @@ function submitAdd(cls){
 function submitEdit(cls,id){
   const map={INDEQ:'indEQ',USEQ:'usEQ',CRYPTO:'crypto',FD:'fd'};
   const arr=S[map[cls]],idx=arr.findIndex(x=>x.id===id);if(idx<0)return;
-  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
-  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
+  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
   else if(cls==='CRYPTO') Object.assign(arr[idx],{coin:gv('m-name'),coinId:gv('m-ticker'),exchange:gv('m-broker'),qty:gn('m-qty'),buyPrice:gn('m-price'),price:gn('m-ltp'),invested:gn('m-qty')*gn('m-price')});
   /* FD edit handled by submitEditFD() */
   closeModal();save();renderAll();toast('Updated!','ok');
@@ -11811,7 +11827,7 @@ function loadGSheetUrl(){
 }
 
 /* ══ SAVE ══ */
-function save(){saveLocal();if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
+function save(){saveLocal();try{ghRecordToday();}catch(e){}if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
 
 /* ══ TOAST ══ */
 function toast(msg,type='ok'){
@@ -12415,7 +12431,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -12454,7 +12470,8 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 
 /* ══ INIT ══ */
 loadLocal();
-try { _pbkRecover(); } catch(e){}   // async: restores from the IDB mirror if localStorage came up empty
+try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
+try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';
