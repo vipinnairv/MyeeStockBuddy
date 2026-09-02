@@ -14,6 +14,9 @@
  *   ?fundamentals=SYM1,SYM2,...   Yahoo quote with the cookie+crumb handshake
  *                                 that its fundamentals endpoint requires
  *                                 (P/E, P/B, dividend yield, market cap, ...).
+ *   ?statements=SYM&period=...    Balance sheet, P&L and cash flow history,
+ *                                 same handshake. period=quarterly for the
+ *                                 quarterly series, otherwise annual.
  *
  * It is NOT an open proxy: only the two data hosts below are allowed on ?url=,
  * and the fundamentals route only ever talks to Yahoo.
@@ -92,6 +95,23 @@ export default {
         return _relay(r);
       } catch (e) {
         return _text('Fundamentals fetch failed: ' + (e && e.message), 502);
+      }
+    }
+
+    // ── Financial statements: balance sheet, P&L, cash flow ────────────────
+    const ssym = params.get('statements');
+    if (ssym) {
+      if (!/^[A-Za-z0-9.\-^]{1,20}$/.test(ssym)) return _text('Bad symbol', 400);
+      const q = params.get('period') === 'quarterly' ? 'Quarterly' : '';
+      const mods = `incomeStatementHistory${q},balanceSheetHistory${q},cashflowStatementHistory${q}`;
+      try {
+        const { cookie, crumb } = await _yahooAuth();
+        const u = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ssym)}`
+                + `?modules=${mods}&crumb=${encodeURIComponent(crumb)}`;
+        const r = await fetch(u, { headers: { 'User-Agent': UA, 'Cookie': cookie, 'Accept': 'application/json' } });
+        return _relay(r);
+      } catch (e) {
+        return _text('Statements fetch failed: ' + (e && e.message), 502);
       }
     }
 

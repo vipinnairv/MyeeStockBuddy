@@ -1727,6 +1727,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
         <button class="res-tab"        data-rtab="levels"     onclick="switchResTab('levels',this)">🎯 Levels &amp; Chart</button>
         <button class="res-tab"        data-rtab="indicators" onclick="switchResTab('indicators',this)">🔬 Indicators</button>
         <button class="res-tab"        data-rtab="patterns"   onclick="switchResTab('patterns',this)">🕯️ Patterns</button>
+        <button class="res-tab"        data-rtab="financials" onclick="switchResTab('financials',this)">📑 Financials</button>
       </div>
 
       <!-- ===== VERDICT TAB (part 1) ===== -->
@@ -1850,6 +1851,12 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       </div>
 
       <!-- ===== INDICATORS TAB ===== -->
+      <div class="res-tab-panel" data-rtab="financials" style="display:none;">
+        <div class="card" style="margin-bottom:16px">
+          <div class="ch"><span class="ct">📑 Financial Statements</span><span style="font-size:10.5px;color:var(--text3)">balance sheet · P&amp;L · cash flow</span></div>
+          <div class="cb" id="stmt-body"></div>
+        </div>
+      </div>
       <div class="res-tab-panel" data-rtab="indicators" style="display:none;">
       <!-- Technical Indicators with plain-English -->
       <div class="section-header" style="margin-top:6px;"><span class="section-title">🔬 Technical Indicators - What They Mean</span><div class="section-line"></div></div>
@@ -8296,6 +8303,8 @@ function switchResTab(name, el) {
   document.querySelectorAll('.res-tab-panel').forEach(p => {
     p.style.display = (p.getAttribute('data-rtab') === name) ? '' : 'none';
   });
+  // Statements are fetched lazily: one network call, only if the tab is opened.
+  if (name === 'financials') { try { renderStatements(); } catch(e){} }
   // Charts built while their tab is hidden size to 0 → rebuild on reveal.
   if (name === 'levels' && analysisResult) {
     setTimeout(() => { try { buildChart(currentChartType || 'candle'); } catch(e){} }, 40);
@@ -9860,6 +9869,7 @@ function loadLocal(){
 // @include js/diversification.js
 // @include js/rebalance.js
 // @include js/tax-period.js
+// @include js/statements.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
