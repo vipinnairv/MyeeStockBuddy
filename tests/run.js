@@ -838,6 +838,350 @@ group('launch chooser');
      'skip preference not toggled both ways');
 }
 
+// ── Disclaimer overlay fits the viewport ───────────────────────────────────
+group('disclaimer overlay layout');
+{
+  // align-items:center on a scrollable flex container clips the TOP of an
+  // over-tall child, and overflow-y cannot scroll back up to reach it. The fix
+  // is flex-start plus margin:auto on the card.
+  const ov = /#disclaimer-overlay\{[^}]*\}/.exec(SRC);
+  ok('overlay rule found', !!ov, 'rule missing');
+  ok('overlay does not centre with align-items', !/#disclaimer-overlay\{[^}]*align-items:center/.test(SRC),
+     'align-items:center still clips the top');
+  ok('overlay aligns to flex-start', /#disclaimer-overlay\{[^}]*align-items:flex-start/.test(SRC), 'not flex-start');
+  ok('overlay can still scroll', /#disclaimer-overlay\{[^}]*overflow-y:auto/.test(SRC), 'not scrollable');
+  ok('card centres itself with auto margins', /\.disc-card\{[^}]*margin:auto/.test(SRC), 'no margin:auto');
+  ok('short viewports get a compact card', /@media \(max-height:800px\)/.test(SRC), 'no short-viewport rule');
+  ok('very short viewports drop the decorative blocks', /@media \(max-height:620px\)/.test(SRC), 'no very-short rule');
+}
+
+// ── Capital gains: FIFO lot matching ───────────────────────────────────────
+group('capital gains FIFO');
+{
+  const src = slice('const TAX_RULES = {', '\n// Crypto / VDA', 'fifo');
+  const vsrc = slice('function computeVdaTax(rows, rules){', '\n}', 'vda') + '\n}';
+  const { fifoMatchSells, computeEquityTax, computeVdaTax, TAX_RULES } =
+    load(src + '\n' + vsrc, ['fifoMatchSells','computeEquityTax','computeVdaTax','TAX_RULES'],
+         { Date, Math, isFinite, Array, Object, Number });
+
+  const B = (name,date,qty,price) => ({ id:'b'+date, type:'BUY', cls:'India EQ', name, date, qty, price });
+  const S_ = (name,date,qty,price) => ({ id:'s'+date, type:'SELL', cls:'India EQ', name, date, qty, price });
+
+  // ── Nothing is ever invented ──
+  {
+    const r = fifoMatchSells([S_('ORPHAN','2025-06-01',10,500)]);
+    eq('a sale with no buy produces no gain row', r.matched.length, 0);
+    eq('it is reported as unmatched instead', r.unmatched.length, 1);
+    eq('unmatched carries the full quantity', r.unmatched[0].qty, 10);
+    ok('and says why', /no BUY transaction/.test(r.unmatched[0].reason), r.unmatched[0].reason);
+  }
+  {
+    // Partial cover: 10 bought, 15 sold -> 10 matched, 5 flagged.
+    const r = fifoMatchSells([B('X','2024-01-01',10,100), S_('X','2025-06-01',15,200)]);
+    eq('matched only what the lots cover', r.matched[0].qty, 10);
+    eq('the uncovered remainder is flagged', r.unmatched.length, 1);
+    eq('remainder quantity is exact', r.unmatched[0].qty, 5);
+  }
+
+  // ── Real FIFO: oldest lot first, each slice keeps its own basis and period ──
+  {
+    const r = fifoMatchSells([
+      B('X','2020-01-01',10,100),   // old, cheap  -> LTCG
+      B('X','2025-05-01',10,300),   // recent      -> STCG
+      S_('X','2025-06-01',15,400),
+    ]);
+    eq('a sale splits across lots', r.matched.length, 2);
+    eq('oldest lot is consumed first', r.matched[0].buyPrice, 100);
+    eq('first slice takes the whole old lot', r.matched[0].qty, 10);
+    eq('second slice comes from the newer lot', r.matched[1].buyPrice, 300);
+    eq('second slice takes the remainder', r.matched[1].qty, 5);
+    ok('old slice is long term', r.matched[0].isLTCG === true, 'not LTCG');
+    ok('new slice is short term', r.matched[1].isLTCG === false, 'not STCG');
+    eq('per-slice gain uses that slice basis', r.matched[0].gain, (400-100)*10);
+    eq('and the newer basis for the rest', r.matched[1].gain, (400-300)*5);
+    eq('nothing left unmatched', r.unmatched.length, 0);
+  }
+  {
+    // The old code used the OLDEST buy date for everything, which forced LTCG.
+    // A purely recent position must come out entirely short term.
+    const r = fifoMatchSells([B('Y','2025-05-01',5,100), S_('Y','2025-06-01',5,150)]);
+    ok('a 1-month hold is STCG, not LTCG', r.matched[0].isLTCG === false, 'misclassified as LTCG');
+    eq('holding period is real, not assumed 730d', r.matched[0].holdingDays, 31);
+  }
+  {
+    // 365 days is the boundary: >365 is long term, exactly 365 is not.
+    const at365 = fifoMatchSells([B('Z','2024-01-01',1,10), S_('Z','2024-12-31',1,20)]).matched[0];
+    const at366 = fifoMatchSells([B('Z','2024-01-01',1,10), S_('Z','2025-01-02',1,20)]).matched[0];
+    ok('exactly 365 days is short term', at365.isLTCG === false, String(at365.holdingDays));
+    ok('beyond 365 days is long term', at366.isLTCG === true, String(at366.holdingDays));
+  }
+  {
+    // A lot bought AFTER the sale cannot fund it.
+    const r = fifoMatchSells([B('F','2025-12-01',10,100), S_('F','2025-06-01',10,200)]);
+    eq('a later purchase cannot fund an earlier sale', r.matched.length, 0);
+    eq('so the sale is unmatched', r.unmatched.length, 1);
+  }
+  {
+    // Lots are per-asset; another stock's buys must not be consumed.
+    const r = fifoMatchSells([B('AAA','2020-01-01',10,100), S_('BBB','2025-06-01',10,200)]);
+    eq('lots do not leak between assets', r.matched.length, 0);
+    eq('the sale is unmatched', r.unmatched.length, 1);
+  }
+  {
+    // A lot is not reusable across two sales.
+    const r = fifoMatchSells([B('X','2020-01-01',10,100), S_('X','2025-06-01',6,200), S_('X','2025-07-01',6,200)]);
+    eq('first sale takes 6', r.matched[0].qty, 6);
+    eq('second sale gets only the remaining 4', r.matched[1].qty, 4);
+    eq('and 2 are unmatched', r.unmatched[0].qty, 2);
+  }
+  eq('junk quantity is rejected, not guessed',
+     fifoMatchSells([B('X','2020-01-01',10,100), S_('X','2025-06-01',0,200)]).unmatched.length, 1);
+
+  // ── Rates: Budget 2024 ──
+  eq('LTCG rate is 12.5%, not the old 10%', TAX_RULES.ltcgRate, 0.125);
+  eq('STCG rate is 20%', TAX_RULES.stcgRate, 0.20);
+  eq('LTCG exemption is 1.25 lakh', TAX_RULES.ltcgExempt, 125000);
+  {
+    const rows = [{ gain: 325000, isLTCG:true }, { gain: 50000, isLTCG:false }];
+    const tx = computeEquityTax(rows);
+    eq('LTCG taxable is net of the exemption', tx.ltcgTaxable, 200000);
+    eq('LTCG tax at 12.5%', tx.ltcgTax, 25000);
+    eq('STCG tax at 20%', tx.stcgTax, 10000);
+  }
+  {
+    const tx = computeEquityTax([{ gain: 100000, isLTCG:true }]);
+    eq('gains under the exemption are untaxed', tx.ltcgTax, 0);
+  }
+  {
+    const tx = computeEquityTax([{ gain: -50000, isLTCG:false }]);
+    eq('a short-term loss creates no tax', tx.stcgTax, 0);
+  }
+  // Crypto: losses cannot be set off against gains.
+  {
+    const v = computeVdaTax([{ gain: 100000 }, { gain: -80000 }]);
+    eq('VDA counts gains only, ignoring losses', v.gain, 100000);
+    eq('VDA tax at 30%', v.tax, 30000);
+  }
+
+  // ── Wiring: the fabricating code must be gone ──
+  ok('no invented 70% cost basis remains', !/sell\.price\s*\*\s*0\.7/.test(SRC), 'fabricated basis still present');
+  ok('no assumed 730-day holding period remains', !/holdingDays\s*=\s*730/.test(SRC), 'assumed period still present');
+  ok('taxation uses the FIFO matcher', /fifoMatchSells\(S\.txns/.test(SRC), 'not wired');
+  ok('unmatched sales are surfaced to the user', /could not be matched to a purchase/.test(SRC), 'no warning');
+  ok('the LTCG rate label is driven by the rule, not hard-coded 10%',
+     !/LTCG Tax @10%/.test(SRC) && /_ltcgRatePct/.test(SRC), 'rate label still hard-coded');
+}
+
+// ── Benchmark: portfolio vs Nifty ──────────────────────────────────────────
+group('benchmark vs index');
+{
+  const src  = slice('function _bmCloseOnOrBefore(series, dateStr){', 'async function _bmFetchIndex', 'bm');
+  const xsrc = slice('function xirr(cfs){', '\nfunction cMF(', 'xirr');
+  const { _bmCloseOnOrBefore, _bmReplay } =
+    load(xsrc + '\n' + src, ['_bmCloseOnOrBefore','_bmReplay'], { Date, Math, isFinite, Array, Number });
+
+  // A sparse series with a weekend gap: 2024-01-05 (Fri) then 2024-01-08 (Mon).
+  const series = [
+    { d:'2024-01-01', c:100 }, { d:'2024-01-05', c:110 },
+    { d:'2024-01-08', c:120 }, { d:'2026-01-01', c:200 },
+  ];
+
+  // ── nearest close on or before ──
+  eq('exact date hits its own close', _bmCloseOnOrBefore(series,'2024-01-05'), 110);
+  eq('a weekend falls back to the previous close', _bmCloseOnOrBefore(series,'2024-01-06'), 110);
+  eq('a date after the series uses the last close', _bmCloseOnOrBefore(series,'2027-01-01'), 200);
+  eq('a date before the series is unpriceable', _bmCloseOnOrBefore(series,'2020-01-01'), null);
+  eq('an unparseable date is unpriceable', _bmCloseOnOrBefore(series,'nonsense'), null);
+  eq('an empty series is unpriceable', _bmCloseOnOrBefore([],'2024-01-05'), null);
+
+  const asOf = new Date('2026-01-01T00:00:00Z');
+  const L = (invested,current,buyDate,dividend) => ({ invested, current, buyDate, dividend });
+
+  // ── replay ──
+  {
+    // Bought at index 100, index now 200 -> the index would have doubled the money.
+    const r = _bmReplay([L(100000,300000,'2024-01-01',0)], series, asOf);
+    eq('index terminal value doubles the stake', r.benchValue, 200000);
+    eq('portfolio terminal is the real current value', r.portValue, 300000);
+    ok('beating the index shows a positive difference', r.valueDiff === 100000, String(r.valueDiff));
+    ok('your XIRR exceeds the index XIRR here', r.portXirr > r.benchXirr, `${r.portXirr} !> ${r.benchXirr}`);
+  }
+  {
+    // Underperforming must read as behind, not be hidden.
+    const r = _bmReplay([L(100000,150000,'2024-01-01',0)], series, asOf);
+    ok('lagging the index is a negative difference', r.valueDiff < 0, String(r.valueDiff));
+    ok('and a negative XIRR gap', r.xirrDiff < 0, String(r.xirrDiff));
+  }
+  {
+    // Dividends count on your side - they are part of your return.
+    const noDiv = _bmReplay([L(100000,150000,'2024-01-01',0)], series, asOf);
+    const wDiv  = _bmReplay([L(100000,150000,'2024-01-01',25000)], series, asOf);
+    ok('dividends improve your side of the comparison', wDiv.valueDiff > noDiv.valueDiff,
+       `${wDiv.valueDiff} !> ${noDiv.valueDiff}`);
+  }
+  {
+    // Matching performance should land near zero, both sides equal.
+    const r = _bmReplay([L(100000,200000,'2024-01-01',0)], series, asOf);
+    eq('matching the index nets to zero', r.valueDiff, 0);
+    ok('and the XIRR gap is ~0', Math.abs(r.xirrDiff) < 1e-6, String(r.xirrDiff));
+  }
+  // ── exclusions keep it like-for-like ──
+  {
+    const r = _bmReplay([L(100000,200000,'2024-01-01',0), L(50000,60000,null,0)], series, asOf);
+    eq('an undated lot is excluded', r.used, 1);
+    eq('and counted as skipped', r.skipped, 1);
+    eq('it is left out of YOUR value too, not just the index', r.portValue, 200000);
+  }
+  {
+    // A purchase predating the index series cannot be priced on either side.
+    const r = _bmReplay([L(100000,200000,'2020-01-01',0)], series, asOf);
+    eq('a lot older than the series is excluded', r, null);
+  }
+  eq('no lots at all -> null', _bmReplay([], series, asOf), null);
+  eq('no series -> null', _bmReplay([L(1,2,'2024-01-01',0)], [], asOf), null);
+
+  // ── wiring ──
+  ok('benchmark card is on the analysis tab', /renderIncome\(\);renderBenchmark\(\)/.test(SRC), 'not wired');
+  ok('benchmark uses Nifty 50', /BENCH_SYMBOL = '\^NSEI'/.test(SRC), 'wrong index');
+  ok('index history is fetched through the owner Worker', /_bmFetchIndex[\s\S]{0,600}_selfProxyUrl/.test(SRC), 'not via Worker');
+  ok('null closes (market holidays) are dropped', /if\(c == null \|\| !isFinite\(c\)\) continue;/.test(SRC), 'holidays not handled');
+}
+
+// ── Portfolio growth history ───────────────────────────────────────────────
+group('growth history');
+{
+  const src = slice('function _ghUpsert(list, day, value, invested){', 'function ghRecordToday()', 'gh');
+  const { _ghUpsert, _ghStats } = load(src, ['_ghUpsert','_ghStats'], { Array, Math, isFinite, Number });
+
+  // ── one point per day, latest reading wins ──
+  {
+    let l = [];
+    l = _ghUpsert(l, '2026-01-01', 100000, 80000);
+    eq('records a day', l.length, 1);
+    l = _ghUpsert(l, '2026-01-01', 105000, 80000);
+    eq('same day replaces, never duplicates', l.length, 1);
+    eq('the later reading wins (end-of-day)', l[0].v, 105000);
+    l = _ghUpsert(l, '2026-01-02', 110000, 80000);
+    eq('a new day appends', l.length, 2);
+  }
+  {
+    // Out-of-order writes must still yield a chronological series.
+    let l = [];
+    l = _ghUpsert(l, '2026-01-03', 300, 1);
+    l = _ghUpsert(l, '2026-01-01', 100, 1);
+    l = _ghUpsert(l, '2026-01-02', 200, 1);
+    eq('series stays sorted by date', l.map(p=>p.d).join(','), '2026-01-01,2026-01-02,2026-01-03');
+  }
+  // A zero or junk valuation must never enter the series - it would fake a
+  // catastrophic drawdown on the chart.
+  {
+    let l = [{ d:'2026-01-01', v:100000 }];
+    eq('a zero value is refused', _ghUpsert(l,'2026-01-02',0,1).length, 1);
+    eq('a negative value is refused', _ghUpsert(l,'2026-01-02',-5,1).length, 1);
+    eq('NaN is refused', _ghUpsert(l,'2026-01-02',NaN,1).length, 1);
+    eq('a missing day is refused', _ghUpsert(l,null,5000,1).length, 1);
+  }
+
+  // ── stats ──
+  {
+    const l = [
+      { d:'2026-01-01', v:100 }, { d:'2026-01-02', v:150 },
+      { d:'2026-01-03', v:90  }, { d:'2026-01-04', v:120 },
+    ];
+    const s = _ghStats(l);
+    eq('counts recorded days', s.days, 4);
+    eq('peak is the highest value', s.peak, 150);
+    eq('peak date is right', s.peakDate, '2026-01-02');
+    eq('worst drawdown is peak-to-trough', +s.maxDD.toFixed(2), 40);   // 150 -> 90
+    eq('current drawdown is from peak to latest', +s.currentDD.toFixed(2), 20); // 150 -> 120
+    eq('change is first to last', +s.change.toFixed(2), 20);           // 100 -> 120
+  }
+  {
+    // A monotonically rising book has no drawdown and sits at its peak.
+    const s = _ghStats([{d:'2026-01-01',v:100},{d:'2026-01-02',v:200}]);
+    eq('no drawdown when only rising', s.maxDD, 0);
+    eq('sitting at the peak', s.currentDD, 0);
+  }
+  eq('no points -> null stats', _ghStats([]), null);
+  eq('all-junk points -> null stats', _ghStats([{d:'x',v:0},{d:'y',v:-1}]), null);
+
+  // ── wiring ──
+  ok('growth card is on the analysis tab', /renderBenchmark\(\);renderGrowth\(\)/.test(SRC), 'not wired');
+  ok('a point is recorded on every save', /function save\(\)\{saveLocal\(\);try\{ghRecordToday\(\)/.test(SRC), 'not recorded on save');
+  ok('and once on boot', /loadLocal\(\);[\s\S]{0,200}try \{ ghRecordToday\(\); \} catch\(e\)\{\}/.test(SRC), 'not recorded on boot');
+  ok('history is capped so it cannot grow without bound', /_GH_MAX = 1825/.test(SRC), 'no cap');
+  ok('the UI admits it cannot backfill', /can't reconstruct value from before tracking began/.test(SRC), 'overclaims history');
+}
+
+// ── Price targets & alerts ─────────────────────────────────────────────────
+group('targets & alerts');
+{
+  const src = slice('function _alEvaluate(h){', 'function renderAlerts()', 'alerts');
+  const { _alEvaluate, _alScan } = load(src, ['_alEvaluate','_alScan'], { Array, Math, isFinite, Number });
+
+  const H = (name,ltp,target,stop) => ({ name, ticker:name, ltp, target, stop });
+
+  // ── no level set, or no usable price -> no claim at all ──
+  eq('no target and no stop -> null', _alEvaluate(H('A',100)), null);
+  eq('no price -> null', _alEvaluate(H('A',0,120,80)), null);
+  eq('NaN price -> null', _alEvaluate(H('A',NaN,120,80)), null);
+  eq('null holding -> null', _alEvaluate(null), null);
+  eq('junk levels are ignored', _alEvaluate(H('A',100,0,-5)), null);
+
+  // ── target ──
+  {
+    const a = _alEvaluate(H('A',130,120,80));
+    eq('price above target is a hit', a.hit, 'target');
+    eq('overshoot is reported', +a.distPct.toFixed(4), +((130-120)/120*100).toFixed(4));
+  }
+  eq('price exactly at target counts as hit', _alEvaluate(H('A',120,120,80)).hit, 'target');
+  {
+    const a = _alEvaluate(H('A',100,120,80));
+    eq('below target is not a hit', a.hit, null);
+    eq('distance to target is reported', +a.distPct.toFixed(4), +((120-100)/100*100).toFixed(4));
+  }
+  // ── stop ──
+  {
+    const a = _alEvaluate(H('A',70,120,80));
+    eq('price below stop is a breach', a.hit, 'stop');
+    ok('breach depth is positive', a.distPct > 0, String(a.distPct));
+  }
+  eq('price exactly at stop counts as breach', _alEvaluate(H('A',80,120,80)).hit, 'stop');
+  eq('target takes precedence when both would trigger',
+     _alEvaluate({name:'A',ltp:130,target:120,stop:140}).hit, 'target');
+  // ── a single level works on its own ──
+  eq('target only, hit', _alEvaluate({name:'A',ltp:130,target:120}).hit, 'target');
+  eq('stop only, breached', _alEvaluate({name:'A',ltp:70,stop:80}).hit, 'stop');
+  eq('target only, not hit', _alEvaluate({name:'A',ltp:100,target:120}).hit, null);
+
+  // ── scan ──
+  {
+    const r = _alScan(
+      [H('Hit1',130,120,80), H('Near',118,120,80), H('Far',50,120,10)],
+      [H('Breach',70,200,80)]
+    );
+    eq('only crossed levels are hits', r.hits.length, 2);
+    ok('hits include both the target and the stop',
+       r.hits.some(x=>x.hit==='target') && r.hits.some(x=>x.hit==='stop'), JSON.stringify(r.hits.map(x=>x.hit)));
+    eq('uncrossed holdings are watching, not alerts', r.watching.length, 2);
+    eq('the nearest uncrossed comes first', r.watching[0].name, 'Near');
+    ok('asset class is tagged', r.hits.every(x=>x.cls==='India EQ'||x.cls==='US EQ'), 'missing cls');
+  }
+  {
+    const r = _alScan([H('NoLevels',100)], []);
+    eq('a holding with no levels raises nothing', r.hits.length + r.watching.length, 0);
+  }
+  eq('empty book is safe', _alScan([], []).hits.length, 0);
+  eq('undefined lists are safe', _alScan(undefined, undefined).hits.length, 0);
+
+  // ── wiring ──
+  ok('alerts render on the dashboard', /renderDashboard\(\)\{[\s\S]{0,140}renderAlerts\(\)/.test(SRC), 'not wired');
+  ok('dashboard has a host element', SRC.includes('id="alerts-host"'), 'no host');
+  ok('target and stop are persisted', /target:gn\('m-target'\)\|\|null,stop:gn\('m-stop'\)\|\|null/.test(SRC), 'not saved');
+  ok('the panel says these are user-set levels, not advice',
+     /not advice, and not automatic orders/.test(SRC), 'overclaims');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

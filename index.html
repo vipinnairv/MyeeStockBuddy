@@ -331,9 +331,28 @@ canvas{max-width:100%;}
 .api-key-input:focus{outline:none;border-color:var(--purple);}
 
 /* ===== DISCLAIMER OVERLAY ===== */
-#disclaimer-overlay{position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;}
+#disclaimer-overlay{position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;overscroll-behavior:contain;padding:20px;}
 #disclaimer-overlay.hidden{display:none;}
-.disc-card{background:#111827;border:1px solid #1e293b;border-radius:20px;max-width:680px;width:100%;padding:40px 36px;box-shadow:0 24px 64px rgba(0,0,0,.7);position:relative;}
+.disc-card{background:#111827;border:1px solid #1e293b;border-radius:20px;max-width:680px;width:100%;padding:40px 36px;box-shadow:0 24px 64px rgba(0,0,0,.7);position:relative;margin:auto;}
+/* Short viewports (laptops, landscape phones): compact the card so the accept
+   button stays reachable without hunting for a scrollbar. */
+@media (max-height:800px){
+  .disc-card{padding:22px 24px;border-radius:14px;}
+  .disc-icon{font-size:38px;margin-bottom:6px;animation:none;}
+  .disc-title{font-size:clamp(20px,4vw,28px);}
+  .disc-sub{font-size:12.5px;margin-bottom:14px;}
+  .disc-quote{padding:12px 16px;margin-bottom:14px;}
+  .disc-quote p{font-size:13.5px;line-height:1.45;}
+  .disc-box{padding:14px 16px;margin-bottom:16px;}
+  .disc-box ul{gap:7px;}
+  .disc-box ul li{font-size:12.5px;line-height:1.4;}
+  .disc-checkbox-row{margin-bottom:14px;}
+  .disc-btn-accept,.disc-btn-decline{padding:11px 22px;font-size:13px;}
+}
+@media (max-height:620px){
+  .disc-icon{display:none;}
+  .disc-quote{display:none;}
+}
 .disc-icon{font-size:64px;text-align:center;margin-bottom:12px;animation:pulse 2s infinite;}
 .disc-title{font-family:'Calibri',serif;font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
 .disc-sub{color:#94a3b8;font-size:14px;text-align:center;margin-bottom:28px;}
@@ -2029,6 +2048,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
 <!-- ══════════════════════ DASHBOARD ══════════════════════ -->
 <div class="page active" id="page-dashboard">
+  <div id="alerts-host"></div>
   <div class="sum-banner" id="sum-banner"></div>
   <div class="kpi-grid" id="dash-kpis"></div>
   <!-- Quick Actions row -->
@@ -2421,6 +2441,14 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div class="card" style="margin-bottom:18px;border-top:3px solid #00B386">
     <div class="ch"><span class="ct">💵 Income &amp; True Return</span><span style="font-size:10.5px;color:var(--T3)">money-weighted · incl. dividends</span></div>
     <div class="cb" id="ana-income"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #1A73E8">
+    <div class="ch"><span class="ct">🏁 You vs the Index</span><span style="font-size:10.5px;color:var(--T3)">your cashflows, replayed into Nifty 50</span></div>
+    <div class="cb" id="ana-benchmark"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #F59E0B">
+    <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
+    <div class="cb" id="ana-growth"></div>
   </div>
   <div class="chart-row">
     <div class="card">
@@ -10296,6 +10324,436 @@ function renderIncome(){
     XIRR is money-weighted across equity, crypto and funds using each purchase date. Holdings without a purchase date are excluded from XIRR but still counted in income.
   </div>`;
 }
+// ══════════ CAPITAL GAINS: FIFO LOT MATCHING ══════════
+// The previous computation had three defects that produced wrong tax numbers:
+//   1. When a sale had no matching BUY it invented a cost basis of 70% of the
+//      sale price - a fabricated 30% profit, reported as fact.
+//   2. That same path hard-coded a 730-day holding period, so every unmatched
+//      sale was classified LTCG and never STCG.
+//   3. It described itself as FIFO but used a weighted average cost with the
+//      OLDEST buy date, which overstates the holding period and biases toward
+//      the lower LTCG rate.
+// This module does real FIFO: a sale consumes buy lots oldest-first, so each
+// slice carries its own cost and its own holding period. One sale can
+// legitimately split across STCG and LTCG. Nothing is ever invented - a sale
+// that cannot be matched is returned as unmatched for the UI to flag.
+
+// Indian equity, post-Budget-2024 (23 July 2024 onwards).
+const TAX_RULES = {
+  ltcgExempt: 125000,   // Section 112A exemption
+  ltcgRate:   0.125,    // 12.5% (was 10% before Budget 2024)
+  stcgRate:   0.20,     // 20% (was 15%)
+  vdaRate:    0.30,     // crypto / VDA, no loss set-off
+  ltDays:     365,      // listed equity: >12 months is long term
+};
+
+// txns: [{id,date,type:'BUY'|'SELL',cls,name,qty,price}]
+// Returns { matched, unmatched }. Amounts are per-slice, not per-transaction.
+function fifoMatchSells(txns, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const list = Array.isArray(txns) ? txns : [];
+  const EPS = 1e-9;
+
+  // Buy lots per asset, oldest first.
+  const lots = {};
+  list.filter(t => t && t.type === 'BUY').forEach(t => {
+    const d = new Date(t.date);
+    if(isNaN(d.getTime())) return;
+    const qty = +t.qty, price = +t.price;
+    if(!isFinite(qty) || qty <= 0 || !isFinite(price)) return;
+    (lots[t.name] = lots[t.name] || []).push({ date:d, price, qty });
+  });
+  Object.keys(lots).forEach(k => lots[k].sort((a,b) => a.date - b.date));
+
+  const sells = list.filter(t => t && t.type === 'SELL' && !isNaN(new Date(t.date).getTime()))
+                    .slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  const matched = [], unmatched = [];
+  sells.forEach(s => {
+    const sd = new Date(s.date);
+    const sellPrice = +s.price;
+    let remaining = +s.qty;
+    if(!isFinite(remaining) || remaining <= 0 || !isFinite(sellPrice)){
+      unmatched.push({ id:s.id, date:s.date, name:s.name, cls:s.cls,
+                       qty:(+s.qty||0), price:(+s.price||0), reason:'invalid quantity or price' });
+      return;
+    }
+    const avail = lots[s.name] || [];
+    for(const lot of avail){
+      if(remaining <= EPS) break;
+      if(lot.qty <= EPS) continue;
+      if(lot.date > sd) continue;              // cannot sell shares bought later
+      const take = Math.min(lot.qty, remaining);
+      const days = Math.round((sd - lot.date) / 864e5);
+      matched.push({
+        id:s.id, date:s.date, name:s.name, cls:s.cls,
+        qty:take, price:sellPrice, sellPrice, buyPrice:lot.price,
+        buyDate:lot.date.toISOString().slice(0,10),
+        holdingDays:days, isLTCG: days > R.ltDays,
+        gain:(sellPrice - lot.price) * take,
+      });
+      lot.qty -= take;
+      remaining -= take;
+    }
+    if(remaining > EPS){
+      // No buy record covers this quantity. Refuse to guess a cost basis.
+      unmatched.push({ id:s.id, date:s.date, name:s.name, cls:s.cls,
+                       qty:remaining, price:sellPrice,
+                       reason:'no BUY transaction covers this quantity' });
+    }
+  });
+  return { matched, unmatched };
+}
+
+// Equity capital-gains tax for a set of matched slices.
+function computeEquityTax(rows, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const ltcg = (rows||[]).filter(r => r.isLTCG);
+  const stcg = (rows||[]).filter(r => !r.isLTCG);
+  const ltcgTotal = ltcg.reduce((a,r) => a + r.gain, 0);
+  const stcgTotal = stcg.reduce((a,r) => a + r.gain, 0);
+  const ltcgTaxable = Math.max(0, ltcgTotal - R.ltcgExempt);
+  const stcgTaxable = Math.max(0, stcgTotal);
+  return {
+    ltcgRows:ltcg, stcgRows:stcg, ltcgTotal, stcgTotal,
+    ltcgTaxable, stcgTaxable,
+    ltcgTax: ltcgTaxable * R.ltcgRate,
+    stcgTax: stcgTaxable * R.stcgRate,
+    ltcgRatePct: R.ltcgRate * 100, stcgRatePct: R.stcgRate * 100,
+    exempt: R.ltcgExempt,
+  };
+}
+
+// Crypto / VDA: gains taxed at 30%, losses cannot be set off against anything,
+// so only positive slices are counted.
+function computeVdaTax(rows, rules){
+  const R = Object.assign({}, TAX_RULES, rules||{});
+  const gain = (rows||[]).reduce((a,r) => a + (r.gain > 0 ? r.gain : 0), 0);
+  return { gain, tax: gain * R.vdaRate, ratePct: R.vdaRate * 100 };
+}
+// ══════════ BENCHMARK: PORTFOLIO vs NIFTY ══════════
+// "Am I actually beating the index?" is the question stock-picking has to
+// answer, and the app could not. Comparing your return to a headline index
+// number is not enough - you did not invest a lump sum on 1 January. The only
+// fair comparison replays YOUR cashflows: every rupee, on the date you actually
+// invested it, put into the index instead. Then both sides get the same XIRR
+// treatment and the difference is attributable to your stock picks.
+
+const BENCH_SYMBOL = '^NSEI';        // Nifty 50
+const BENCH_LABEL  = 'Nifty 50';
+
+// Closes come back as [{ d:'YYYY-MM-DD', c:Number }] sorted ascending.
+// Markets are shut at weekends and on holidays, so a purchase date often has no
+// close of its own; take the most recent close on or before it. Returns null
+// when the date precedes the series entirely - we cannot price what we cannot
+// see, and must not extrapolate backwards.
+function _bmCloseOnOrBefore(series, dateStr){
+  if(!Array.isArray(series) || !series.length) return null;
+  const t = new Date(dateStr).getTime();
+  if(isNaN(t)) return null;
+  let lo = 0, hi = series.length - 1, best = null;
+  while(lo <= hi){
+    const mid = (lo + hi) >> 1;
+    const mt = new Date(series[mid].d).getTime();
+    if(mt <= t){ best = series[mid]; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return best && isFinite(+best.c) && +best.c > 0 ? +best.c : null;
+}
+
+// Replay the book into the index. Each lot buys index units at its own purchase
+// date; the terminal value is those units at the latest close.
+// Lots that cannot be priced (no date, or a date before the series starts) are
+// excluded from BOTH sides, so the comparison stays like-for-like.
+function _bmReplay(lots, series, asOf){
+  const latest = series && series.length ? +series[series.length-1].c : null;
+  if(!latest || !isFinite(latest)) return null;
+  const cf = [], benchCf = [];
+  let invested = 0, portValue = 0, benchValue = 0, used = 0, skipped = 0;
+  (Array.isArray(lots) ? lots : []).forEach(l => {
+    const inv = +l.invested, cur = +l.current;
+    const d = l.buyDate ? new Date(l.buyDate) : null;
+    const priceable = d && !isNaN(d.getTime()) && d <= asOf && isFinite(inv) && inv > 0 && isFinite(cur);
+    const open = priceable ? _bmCloseOnOrBefore(series, l.buyDate) : null;
+    if(!priceable || open == null){ skipped++; return; }
+    const units = inv / open;
+    invested   += inv;
+    portValue  += cur + (isFinite(+l.dividend) && +l.dividend > 0 ? +l.dividend : 0);
+    benchValue += units * latest;
+    cf.push({ date:d, amount:-inv });
+    benchCf.push({ date:d, amount:-inv });
+    used++;
+  });
+  if(!used) return null;
+  cf.push({ date:asOf, amount:portValue });
+  benchCf.push({ date:asOf, amount:benchValue });
+  cf.sort((a,b)=>a.date-b.date); benchCf.sort((a,b)=>a.date-b.date);
+  let portXirr = null, benchXirr = null;
+  try { portXirr  = xirr(cf); }      catch(e) {}
+  try { benchXirr = xirr(benchCf); } catch(e) {}
+  return {
+    used, skipped, invested, portValue, benchValue,
+    portXirr, benchXirr,
+    valueDiff: portValue - benchValue,
+    xirrDiff: (portXirr != null && benchXirr != null) ? portXirr - benchXirr : null,
+  };
+}
+
+// Pull index history through the owner Worker (the Yahoo chart host is already
+// on its allowlist). Returns [{d,c}] ascending, or null.
+async function _bmFetchIndex(symbol, years){
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if(!sp) return null;
+  const to = Math.floor(Date.now()/1000);
+  const from = to - Math.round((years||8) * 365 * 24 * 3600);
+  const y = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=${to}&interval=1d`;
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 15000);
+    let r;
+    try { r = await fetch(`${sp}/?url=${encodeURIComponent(y)}`, { signal: ctrl.signal }); }
+    finally { clearTimeout(tid); }
+    if(!r.ok) return null;
+    const j = await r.json();
+    const res = j && j.chart && j.chart.result && j.chart.result[0];
+    const ts = res && res.timestamp;
+    const q  = res && res.indicators && res.indicators.quote && res.indicators.quote[0];
+    if(!Array.isArray(ts) || !q || !Array.isArray(q.close)) return null;
+    const out = [];
+    for(let i=0;i<ts.length;i++){
+      const c = q.close[i];
+      if(c == null || !isFinite(c)) continue;                 // holidays come back null
+      out.push({ d:new Date(ts[i]*1000).toISOString().slice(0,10), c:+c });
+    }
+    return out.length ? out : null;
+  } catch(e) { return null; }
+}
+
+let _bmSeries = null;
+async function renderBenchmark(){
+  const el = document.getElementById('ana-benchmark');
+  if(!el) return;
+  const sp = (typeof _selfProxyUrl === 'function') ? _selfProxyUrl() : '';
+  if(!sp){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Benchmarking needs the data proxy. Deploy the Worker in <code>proxy/README.md</code> and this fills in automatically.</div>`;
+    return;
+  }
+  el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Fetching ${BENCH_LABEL}…</div>`;
+  if(!_bmSeries) _bmSeries = await _bmFetchIndex(BENCH_SYMBOL, 8);
+  if(!_bmSeries){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">Couldn't reach ${BENCH_LABEL} history just now. Retry from the Refresh button.</div>`;
+    return;
+  }
+  const r = _bmReplay(_pmLots(), _bmSeries, new Date());
+  if(!r){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings could be dated against ${BENCH_LABEL} yet — add purchase dates to compare.</div>`;
+    return;
+  }
+  const ahead = r.valueDiff >= 0;
+  const col = ahead ? '#00B386' : '#D93025';
+  const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
+    + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
+  const pct = v => v==null ? '—' : (v>=0?'+':'')+v.toFixed(2)+'%';
+  el.innerHTML = `<div class="tax-sum-grid">
+    ${tile('Your XIRR', pct(r.portXirr), 'your actual picks', r.portXirr>=0?'#00B386':'#D93025')}
+    ${tile(BENCH_LABEL+' XIRR', pct(r.benchXirr), 'same money, same dates', '#1A73E8')}
+    ${tile(ahead?'Ahead of index':'Behind index',
+        (ahead?'+':'-')+F.inr(Math.abs(r.valueDiff)),
+        r.xirrDiff==null?'':pct(r.xirrDiff)+' a year', col)}
+  </div>
+  <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+    Every rupee you invested is replayed into ${BENCH_LABEL} <b>on the date you actually invested it</b>, then both sides get the same XIRR — so this isolates your stock picking, not your timing.
+    ${r.skipped ? ` <b>${r.skipped}</b> holding${r.skipped===1?'':'s'} excluded from both sides (no usable purchase date).` : ''}
+  </div>`;
+}
+// ══════════ PORTFOLIO GROWTH HISTORY ══════════
+// The app only ever knew today's value, so there was no way to see the journey:
+// no growth curve, no peak, no drawdown. This records one value snapshot per
+// day in localStorage and charts it. It is a forward-looking record - it cannot
+// reconstruct history that was never captured, and it does not pretend to:
+// the chart says how many days it has been collecting.
+
+const _GH_KEY = 'pf_value_history';
+const _GH_MAX = 1825;                  // ~5 years of daily points
+
+function _ghLoad(){
+  try {
+    const v = JSON.parse(localStorage.getItem(_GH_KEY) || '[]');
+    return Array.isArray(v) ? v.filter(p => p && p.d && isFinite(+p.v)) : [];
+  } catch(e) { return []; }
+}
+function _ghSave(list){
+  try { localStorage.setItem(_GH_KEY, JSON.stringify(list.slice(-_GH_MAX))); } catch(e) {}
+}
+
+// One point per calendar day: a later reading on the same day replaces the
+// earlier one, so the series is end-of-day rather than whatever time you
+// happened to open the app.
+function _ghUpsert(list, day, value, invested){
+  const v = +value, inv = +invested;
+  if(!day || !isFinite(v) || v <= 0) return list;          // never record a zero/garbage day
+  const out = Array.isArray(list) ? list.slice() : [];
+  const i = out.findIndex(p => p.d === day);
+  const point = { d:day, v:+v.toFixed(2), i: isFinite(inv) && inv > 0 ? +inv.toFixed(2) : undefined };
+  if(i >= 0) out[i] = point; else out.push(point);
+  out.sort((a,b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+  return out;
+}
+
+// Peak, current drawdown and worst drawdown across the recorded series.
+function _ghStats(list){
+  const pts = (Array.isArray(list) ? list : []).filter(p => isFinite(+p.v) && +p.v > 0);
+  if(!pts.length) return null;
+  let peak = 0, peakDate = null, maxDD = 0, maxDDDate = null;
+  pts.forEach(p => {
+    const v = +p.v;
+    if(v > peak){ peak = v; peakDate = p.d; }
+    if(peak > 0){
+      const dd = (peak - v) / peak * 100;
+      if(dd > maxDD){ maxDD = dd; maxDDDate = p.d; }
+    }
+  });
+  const first = +pts[0].v, last = +pts[pts.length-1].v;
+  return {
+    days: pts.length, first, last, firstDate: pts[0].d, lastDate: pts[pts.length-1].d,
+    peak, peakDate, maxDD, maxDDDate,
+    currentDD: peak > 0 ? (peak - last) / peak * 100 : 0,
+    change: first > 0 ? (last - first) / first * 100 : null,
+  };
+}
+
+// Record today's value. Called after any save so the series builds itself.
+function ghRecordToday(){
+  try {
+    if(typeof grand !== 'function') return;
+    const g = grand();
+    const day = new Date().toISOString().slice(0,10);
+    _ghSave(_ghUpsert(_ghLoad(), day, g.totC, g.totI));
+  } catch(e) {}
+}
+
+function renderGrowth(){
+  const el = document.getElementById('ana-growth');
+  if(!el) return;
+  const list = _ghLoad();
+  const st = _ghStats(list);
+  if(!st || st.days < 2){
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">
+      📈 Building your growth history — <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
+      A point is saved each day you open the app; the curve appears from the second day.
+      <div style="margin-top:5px;font-size:11.5px">This is a forward record: it can't reconstruct value from before tracking began.</div>
+    </div>`;
+    return;
+  }
+  const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
+    + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
+  const w = 640, h = 150, pad = 4;
+  const vals = list.map(p => +p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const pts = list.map((p,i) => {
+    const x = pad + (i / Math.max(1, list.length - 1)) * (w - pad*2);
+    const y = pad + (1 - ((+p.v - lo) / span)) * (h - pad*2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const up = st.last >= st.first;
+  const col = up ? '#00B386' : '#D93025';
+  el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
+    ${tile('Since tracking began', (st.change>=0?'+':'')+st.change.toFixed(2)+'%', `${st.days} days · from ${st.firstDate}`, col)}
+    ${tile('Peak value', F.lac(st.peak), 'on '+st.peakDate, '#1A73E8')}
+    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '—', '#D93025')}
+    ${tile('From peak now', st.currentDD<=0.005?'At peak':'-'+st.currentDD.toFixed(1)+'%', 'current value '+F.lac(st.last), st.currentDD<=0.005?'#00B386':'#F59E0B')}
+  </div>
+  <div style="overflow-x:auto">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:150px;display:block">
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
+    One point per day, recorded locally as you use the app. Range ${F.lac(lo)} – ${F.lac(hi)}. Days you don't open the app leave no point.
+  </div>`;
+}
+// ══════════ PRICE TARGETS & ALERTS ══════════
+// The Analyser works out entry/exit levels, but nothing carried that back to
+// the actual book: you had to remember which of 34 holdings was near its
+// target. Each equity holding can now carry a target and a stop; anything that
+// has crossed one is surfaced on the dashboard.
+//
+// These are levels YOU set. Nothing here predicts a price or fires
+// automatically - it reports, in one place, which of your own thresholds
+// today's price has crossed.
+
+// One holding -> alert state, or null when no level is set / price unusable.
+// Levels are in the holding's own currency, the same units as its LTP.
+function _alEvaluate(h){
+  if(!h) return null;
+  const ltp = +h.ltp;
+  if(!isFinite(ltp) || ltp <= 0) return null;              // no price, no claim
+  const tgt = +h.target, stop = +h.stop;
+  const hasT = isFinite(tgt) && tgt > 0;
+  const hasS = isFinite(stop) && stop > 0;
+  if(!hasT && !hasS) return null;
+  const out = { name:h.name, ticker:h.ticker, ltp, target:hasT?tgt:null, stop:hasS?stop:null,
+                hit:null, distPct:null };
+  if(hasT && ltp >= tgt){
+    out.hit = 'target';
+    out.distPct = (ltp - tgt) / tgt * 100;
+  } else if(hasS && ltp <= stop){
+    out.hit = 'stop';
+    out.distPct = (stop - ltp) / stop * 100;
+  } else if(hasT){
+    out.distPct = (tgt - ltp) / ltp * 100;                 // how far still to go
+  } else if(hasS){
+    out.distPct = (ltp - stop) / ltp * 100;                // headroom above the stop
+  }
+  return out;
+}
+
+// Scan the equity book. Returns { hits, watching } - hits first, nearest-first.
+function _alScan(indEQ, usEQ){
+  const rows = [];
+  const add = (list, cls) => (Array.isArray(list) ? list : []).forEach(h => {
+    const a = _alEvaluate(h);
+    if(a){ a.cls = cls; rows.push(a); }
+  });
+  add(indEQ, 'India EQ'); add(usEQ, 'US EQ');
+  const hits = rows.filter(r => r.hit).sort((a,b) => (b.distPct||0) - (a.distPct||0));
+  const watching = rows.filter(r => !r.hit)
+                       .sort((a,b) => Math.abs(a.distPct||1e9) - Math.abs(b.distPct||1e9));
+  return { hits, watching };
+}
+
+function renderAlerts(){
+  const host = document.getElementById('alerts-host');
+  if(!host) return;
+  const { hits, watching } = _alScan(S.indEQ, S.usEQ);
+  if(!hits.length){
+    // Nothing crossed. Say so, and show the closest few so the panel is useful
+    // rather than empty - but never imply an alert that has not happened.
+    if(!watching.length){ host.innerHTML = ''; return; }
+    const near = watching.slice(0,3).map(r =>
+      `<span style="white-space:nowrap"><b>${r.name}</b> ${r.target?`→ ${F.inr(r.target)}`:`↓ ${F.inr(r.stop)}`} (${Math.abs(r.distPct).toFixed(1)}% away)</span>`
+    ).join(' · ');
+    host.innerHTML = `<div style="margin:0 0 14px;background:var(--BL);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--T2)">
+      🎯 <b>No targets hit.</b> Closest: ${near}</div>`;
+    return;
+  }
+  const row = r => {
+    const isT = r.hit === 'target';
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid rgba(0,0,0,.06)">
+      <span style="font-size:15px">${isT?'🎯':'🛑'}</span>
+      <b style="font-size:13px">${r.name}</b>
+      <span style="font-size:11px;color:var(--T3)">${r.cls}</span>
+      <span style="font-size:12px;color:${isT?'#00B386':'#D93025'};font-weight:700">
+        ${isT?'Target hit':'Stop breached'} — ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
+        (${r.distPct>=0?'+':''}${r.distPct.toFixed(1)}%)
+      </span>
+    </div>`;
+  };
+  host.innerHTML = `<div style="margin:0 0 14px;background:var(--AUL,#FEF3C7);border:1px solid var(--AU,#F59E0B);border-radius:10px;padding:11px 14px">
+    <div style="font-size:13px;font-weight:800;color:var(--T1)">🔔 ${hits.length} holding${hits.length===1?'':'s'} crossed a level you set</div>
+    ${hits.map(row).join('')}
+    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price — not advice, and not automatic orders.</div>
+  </div>`;
+}
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -10372,6 +10830,7 @@ function mkChart(id,cfg){destroyChart(id);charts[id]=new Chart(document.getEleme
 
 function renderDashboard(){
   try { _backupNudge(); } catch(e){}
+  try { renderAlerts(); } catch(e){}
   const g=grand();
   const totPL=g.totC-g.totI, totR=g.totI>0?totPL/g.totI*100:0;
   const tot=g.totC||1;
@@ -11155,6 +11614,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested Amount</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='USEQ') return`
@@ -11171,6 +11632,8 @@ function addForm(cls){
     <div class="fr"><div class="fg"><label class="fl">Div Yield (%)</label><input class="fc" id="m-dy" type="number" step="any" placeholder="Optional"></div>
     <div class="fg"><label class="fl">Mkt Cap (₹ Cr)</label><input class="fc" id="m-mcap" type="number" step="any" placeholder="e.g. 25000"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" placeholder="Total received, e.g. 1455"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" placeholder="Alert when price rises to"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" placeholder="Alert when price falls to"></div>
     <div class="fg"></div></div>
     <div id="cost-calc" class="calc-box" style="display:none"><div class="calc-row"><span>Invested (₹) at ₹${S.usdInr}/USD</span><strong id="cc-inv">-</strong></div></div>`;
   if(cls==='CRYPTO') return`
@@ -11206,6 +11669,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Current LTP (₹)</label><input class="fc" id="m-ltp" type="number" value="${h.ltp}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -11221,6 +11686,8 @@ function editForm(cls,id){
     <div class="fr"><div class="fg"><label class="fl">Invested (₹)</label><input class="fc" id="m-inrinv" type="number" value="${h.investedINR}"></div>
     <div class="fg"><label class="fl">Buy Date</label><input class="fc" id="m-date" type="date" value="${h.buyDate}"></div></div>
     <div class="fr"><div class="fg"><label class="fl">Dividend Received</label><input class="fc" id="m-div" type="number" step="any" value="${h.div||''}"></div>
+    <div class="fg"><label class="fl">Target Price</label><input class="fc" id="m-target" type="number" step="any" value="${h.target||''}"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Stop Price</label><input class="fc" id="m-stop" type="number" step="any" value="${h.stop||''}"></div>
     <div class="fg"></div></div>
     <div class="fr"><div class="fg"><label class="fl">P/E</label><input class="fc" id="m-pe" type="number" step="any" value="${h.pe||''}"></div>
     <div class="fg"><label class="fl">P/B</label><input class="fc" id="m-pb" type="number" step="any" value="${h.pb||''}"></div></div>
@@ -11316,13 +11783,13 @@ function submitAdd(cls){
   if(cls==='INDEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
-    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null};
+    const h={id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),broker:gv('m-broker')||'',pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null};
     S.indEQ.push(h);logT('BUY','India EQ',name,ticker,qty,price,h.broker);
   }else if(cls==='USEQ'){
     const name=gv('m-name'),ticker=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
     if(!name||!qty||!price){toast('Fill required (*) fields','err');return;}
     const inrInv=gn('m-inrinv')||qty*price*S.usdInr;
-    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+    S.usEQ.push({id:uid(),sector:gv('m-sector')||'Other',name,ticker,ltp:gn('m-ltp')||price,qty,avgCost:price,buyDate:gv('m-date')||today(),investedINR:inrInv,pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
     logT('BUY','US EQ',name,ticker,qty,price*S.usdInr,'');
   }else if(cls==='CRYPTO'){
     const coin=gv('m-name'),coinId=gv('m-ticker'),qty=gn('m-qty'),price=gn('m-price');
@@ -11335,8 +11802,8 @@ function submitAdd(cls){
 function submitEdit(cls,id){
   const map={INDEQ:'indEQ',USEQ:'usEQ',CRYPTO:'crypto',FD:'fd'};
   const arr=S[map[cls]],idx=arr.findIndex(x=>x.id===id);if(idx<0)return;
-  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
-  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null});
+  if(cls==='INDEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),broker:gv('m-broker'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
+  else if(cls==='USEQ') Object.assign(arr[idx],{name:gv('m-name'),ticker:gv('m-ticker'),sector:gv('m-sector'),qty:gn('m-qty'),avgCost:gn('m-price'),ltp:gn('m-ltp'),investedINR:gn('m-inrinv')||arr[idx].investedINR,buyDate:gv('m-date'),pe:gn('m-pe')||null,pb:gn('m-pb')||null,dy:gn('m-dy')||null,mcap:gn('m-mcap')||null,div:gn('m-div')||null,target:gn('m-target')||null,stop:gn('m-stop')||null});
   else if(cls==='CRYPTO') Object.assign(arr[idx],{coin:gv('m-name'),coinId:gv('m-ticker'),exchange:gv('m-broker'),qty:gn('m-qty'),buyPrice:gn('m-price'),price:gn('m-ltp'),invested:gn('m-qty')*gn('m-price')});
   /* FD edit handled by submitEditFD() */
   closeModal();save();renderAll();toast('Updated!','ok');
@@ -11922,55 +12389,29 @@ function renderTaxation(){
   const fy=document.getElementById('tax-fy')?.value||'2024-25';
   const [fyStart,fyEnd]=fyBounds(fy);
 
-  // ── REALISED GAINS ONLY from sell transactions in selected FY ──
-  const allSells=S.txns.filter(t=>t.type==='SELL'&&new Date(t.date)>=fyStart&&new Date(t.date)<=fyEnd);
-  const eqSells=allSells.filter(t=>t.cls==='India EQ'||t.cls==='US EQ'||t.cls==='MF');
-  const cryptoSells=allSells.filter(t=>t.cls==='Crypto');
+  // ── REALISED GAINS from sell transactions, matched FIFO against buy lots ──
+  // Lots are matched across the whole transaction history (not just this FY),
+  // because the buy that funds a sale is usually in an earlier year.
+  const _fifo = fifoMatchSells(S.txns||[]);
+  const _inFY = r => { const d=new Date(r.date); return d>=fyStart && d<=fyEnd; };
+  const _isEq = r => r.cls==='India EQ'||r.cls==='US EQ'||r.cls==='MF';
+  const eqRows     = _fifo.matched.filter(r => _inFY(r) && _isEq(r));
+  const cryptoRows = _fifo.matched.filter(r => _inFY(r) && r.cls==='Crypto');
+  const unmatched  = _fifo.unmatched.filter(_inFY);
 
-  // ── Match sells to buys using FIFO for each asset ──
-  function computeGain(sell){
-    // Find buys in chronological order (FIFO)
-    const buys=S.txns.filter(b=>b.type==='BUY'&&b.name===sell.name)
-      .sort((a,b)=>new Date(a.date)-new Date(b.date));
-    if(buys.length){
-      // Use weighted average cost (avg cost of all buys before sell date)
-      const relevantBuys=buys.filter(b=>new Date(b.date)<=new Date(sell.date));
-      const totalBuyQty=relevantBuys.reduce((a,b)=>a+b.qty,0);
-      const totalBuyCost=relevantBuys.reduce((a,b)=>a+b.qty*b.price,0);
-      const avgCost=totalBuyQty>0?totalBuyCost/totalBuyQty:sell.price*0.7;
-      const oldestBuy=relevantBuys[0];
-      const buyDate=oldestBuy?new Date(oldestBuy.date):new Date(new Date(sell.date).setFullYear(new Date(sell.date).getFullYear()-2));
-      const holdingDays=Math.round((new Date(sell.date)-buyDate)/864e5);
-      return{buyPrice:avgCost,buyDate:buyDate.toISOString().split('T')[0],holdingDays,gain:(sell.price-avgCost)*sell.qty};
-    }
-    // Fallback: lookup current holding avgCost
-    const holding=S.indEQ.find(h=>h.name===sell.name)||S.usEQ.find(h=>h.name===sell.name);
-    const avgCost=holding?holding.avgCost:sell.price*0.7;
-    const holdingDays=730; // assume 2yr
-    return{buyPrice:avgCost,buyDate:new Date(new Date(sell.date).setFullYear(new Date(sell.date).getFullYear()-2)).toISOString().split('T')[0],holdingDays,gain:(sell.price-avgCost)*sell.qty};
-  }
+  const allSells=(S.txns||[]).filter(t=>t.type==='SELL'&&new Date(t.date)>=fyStart&&new Date(t.date)<=fyEnd);
 
-  let ltcgRows=[],stcgRows=[];
-  eqSells.forEach(t=>{
-    const g=computeGain(t);
-    const isLTCG=g.holdingDays>365;
-    const row={...t,...g,isLTCG};
-    if(isLTCG) ltcgRows.push(row); else stcgRows.push(row);
-  });
+  const _eqTax = computeEquityTax(eqRows);
+  const ltcgRows=_eqTax.ltcgRows, stcgRows=_eqTax.stcgRows;
 
-  const ltcgTotal=ltcgRows.reduce((a,r)=>a+r.gain,0);
-  const stcgTotal=stcgRows.reduce((a,r)=>a+r.gain,0);
-  const ltcgTaxable=Math.max(0,ltcgTotal-125000);
-  const ltcgTax=ltcgTaxable*0.10;
-  const stcgTaxable=Math.max(0,stcgTotal);
-  const stcgTax=stcgTaxable*0.20;
+  const ltcgTotal=_eqTax.ltcgTotal, stcgTotal=_eqTax.stcgTotal;
+  const ltcgTaxable=_eqTax.ltcgTaxable, stcgTaxable=_eqTax.stcgTaxable;
+  const ltcgTax=_eqTax.ltcgTax, stcgTax=_eqTax.stcgTax;
+  const _ltcgRatePct=_eqTax.ltcgRatePct, _stcgRatePct=_eqTax.stcgRatePct;
 
-  // ── Realised Crypto Gains ──
-  let cryptoRealisedGain=0, cryptoTax=0;
-  cryptoSells.forEach(t=>{
-    const g=computeGain(t);
-    if(g.gain>0){ cryptoRealisedGain+=g.gain; cryptoTax+=g.gain*0.30; }
-  });
+  // ── Realised Crypto Gains (VDA: 30%, losses cannot be set off) ──
+  const _vda=computeVdaTax(cryptoRows);
+  const cryptoRealisedGain=_vda.gain, cryptoTax=_vda.tax;
 
   // ── FD Interest ──
   let fdInterest=0;
@@ -12002,22 +12443,22 @@ function renderTaxation(){
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Realised LTCG</div><div class="tax-sum-box-val" style="color:${ltcgTotal>=0?'var(--G)':'var(--R)'}">${F.inr(ltcgTotal)}</div><div class="tax-sum-box-sub">From actual sells</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Exempt Limit</div><div class="tax-sum-box-val">₹1,25,000</div><div class="tax-sum-box-sub">Budget 2024</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Taxable LTCG</div><div class="tax-sum-box-val">${F.inr(ltcgTaxable)}</div><div class="tax-sum-box-sub">After exemption</div></div>
-      <div class="tax-sum-box" style="${ltcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">LTCG Tax @10%</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div></div>
+      <div class="tax-sum-box" style="${ltcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">LTCG Tax @${_ltcgRatePct}%</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div></div>
     </div>
     <div class="ts"><table style="min-width:640px"><thead><tr><th>Sell Date</th><th>Asset</th><th>Class</th><th class="r">Avg Buy Price</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Realised Gain</th><th class="r">Holding Period</th><th>Category</th></tr></thead><tbody>${renderGainRows(ltcgRows)}</tbody></table></div>`;
 
   document.getElementById('stcg-panel').innerHTML=`
     <div class="tax-sum-grid">
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Realised STCG</div><div class="tax-sum-box-val" style="color:${stcgTotal>=0?'var(--G)':'var(--R)'}">${F.inr(stcgTotal)}</div><div class="tax-sum-box-sub">From actual sells</div></div>
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Tax Rate</div><div class="tax-sum-box-val">20%</div><div class="tax-sum-box-sub">Budget 2024 rate</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">Tax Rate</div><div class="tax-sum-box-val">${_stcgRatePct}%</div><div class="tax-sum-box-sub">Budget 2024 rate</div></div>
       <div class="tax-sum-box" style="${stcgTax>0?'background:var(--RL);border-color:#E57373':''}"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div></div>
     </div>
     <div class="ts"><table style="min-width:640px"><thead><tr><th>Sell Date</th><th>Asset</th><th>Class</th><th class="r">Avg Buy Price</th><th class="r">Sell Price</th><th class="r">Qty</th><th class="r">Realised Gain</th><th class="r">Holding Period</th><th>Category</th></tr></thead><tbody>${renderGainRows(stcgRows)}</tbody></table></div>`;
 
   document.getElementById('tax-summary-panel').innerHTML=`
     <div class="tax-sum-grid">
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">LTCG Tax</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div><div class="tax-sum-box-sub">Equity @10% above ₹1.25L</div></div>
-      <div class="tax-sum-box"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div><div class="tax-sum-box-sub">Equity @20%</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">LTCG Tax</div><div class="tax-sum-box-val" style="color:${ltcgTax>0?'var(--R)':'var(--G)'}">${F.inr(ltcgTax)}</div><div class="tax-sum-box-sub">Equity @${_ltcgRatePct}% above ₹1.25L</div></div>
+      <div class="tax-sum-box"><div class="tax-sum-box-lbl">STCG Tax</div><div class="tax-sum-box-val" style="color:${stcgTax>0?'var(--R)':'var(--G)'}">${F.inr(stcgTax)}</div><div class="tax-sum-box-sub">Equity @${_stcgRatePct}%</div></div>
       <div class="tax-sum-box"><div class="tax-sum-box-lbl">Crypto Tax @30%</div><div class="tax-sum-box-val" style="color:${cryptoTax>0?'var(--R)':'var(--G)'}">${F.inr(cryptoTax)}</div><div class="tax-sum-box-sub">Realised gains only</div></div>
       <div class="tax-sum-box" style="${totalTax>0?'background:var(--RL);border-color:#E57373':''}">
         <div class="tax-sum-box-lbl" style="${totalTax>0?'color:var(--R)':''}">Total Tax Liability</div>
@@ -12025,8 +12466,13 @@ function renderTaxation(){
         <div class="tax-sum-box-sub">${F.inr(totalTax*1.04)} incl. 4% cess</div>
       </div>
     </div>
+    ${unmatched.length ? `<div style="font-size:12px;color:var(--T1);margin-top:8px;padding:11px 14px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
+      ⚠️ <strong>${unmatched.length} sale${unmatched.length===1?'':'s'} could not be matched to a purchase</strong> and ${unmatched.length===1?'is':'are'} <strong>excluded</strong> from the figures above - the cost basis and holding period are unknown, and guessing them would misstate your tax.
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date} — <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">Add the matching <b>BUY</b> in the Transactions tab and this recomputes automatically.</div>
+    </div>` : ''}
     <div style="font-size:11.5px;color:var(--T2);margin-top:8px;padding:10px 14px;background:var(--GL);border-radius:var(--r3);border-left:3px solid var(--G)">
-      ✅ <strong>Realised gains only</strong> - This computation is based on actual SELL transactions recorded. Unrealised holdings are excluded. Consult a CA for final ITR filing.
+      ✅ <strong>Realised gains only</strong> - computed by matching each sale FIFO against your recorded buy lots, so a single sale can split across STCG and LTCG. Unrealised holdings are excluded. Consult a CA for final ITR filing.
     </div>`;
 
   document.getElementById('tax-txn-body').innerHTML=allSells.length?allSells.map(t=>`<tr>
@@ -12311,7 +12757,7 @@ function loadGSheetUrl(){
 }
 
 /* ══ SAVE ══ */
-function save(){saveLocal();if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
+function save(){saveLocal();try{ghRecordToday();}catch(e){}if(GD.connected){clearTimeout(GD._autoSyncTimer);GD._autoSyncTimer=setTimeout(()=>GD.sync(),3000);}}
 
 /* ══ TOAST ══ */
 function toast(msg,type='ok'){
@@ -12915,7 +13361,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -12954,7 +13400,8 @@ document.getElementById('usd-badge').title='Click to update USD/INR rate';
 
 /* ══ INIT ══ */
 loadLocal();
-try { _pbkRecover(); } catch(e){}   // async: restores from the IDB mirror if localStorage came up empty
+try { _pbkRecover(); } catch(e){}     // async: restores from the IDB mirror if localStorage came up empty
+try { ghRecordToday(); } catch(e){}   // one portfolio-value point per day
 const _now=new Date();
 document.getElementById('hdr-date').textContent=_now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 document.title='MiyeeStock Buddy';
