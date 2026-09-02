@@ -1213,6 +1213,61 @@ group('plain-English labels');
   ok('Simple mode keeps the bare token for its logic', /v==='HOLD'\?' if it triggers'/.test(SRC), 'logic token broken');
 }
 
+// ── Crypto symbol resolution ───────────────────────────────────────────────
+group('crypto symbols');
+{
+  const src = slice('const COIN_TICKERS = {', '\n// Full market symbol', 'coin');
+  const src2 = slice('function cryptoMarketSymbol(h, cur, db){', '\n}', 'coinsym') + '\n}';
+  const { cryptoTicker, cryptoMarketSymbol } =
+    load(src + '\n' + src2, ['cryptoTicker','cryptoMarketSymbol'], { String, Array });
+
+  const DB = [
+    ['Bitcoin','BTC-USD','BTC-USD','L1'], ['Ethereum','ETH-USD','ETH-USD','L1'],
+    ['XRP (Ripple)','XRP-USD','XRP-USD','Payments'], ['Solana','SOL-USD','SOL-USD','L1'],
+  ];
+
+  // The exact bug: upper-casing the id produced symbols that do not exist.
+  eq('bitcoin -> BTC, not BITCOIN', cryptoTicker({coinId:'bitcoin'}, DB), 'BTC');
+  eq('ethereum -> ETH', cryptoTicker({coinId:'ethereum'}, DB), 'ETH');
+  eq('solana -> SOL', cryptoTicker({coinId:'solana'}, DB), 'SOL');
+  // Ripple is the case truncation could never fix: id "ripple", ticker "XRP".
+  eq('ripple -> XRP (not a prefix of the id)', cryptoTicker({coinId:'ripple'}, DB), 'XRP');
+
+  eq('full market symbol is built for the currency', cryptoMarketSymbol({coinId:'bitcoin'}, 'INR', DB), 'BTC-INR');
+  eq('USD pair works too', cryptoMarketSymbol({coinId:'ripple'}, 'USD', DB), 'XRP-USD');
+
+  // Name lookup via the app's own coin list, including the parenthetical alias.
+  eq('resolves by display name', cryptoTicker({coin:'Solana'}, DB), 'SOL');
+  eq('resolves by the alias in brackets', cryptoTicker({coin:'Ripple'}, DB), 'XRP');
+  eq('resolves the bracketed full name', cryptoTicker({coin:'XRP (Ripple)'}, DB), 'XRP');
+
+  // An explicit ticker from the user wins.
+  eq('an explicit ticker is trusted', cryptoTicker({coinId:'bitcoin', ticker:'BTC'}, DB), 'BTC');
+  eq('and is stripped of any pair suffix', cryptoTicker({ticker:'ETH-USD'}, DB), 'ETH');
+
+  // A bare ticker typed into the id field still resolves.
+  eq('a ticker-shaped id resolves', cryptoTicker({coinId:'BTC'}, DB), 'BTC');
+
+  // Unknown coins must return null, NOT a fabricated symbol - fetching a
+  // made-up ticker is what made the old failure silent.
+  eq('an unknown long id is unresolvable', cryptoTicker({coinId:'somenewcoin'}, DB), null);
+  eq('and yields no market symbol', cryptoMarketSymbol({coinId:'somenewcoin'}, 'INR', DB), null);
+  eq('empty holding is unresolvable', cryptoTicker({}, DB), null);
+  eq('null holding is safe', cryptoTicker(null, DB), null);
+  eq('missing db is safe', cryptoTicker({coin:'Solana'}, null), null);
+
+  // ── wiring ──
+  ok('refresh no longer upper-cases the coin id',
+     !/coinId\.toUpperCase\(\)\+'-INR'/.test(SRC), 'old broken symbol build remains');
+  ok('refresh uses the resolver', /cryptoMarketSymbol\(h, 'INR'/.test(SRC), 'resolver not wired');
+  ok('unresolvable coins are reported, not silently skipped',
+     /had no recognised ticker/.test(SRC), 'no report of unresolved coins');
+  ok('a USD pair is tried when the INR pair has no price',
+     /replace\(\/-INR\$\/, '-USD'\)/.test(SRC), 'no USD fallback');
+  ok('single-row refresh uses the resolver too',
+     /No recognised ticker for/.test(SRC), 'single refresh still naive');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
