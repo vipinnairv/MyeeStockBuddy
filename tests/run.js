@@ -1268,6 +1268,85 @@ group('crypto symbols');
      /No recognised ticker for/.test(SRC), 'single refresh still naive');
 }
 
+// ── Attribution & tax-loss harvesting ──────────────────────────────────────
+group('attribution & harvesting');
+{
+  const src = slice('function _atContribution(lots){', '\n// ── Glue + rendering', 'attr');
+  const { _atContribution, _atHarvest } = load(src, ['_atContribution','_atHarvest'], { Array, Math, isFinite, Number });
+  const L = (name,invested,current,dividend) => ({ name, cls:'India EQ', invested, current, dividend });
+
+  // ── contribution ──
+  {
+    const a = _atContribution([L('Win',100000,160000,0), L('Flat',100000,100000,0), L('Lose',100000,80000,0)]);
+    eq('total P&L nets winners against losers', a.totalPL, 40000);   // +60k -20k
+    eq('return is against total invested', +a.totalRetPct.toFixed(4), +(40000/300000*100).toFixed(4));
+    eq('winners counted', a.winners.length, 1);
+    eq('losers counted', a.losers.length, 1);
+    eq('sorted by rupee contribution', a.rows[0].name, 'Win');
+    eq('the loser sorts last', a.rows[a.rows.length-1].name, 'Lose');
+    eq('shares sum to 100%', +a.rows.reduce((s,r)=>s+(r.sharePct||0),0).toFixed(6), 100);
+  }
+  {
+    // Dividends are part of what a holding contributed.
+    const noDiv = _atContribution([L('A',100000,100000,0)]);
+    const wDiv  = _atContribution([L('A',100000,100000,5000)]);
+    eq('a flat holding with no dividend contributed nothing', noDiv.totalPL, 0);
+    eq('dividends count as contribution', wDiv.totalPL, 5000);
+  }
+  {
+    // When winners and losers cancel, "share of total" is meaningless - we must
+    // not print +infinity% or a wild number.
+    const a = _atContribution([L('Up',100000,150000,0), L('Down',100000,50000,0)]);
+    eq('offsetting book nets to zero', a.totalPL, 0);
+    ok('shares are suppressed, not fabricated', a.shareMeaningful === false, 'claimed a share anyway');
+    ok('and every row reports null', a.rows.every(r => r.sharePct === null), 'a share slipped through');
+  }
+  eq('unpriceable lots are excluded', _atContribution([L('X',0,100,0), L('Y',100000,120000,0)]).rows.length, 1);
+  eq('an empty book yields null', _atContribution([]), null);
+
+  // ── harvesting ──
+  {
+    // 3 lakh LTCG booked; exemption absorbs 1.25L, leaving 1.75L to offset.
+    const h = _atHarvest([L('Down1',100000,60000,0), L('Down2',100000,90000,0), L('Up',100000,140000,0)], 300000, 0);
+    eq('only holdings under water are candidates', h.candidates.length, 2);
+    eq('largest loss first', h.candidates[0].name, 'Down1');
+    eq('total unrealised loss', h.totalLoss, 50000);          // 40k + 10k
+    eq('exemption fully used', h.exemptionUsed, 125000);
+    eq('nothing left of the exemption', h.exemptionLeft, 0);
+    eq('offsettable gain is net of the exemption', h.offsettable, 175000);
+    eq('all the loss is useful here', h.usefulLoss, 50000);
+  }
+  {
+    // Gains below the exemption: nothing to offset, so booking a loss achieves
+    // nothing this year and must not be recommended.
+    const h = _atHarvest([L('Down',100000,50000,0)], 100000, 0);
+    eq('exemption not exhausted', h.exemptionLeft, 25000);
+    eq('no offsettable gain', h.offsettable, 0);
+    eq('so no loss is worth booking', h.usefulLoss, 0);
+  }
+  {
+    // Loss larger than the gains: useful amount is capped at the gains.
+    const h = _atHarvest([L('Down',1000000,100000,0)], 200000, 0);
+    eq('useful loss is capped at offsettable gains', h.usefulLoss, 75000); // 200k-125k
+    ok('but the full loss is still reported', h.totalLoss === 900000, String(h.totalLoss));
+  }
+  {
+    // Short-term gains have no exemption - they are offsettable in full.
+    const h = _atHarvest([L('Down',100000,40000,0)], 0, 90000);
+    eq('STCG is offsettable without exemption', h.offsettable, 90000);
+    eq('exemption untouched by STCG', h.exemptionLeft, 125000);
+  }
+  eq('a book with no losses has no candidates', _atHarvest([L('Up',100,200,0)], 500000, 0).candidates.length, 0);
+  eq('empty book is safe', _atHarvest([], 0, 0).totalLoss, 0);
+
+  // ── wiring ──
+  ok('both cards render on the analysis tab', /renderAttribution\(\);renderHarvest\(\)/.test(SRC), 'not wired');
+  ok('harvesting reuses the FIFO matcher for realised gains',
+     /_atRealisedThisFY[\s\S]{0,400}fifoMatchSells/.test(SRC), 'duplicate realised-gain logic');
+  ok('the panel says the losses are unrealised', /nothing is booked until you actually sell/.test(SRC), 'overclaims');
+  ok('and warns booking has real costs', /spread, brokerage/.test(SRC), 'no cost caveat');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

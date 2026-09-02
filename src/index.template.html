@@ -2450,6 +2450,14 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     <div class="ch"><span class="ct">📈 Portfolio Growth</span><span style="font-size:10.5px;color:var(--T3)">recorded daily on this device</span></div>
     <div class="cb" id="ana-growth"></div>
   </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
+    <div class="ch"><span class="ct">🎖 What Drove Your Return</span><span style="font-size:10.5px;color:var(--T3)">contribution by holding</span></div>
+    <div class="cb" id="ana-attribution"></div>
+  </div>
+  <div class="card" style="margin-bottom:18px;border-top:3px solid #D93025">
+    <div class="ch"><span class="ct">🌾 Tax-Loss Harvesting</span><span style="font-size:10.5px;color:var(--T3)">unrealised losses vs booked gains</span></div>
+    <div class="cb" id="ana-harvest"></div>
+  </div>
   <div class="chart-row">
     <div class="card">
       <div class="ch"><span class="ct">💰 Consolidated Valuation</span><span style="font-size:10.5px;color:var(--T3)">value-weighted</span></div>
@@ -9825,6 +9833,7 @@ function loadLocal(){
 // @include js/growth-history.js
 // @include js/alerts.js
 // @include js/crypto-symbols.js
+// @include js/attribution.js
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
   if (!inv || inv <= 0 || !cur || cur <= 0) return 0;
@@ -12453,7 +12462,7 @@ async function runPortfolioAI() {
 }
 
 /* ══ NAV ROUTING ══ */
-const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
+const RENDERERS={dashboard:renderDashboard,india:renderIndia,us:()=>filterTable('us'),crypto:()=>filterTable('cry'),fd:renderFD,mf:renderMF,taxation:renderTaxation,analysis:()=>{renderAnalysis();renderXRay();renderIncome();renderBenchmark();renderGrowth();renderAttribution();renderHarvest();},reports:renderReports,transactions:()=>filterTable('txn'),ltp:renderLTP,datamgmt:renderDataMgmt,sync:()=>{if(S.gClientId)document.getElementById('gd-clientid').value=S.gClientId;GD.updateUI();}};
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
