@@ -331,9 +331,28 @@ canvas{max-width:100%;}
 .api-key-input:focus{outline:none;border-color:var(--purple);}
 
 /* ===== DISCLAIMER OVERLAY ===== */
-#disclaimer-overlay{position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;}
+#disclaimer-overlay{position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;overscroll-behavior:contain;padding:20px;}
 #disclaimer-overlay.hidden{display:none;}
-.disc-card{background:#111827;border:1px solid #1e293b;border-radius:20px;max-width:680px;width:100%;padding:40px 36px;box-shadow:0 24px 64px rgba(0,0,0,.7);position:relative;}
+.disc-card{background:#111827;border:1px solid #1e293b;border-radius:20px;max-width:680px;width:100%;padding:40px 36px;box-shadow:0 24px 64px rgba(0,0,0,.7);position:relative;margin:auto;}
+/* Short viewports (laptops, landscape phones): compact the card so the accept
+   button stays reachable without hunting for a scrollbar. */
+@media (max-height:800px){
+  .disc-card{padding:22px 24px;border-radius:14px;}
+  .disc-icon{font-size:38px;margin-bottom:6px;animation:none;}
+  .disc-title{font-size:clamp(20px,4vw,28px);}
+  .disc-sub{font-size:12.5px;margin-bottom:14px;}
+  .disc-quote{padding:12px 16px;margin-bottom:14px;}
+  .disc-quote p{font-size:13.5px;line-height:1.45;}
+  .disc-box{padding:14px 16px;margin-bottom:16px;}
+  .disc-box ul{gap:7px;}
+  .disc-box ul li{font-size:12.5px;line-height:1.4;}
+  .disc-checkbox-row{margin-bottom:14px;}
+  .disc-btn-accept,.disc-btn-decline{padding:11px 22px;font-size:13px;}
+}
+@media (max-height:620px){
+  .disc-icon{display:none;}
+  .disc-quote{display:none;}
+}
 .disc-icon{font-size:64px;text-align:center;margin-bottom:12px;animation:pulse 2s infinite;}
 .disc-title{font-family:'Calibri',serif;font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
 .disc-sub{color:#94a3b8;font-size:14px;text-align:center;margin-bottom:28px;}

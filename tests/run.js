@@ -838,6 +838,23 @@ group('launch chooser');
      'skip preference not toggled both ways');
 }
 
+// ── Disclaimer overlay fits the viewport ───────────────────────────────────
+group('disclaimer overlay layout');
+{
+  // align-items:center on a scrollable flex container clips the TOP of an
+  // over-tall child, and overflow-y cannot scroll back up to reach it. The fix
+  // is flex-start plus margin:auto on the card.
+  const ov = /#disclaimer-overlay\{[^}]*\}/.exec(SRC);
+  ok('overlay rule found', !!ov, 'rule missing');
+  ok('overlay does not centre with align-items', !/#disclaimer-overlay\{[^}]*align-items:center/.test(SRC),
+     'align-items:center still clips the top');
+  ok('overlay aligns to flex-start', /#disclaimer-overlay\{[^}]*align-items:flex-start/.test(SRC), 'not flex-start');
+  ok('overlay can still scroll', /#disclaimer-overlay\{[^}]*overflow-y:auto/.test(SRC), 'not scrollable');
+  ok('card centres itself with auto margins', /\.disc-card\{[^}]*margin:auto/.test(SRC), 'no margin:auto');
+  ok('short viewports get a compact card', /@media \(max-height:800px\)/.test(SRC), 'no short-viewport rule');
+  ok('very short viewports drop the decorative blocks', /@media \(max-height:620px\)/.test(SRC), 'no very-short rule');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
