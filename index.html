@@ -7655,13 +7655,13 @@ async function runAnalysis() {
               const near = _trending ? (_dir === 'down' ? 'Downtrend In Force' : 'Uptrend In Force')
                          : pos >= 66 ? 'Near Resistance' : pos <= 34 ? 'Near Support' : 'Mid-Range';
               chartPatterns = [{
-                pattern: _trending ? (_dir === 'down' ? 'Downtrend' : 'Uptrend') : 'Trading Range',
+                pattern: _trending ? (_dir === 'down' ? 'Downtrend' : 'Uptrend') : 'Sideways Range',
                 signal:near, bias: _trending ? (_dir === 'down' ? 'bearish' : 'bullish') : 'neutral',
                 stage:'anticipatory',
                 timeframe:'1 day', confidence:42, _developing:true, symbol:_sym, triggerTs:(_bars.length?_bars[_bars.length-1].time:Math.floor(Date.now()/1000)),
                 narrative: _trending
                   ? `${_sym} has no completed breakout pattern - it is in a ${_dir}trend, ${Math.abs(_driftPct).toFixed(0)}% ${_dir} over the last ${d.length} bars. The ${CUR()}${lo.toFixed(2)}-${CUR()}${hi.toFixed(2)} band below is where it has recently traded, not a range it is holding. In a trend this strong, ${_dir === 'down' ? 'bounces tend to be sold - wait for the downtrend to actually break before treating support as a floor' : 'dips tend to be bought, but chasing an extended move carries the worst risk:reward'}.`
-                  : `${_sym} has no active breakout pattern - it is ranging between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
+                  : `${_sym} has no active breakout pattern - it is moving sideways between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
                 levels:{ resistance:+hi.toFixed(2), support:+lo.toFixed(2), close:+price.toFixed(2), position:+pos.toFixed(0) },
                 indicators:[], components:{ touches:piv.highs.length+piv.lows.length, geometryFit:0.6 },
                 graphics:{ lines:[
@@ -7859,6 +7859,7 @@ function renderDVMBadges(){
 const GLOSSARY = {
   rsi:{n:'RSI (Relative Strength Index)',d:'A 0–100 meter of how hard price has been pushed recently.',w:'It tells you whether a move is <b>stretched</b>. It does not tell you direction on its own.',r:'Above 70 = overbought (rallies often pause). Below 30 = oversold (falls often bounce). 45–55 = no one in control.'},
   macd:{n:'MACD',d:'Compares a fast and a slow average of price to spot momentum turning.',w:'A <b>crossover</b> is an early hint that buyers or sellers are taking over — early, so it misfires often alone.',r:'Trust a crossover far more when the wider trend agrees with it.'},
+  sideways:{n:'Sideways (No Trend)',d:'The stock is drifting up and down inside a range instead of heading clearly up or down.',w:'It is the market saying <b>nobody is in control</b>. Trend-following signals misfire most here, which is why the app holds its call rather than guessing.',r:'Measured by ADX below 20. Wait for a decisive close beyond the range, or for ADX above 25, before treating a signal as real.'},
   adx:{n:'ADX (Trend Strength)',d:'Measures how strong a trend is — not which way it points.',w:'It is the single best filter for <b>when to ignore other signals</b>. In a flat market most indicators misfire.',r:'Below 20 = no trend, signals unreliable. Above 25 = real trend. Above 40 = very strong.'},
   atr:{n:'ATR (Average True Range)',d:'How much the stock typically moves in a single day, in rupees or dollars.',w:'It sizes your <b>stop loss</b>. A stop tighter than one ATR gets hit by ordinary noise.',r:'Stops are commonly placed 1.5–3× ATR away from entry.'},
   supertrend:{n:'Supertrend',d:'A trailing line that sits below price in an uptrend and above it in a downtrend.',w:'A simple, visual <b>trend-following</b> line — it flips side when the trend changes.',r:'Price above the line favours the upside; a close through it is the usual signal to flip.'},
@@ -7905,7 +7906,7 @@ const _G_PATTERNS=[
   ['Support','support'],['Breakout','breakout'],['Gartley','gartley'],['RSI','rsi'],['MACD','macd'],['ADX','adx'],
   ['ATR','atr'],['MFI','mfi'],['CCI','cci'],['OBV','obv'],['VCP','vcp'],['XIRR','xirr'],['CAGR','cagr'],
   ['NAV','nav'],['DVM','dvm'],['PEG','peg'],['ROE','roe'],['EMA','ema'],['Beta','beta'],
-  ['P/E','pe'],['P/B','pb'],
+  ['P/E','pe'],['P/B','pb'],['Sideways(?: Range)?','sideways'],
 ];
 const _G_RE=new RegExp('\\b(?:'+_G_PATTERNS.map(p=>p[0]).join('|')+')(?![\\w-])','g');
 function _gKeyFor(txt){
@@ -8027,6 +8028,9 @@ function renderSimpleView(){
   if(!el||!analysisResult) return;
   const ar=analysisResult, s=ar.signals, price=ar.currentPrice;
   const L=s.long||{}, v=s.isChop?'HOLD':s.verdict;
+  // v stays the bare token so the comparisons below keep working; vLabel is
+  // what the user reads, and names the sideways condition rather than hiding it.
+  const vLabel=s.isChop?'HOLD (Sideways)':v;
   const conf=L.confidence!=null?L.confidence:0;
   const col=v==='BUY'?'var(--green)':v==='SELL'?'var(--red)':'var(--accent)';
   const confWord=conf>=60?'High':conf>=30?'Moderate':'Low';
@@ -8056,7 +8060,7 @@ function renderSimpleView(){
   // ── Honest conflict / low-trust warning ──
   const total=s.bullCount+s.bearCount, split=Math.abs(s.bullCount-s.bearCount);
   let warn='';
-  if(s.isChop) warn=`<div class="sv-warn"><b>⚠ Low-trust setup.</b> ADX is ${s.adxV}, meaning the stock is moving sideways with no trend. This is where technical signals are least reliable, so the call is held at HOLD no matter what the individual indicators say. Waiting is a position.</div>`;
+  if(s.isChop) warn=`<div class="sv-warn"><b>⚠ Low-trust setup.</b> This stock is <b>moving sideways</b> - drifting with no clear up or down trend (ADX ${s.adxV}). This is where technical signals are least reliable, so the call is held at HOLD no matter what the individual indicators say. Waiting is a position.</div>`;
   else if(total&&split<=1) warn=`<div class="sv-warn"><b>⚠ The indicators disagree.</b> ${s.bullCount} point up and ${s.bearCount} point down — that is close to a coin flip, not a setup. A near-even split is a reason to wait, not to take a smaller position.</div>`;
   else if(conf<30) warn=`<div class="sv-warn"><b>⚠ Low confidence.</b> The evidence is thin here. Treat this as one input, not a decision.</div>`;
 
@@ -8072,7 +8076,7 @@ function renderSimpleView(){
   el.innerHTML=`
     <div class="sv-card">
       <div class="sv-head">
-        <div><div class="sv-call" style="color:${col}">${v}</div><div class="sv-conf">${confWord} confidence · ${conf}%</div></div>
+        <div><div class="sv-call" style="color:${col}">${vLabel}</div><div class="sv-conf">${confWord} confidence · ${conf}%</div></div>
         <div style="flex:1;min-width:200px;font-size:14px;color:var(--text2);line-height:1.5">${plain} for <b>${ar.company}</b> at <b>${CUR()}${fmtNum(price)}</b>.</div>
       </div>
       ${warn}
@@ -8133,7 +8137,7 @@ function renderResults() {
     { label:'Current Price',   value:`${CUR()}${fmtNum(currentPrice)}`, sub:(priceChg>=0?'▲ ':'▼ ')+`${CUR()}${Math.abs(priceChg).toFixed(2)} (${pricePct}%)`, cls:priceChg>=0?'up':'down', color:priceChg>=0?'var(--green)':'var(--red)' },
     { label:'RSI (14)',        value:signals.rsiV?.toFixed(1)||'--', sub:signals.rsiV<30?'⚡ Oversold':signals.rsiV>70?'🔥 Overbought':'- Neutral', cls:signals.rsiV<30?'up':signals.rsiV>70?'down':'neutral', color:'var(--blue)' },
     { label:'Stoch %K / %D',  value:`${signals.stochK} / ${signals.stochD}`, sub:signals.stochCrossUp?'🟢 Bull Cross':signals.stochCrossDown?'🔴 Bear Cross':parseFloat(signals.stochK)<20?'Oversold':parseFloat(signals.stochK)>80?'Overbought':'Neutral', cls:parseFloat(signals.stochK)<20?'up':parseFloat(signals.stochK)>80?'down':'neutral', color:'var(--cyan)' },
-    { label:'ADX',             value:signals.adxV||'--', sub:parseFloat(signals.adxV)>40?'💪 Strong':parseFloat(signals.adxV)>25?'📈 Trending':'〰 Ranging', cls:parseFloat(signals.adxV)>25?'up':'neutral', color:'var(--purple)' },
+    { label:'ADX',             value:signals.adxV||'--', sub:parseFloat(signals.adxV)>40?'💪 Strong trend':parseFloat(signals.adxV)>25?'📈 Trending':'〰 Sideways', cls:parseFloat(signals.adxV)>25?'up':'neutral', color:'var(--purple)' },
     { label:'Supertrend',      value:signals.stV===1?'BULLISH ▲':'BEARISH ▼', sub:`Line ${CUR()}${signals.stLine}`, cls:signals.stV===1?'up':'down', color:signals.stV===1?'var(--green)':'var(--red)' },
     { label:'MFI (14)',        value:signals.mfiV||'--', sub:parseFloat(signals.mfiV)<=20?'⚡ Oversold':parseFloat(signals.mfiV)>=80?'🔥 Overbought':'- Neutral', cls:parseFloat(signals.mfiV)<=20?'up':parseFloat(signals.mfiV)>=80?'down':'neutral', color:'var(--accent)' },
     { label:'ATR (14)',        value:`${CUR()}${signals.atrV?.toFixed(0)||'--'}`, sub:`${((signals.atrV/currentPrice)*100).toFixed(1)}% daily range`, cls:'neutral', color:'var(--text3)' },
@@ -8149,11 +8153,11 @@ function renderResults() {
   // VERDICT
   const sc = signals.score;
   const oSig = signals.verdict;
-  const oLabel = signals.isChop ? 'HOLD · CHOP' : oSig;
+  const oLabel = signals.isChop ? 'HOLD (Sideways)' : oSig;
   const oCol = oSig==='BUY'?'rgba(16,185,129,0.12)':oSig==='SELL'?'rgba(239,68,68,0.12)':'rgba(0,106,255,0.12)';
   const oBrd = oSig==='BUY'?'var(--green)':oSig==='SELL'?'var(--red)':'var(--accent)';
   const vDesc = signals.isChop
-    ? `ADX is ${signals.adxV} - the market is ranging (below 20), where trend signals are unreliable. Verdict forced to HOLD and confidence capped regardless of the ${signals.bullCount} bullish / ${signals.bearCount} bearish split. Wait for a directional trend (ADX &gt; 25) before acting.`
+    ? `This stock is moving <b>sideways</b> - drifting without a clear up or down trend (ADX ${signals.adxV}, below 20). Trend signals are unreliable here, so the call is held at HOLD and confidence capped, whatever the ${signals.bullCount} bullish / ${signals.bearCount} bearish split says. Wait for a clear direction (ADX above 25) before acting.`
     : oSig==='BUY'
     ? `${signals.bullCount} of ${signals.bullCount+signals.bearCount} technical indicators are bullish. Price structure and momentum favour buyers. Look to enter on dips near support.`
     : oSig==='SELL'
@@ -8613,7 +8617,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
     ['RSI (14)', s.rsiV?.toFixed?.(1) ?? s.rsiV, s.rsiV<30?'Oversold':s.rsiV>70?'Overbought':'Neutral'],
     ['MACD', s.macdV?.toFixed?.(2), s.macdV>s.sigV?'Bullish':'Bearish'],
     ['Stochastic %K/%D', `${s.stochK}/${s.stochD}`, s.stochCrossUp?'Bull cross':s.stochCrossDown?'Bear cross':'-'],
-    ['ADX', s.adxV, s.isChop?'Ranging (chop)':(+s.adxV>25?'Trending':'Weak')],
+    ['ADX', s.adxV, s.isChop?'Sideways - no clear trend':(+s.adxV>25?'Trending':'Weak trend')],
     ['Supertrend', `${cur}${s.stLine}`, s.stV===1?'Bullish':'Bearish'],
     ['Parabolic SAR', `${cur}${s.sarV}`, s.sarTrend===1?'Bullish':'Bearish'],
     ['MFI (14)', s.mfiV, +s.mfiV<=20?'Oversold':+s.mfiV>=80?'Overbought':'Neutral'],
@@ -8733,13 +8737,13 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
           <span style="font-size:13px;color:${ar.priceChg>=0?'#31a745':'#ff4f55'}">${chg}${(+ar.priceChg).toFixed(2)} (${ar.pricePct}%)</span></div>
       </div>
       <div class="verdict"><div style="font-size:9px;color:#5c6368;text-transform:uppercase">Overall Verdict</div>
-        <div class="big">${s.isChop?'HOLD':V}</div>
-        <div style="font-size:9px;color:#5c6368">${s.isChop?'Ranging / Chop':''} Score ${s.score.toFixed(0)}/100 · ${s.long.confidence}% conf</div></div>
+        <div class="big">${s.isChop?'HOLD (Sideways)':V}</div>
+        <div style="font-size:9px;color:#5c6368">${s.isChop?'Moving sideways · ':''}Score ${s.score.toFixed(0)}/100 · ${s.long.confidence}% conf</div></div>
     </div>
 
     <h2>Signals by Timeframe</h2>
     <table class="tbl"><tr><th>Horizon</th><th>Signal</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Conf</th></tr>${tf}</table>
-    ${s.isChop?`<p class="muted">⚠️ ADX ${s.adxV} - ranging market; trend signals unreliable, verdict clamped to HOLD.</p>`:''}
+    ${s.isChop?`<p class="muted">⚠️ This stock is moving sideways (ADX ${s.adxV}, below 20) - no clear trend, so trend signals are unreliable and the call is held at HOLD.</p>`:''}
 
     ${realitySection}
 
@@ -9966,7 +9970,7 @@ function generateBuiltinAnalysis(ar) {
   const mfiC     = parseFloat(mfiV)<=20?`MFI at ${mfiV} - <b style="color:var(--green)">smart money accumulating (volume + price oversold)</b>.`:parseFloat(mfiV)>=80?`MFI at ${mfiV} - <b style="color:var(--red)">heavy inflow, watch for distribution</b>.`:`MFI at ${mfiV} - ${parseFloat(mfiV)>50?'positive':'negative'} money flow.`;
   const cciC     = parseFloat(cciV)<=-100?`CCI at ${cciV} - <b style="color:var(--green)">oversold cycle, reversal likely</b>.`:parseFloat(cciV)>=100?`CCI at ${cciV} - <b style="color:var(--red)">overbought cycle</b>.`:`CCI at ${cciV} - within normal range.`;
   const macdC    = macdV>sigV?`MACD (${macdV?.toFixed(2)}) above Signal (${sigV?.toFixed(2)}) - <b style="color:var(--green)">positive momentum</b>.`:`MACD (${macdV?.toFixed(2)}) below Signal (${sigV?.toFixed(2)}) - <b style="color:var(--red)">negative momentum</b>.`;
-  const adxC     = parseFloat(adxV)>40?`ADX at ${adxV} - <b>very strong trend</b>. ${parseFloat(pDIV)>parseFloat(mDIV)?'<b style="color:var(--green)">+DI dominates - strong uptrend.</b>':'<b style="color:var(--red)">−DI dominates - strong downtrend.</b>'}`:parseFloat(adxV)>25?`ADX at ${adxV} - trending. ${parseFloat(pDIV)>parseFloat(mDIV)?'<b style="color:var(--green)">Direction: bullish.</b>':'<b style="color:var(--red)">Direction: bearish.</b>'}`:`ADX at ${adxV} - <b style="color:var(--accent)">choppy/ranging market. Trend signals less reliable.</b>`;
+  const adxC     = parseFloat(adxV)>40?`ADX at ${adxV} - <b>very strong trend</b>. ${parseFloat(pDIV)>parseFloat(mDIV)?'<b style="color:var(--green)">+DI dominates - strong uptrend.</b>':'<b style="color:var(--red)">−DI dominates - strong downtrend.</b>'}`:parseFloat(adxV)>25?`ADX at ${adxV} - trending. ${parseFloat(pDIV)>parseFloat(mDIV)?'<b style="color:var(--green)">Direction: bullish.</b>':'<b style="color:var(--red)">Direction: bearish.</b>'}`:`ADX at ${adxV} - <b style="color:var(--accent)">moving sideways, with no clear trend. Trend signals are less reliable here.</b>`;
   const stC      = stV===1?`Supertrend is <b style="color:var(--green)">▲ UPTREND</b> - dynamic stop at ₹${sarV}.`:`Supertrend is <b style="color:var(--red)">▼ DOWNTREND</b> - resistance at ₹${sarV}.`;
   const emaC     = emaCrossUp?'<b style="color:var(--green)">⚡ Fresh EMA9/21 bullish cross - short-term momentum just turned positive.</b>':emaCrossDown?'<b style="color:var(--red)">⚡ Fresh EMA9/21 bearish cross - short-term momentum just turned negative.</b>':emaBull?'EMA9 above EMA21 - <b style="color:var(--green)">short-term bullish.</b>':'EMA9 below EMA21 - <b style="color:var(--red)">short-term bearish.</b>';
   const fibC     = fib?`Key Fibonacci support zones: <b>61.8%</b> = ${CUR()}${fib.f618} (golden ratio) · <b>50%</b> = ${CUR()}${fib.f500} · <b>38.2%</b> = ${CUR()}${fib.f382}. Long-term target via 161.8% extension: ${CUR()}${signals.long.target}.`:'Fibonacci levels unavailable (insufficient data range).';
