@@ -2326,6 +2326,76 @@ group('key ratios');
   ok('and inventory turnover', RT_LENDER_NA.indexOf('invTurnover') >= 0, 'not suppressed');
 
   // ── wiring & honesty ──
+  // ── a share count that fails its own cross-check ──
+  // Cupid Ltd, from the live feed: 134.47 crore shares reported, which at ₹280.46
+  // implies a market value of ~₹37,700 Cr for a company with ₹451 Cr of equity
+  // and ₹351 Cr of revenue. EPS came out 0.79 and P/E 277, while net margin and
+  // ROE were correct to the decimal because they never divide by the share count.
+  {
+    const CUPID = mk({ '2026-03-31': {
+      NetIncome: 1.082333e9, TotalRevenue: 3.509897e9, StockholdersEquity: 4.508058e9,
+      OrdinarySharesNumber: 1.3446607e9, DilutedEPS: 0.79, TotalAssets: 5.532242e9,
+    }});
+    const PRICE = 280.46;
+    {
+      // Feed market cap ~₹757 Cr; price x shares says ₹37,712 Cr. They describe
+      // the same quantity, so one of them is wrong.
+      const r = computeRatios(CUPID, { mktCap: 7.572e9 }, PRICE);
+      // Read through a guard: a regression that stops detecting must fail the
+      // assertion, not throw and take the rest of the group with it.
+      const sc = r.shareCountSuspect || {};
+      ok('the disagreement is detected', !!r.shareCountSuspect, 'not detected');
+      eq('and the factor is recorded', sc.factor == null ? null : Math.round(sc.factor), 50);
+      eq('along with the share count it doubted', sc.shares == null ? null : sc.shares, 1.3446607e9);
+      // The figures that do not divide by the share count must be untouched.
+      eq('net margin is unaffected and correct', fx(r.netMargin, 1), 30.8);
+      eq('ROE is unaffected and correct', fx(r.roe, 1), 24.0);
+    }
+    {
+      // A consistent feed raises no flag.
+      const r = computeRatios(CUPID, { mktCap: PRICE * 1.3446607e9 }, PRICE);
+      ok('a consistent share count is not flagged', !r.shareCountSuspect, JSON.stringify(r.shareCountSuspect));
+    }
+    {
+      // Within the tolerance band: prices move between the two snapshots, so a
+      // modest difference is normal and must not cry wolf.
+      const r = computeRatios(CUPID, { mktCap: PRICE * 1.3446607e9 * 1.4 }, PRICE);
+      ok('a modest difference is tolerated', !r.shareCountSuspect, 'false positive at 1.4x');
+    }
+    {
+      // No market cap to check against: nothing is claimed either way.
+      const r = computeRatios(CUPID, {}, PRICE);
+      ok('with nothing to cross-check, no accusation is made', !r.shareCountSuspect, 'flagged blindly');
+    }
+    {
+      // The rating is withheld on the affected ratios, and only those. The
+      // display half lives past this group's slice, so it is loaded here.
+      const disp = load(slice('const RT_EPS = 1e-9;', '\n// ── UI ──', 'scui'),
+        ['ratiosHtml'], { Math, Object, Array, JSON, isFinite, Number, String, encodeURIComponent,
+          document: { createElement: () => ({}), head: { appendChild(){} } },
+          AbortController, setTimeout, clearTimeout, fetch: async () => { throw new Error('none'); },
+          localStorage: { getItem: () => null, setItem(){}, removeItem(){} } });
+      const html = disp.ratiosHtml(CUPID, { mktCap: 7.572e9, pe: 277.2 }, PRICE);
+      ok('the panel warns before the figures', /per-share figures below are not trustworthy/.test(html), 'no warning');
+      ok('it shows the two market values that disagree', /37,712 Cr/.test(html) && /757 Cr/.test(html), html.slice(0,300));
+      ok('it names which ratios inherit the error', /EPS, P\/E, PEG, P\/B, P\/S and the yields/.test(html), 'not named');
+      ok('and which ones do not', /never touch the share count/.test(html), 'no all-clear');
+      // Over-escaping here made every cell lookup return '', so the three
+      // assertions below passed against an empty string rather than the markup.
+      const cell = k => {
+        const m = html.match(new RegExp('>' + k + '</th>\\s*<td class="(rt-val[^"]*)"'));
+        ok('the ' + k + ' cell was actually found', !!m, 'cell lookup matched nothing');
+        return m ? m[1] : '';
+      };
+      ok('earnings yield loses its rating', !/rt-(good|fair|weak)/.test(cell('Earnings yield')),
+         cell('Earnings yield'));
+      ok('and so does PEG', !/rt-(good|fair|weak)/.test(cell('PEG')), cell('PEG'));
+      ok('but ROE keeps its rating', /rt-(good|fair|weak)/.test(cell('ROE')), cell('ROE'));
+      ok('and net margin keeps its rating', /rt-(good|fair|weak)/.test(cell('Net margin')), cell('Net margin'));
+      ok('and the cells say why', /share count unverified/.test(html), 'no per-cell note');
+    }
+  }
+
   // ── rendered output, not source text ──
   // Asserting that a string appears in the file only proves the string is in
   // the file. These render the panel and read the cell that comes out.
@@ -3051,6 +3121,82 @@ group('report consistency');
     eq('and not a consolidation', trending.consolidating, false);
     const flat = cls(3, 0.2, true);
     eq('a stock that never moved is neither', flat.trending || flat.consolidating, false);
+  }
+}
+
+// ── The Financials panel actually renders ──────────────────────────────────
+// Every other test here checks a function in isolation. This one runs
+// renderStatements end to end against a real fundamentals-timeseries payload,
+// through the app's own fetch and parse path, and reads what lands in the DOM.
+// Nothing else catches a panel that silently produces nothing.
+group('financials panel renders');
+{
+  let JSDOM = null;
+  try { JSDOM = require('jsdom').JSDOM; } catch (e) {}
+  if (!JSDOM) {
+    ok('jsdom present for the render test', false, 'install jsdom (npm install) to run this group');
+  } else {
+    const a = SRC.indexOf('const RT_EPS = 1e-9;');
+    const b = SRC.indexOf('async function renderStatements(){');
+    const m = SRC.slice(b, b + 9000).match(/\n\}\n/);
+    const e = b + (m ? m.index + 3 : 0);
+    ok('the render function was located in the page', a >= 0 && b > a && e > b, 'slice bounds');
+
+    const ts = (type, vals) => ({ meta:{ type:[type] },
+      [type]: vals.map(([d, v]) => ({ asOfDate: d, reportedValue: { raw: v } })) });
+    const payload = { timeseries: { result: [
+      ts('annualTotalRevenue',       [['2025-03-31', 1000], ['2024-03-31', 800]]),
+      ts('annualNetIncome',          [['2025-03-31', 100],  ['2024-03-31', 80]]),
+      ts('annualTotalAssets',        [['2025-03-31', 2000]]),
+      ts('annualStockholdersEquity', [['2025-03-31', 800]]),
+      ts('annualDilutedEPS',         [['2025-03-31', 1.01], ['2024-03-31', 0.9]]),
+    ]}};
+
+    const run = (opts) => {
+      const dom = new JSDOM('<div id="stmt-body"></div>');
+      let dvm = 0, shared = null;
+      const ar = { symbol:'CUPID', market:'NSE', currentPrice: 280.46,
+                   fundamentals: { pe: 277.2, pb: 83.39 } };
+      const mod = load(SRC.slice(a, b) + SRC.slice(b, e), ['renderStatements'], {
+        document: dom.window.document,
+        Math, Object, Array, JSON, isFinite, Number, String, Set, Date, encodeURIComponent,
+        AbortController, setTimeout, clearTimeout, console,
+        analysisResult: ar, marketMode: 'india',
+        _selfProxyUrl: () => (opts.noProxy ? '' : 'https://example.invalid'),
+        insightPayload: () => ({}), insRunBuiltin: () => {},
+        renderDVMBadges: () => { dvm++; shared = ar.ratios; },
+        fetch: async (url) => opts.empty
+          ? ({ ok: true, json: async () => ({}) })
+          : ({ ok: true, json: async () => (/timeseries=/.test(url) ? payload : {}) }),
+      });
+      return mod.renderStatements().then(() => ({
+        html: dom.window.document.getElementById('stmt-body').innerHTML, dvm, shared,
+      }));
+    };
+
+    pending.push(run({}).then(r => {
+      ok('the panel renders something substantial', r.html.length > 5000, r.html.length + ' bytes');
+      ok('the ratio panel is there', /Key Ratios/.test(r.html), r.html.slice(0, 200));
+      ok('the statements are there', /Profit/.test(r.html), 'no P&L');
+      ok('the marker legend is there', /Reading the short forms/.test(r.html), 'no legend');
+      // The regression this guards: a ratio panel that renders but shows nothing.
+      ok('and the ratios carry values, not only markers', /\d+\.\d+%/.test(r.html), 'all markers');
+      // The DVM hand-off added alongside the valuation-badge fix.
+      eq('the valuation badge is redrawn once the ratios exist', r.dvm, 1);
+      ok('and the ratios were shared before that redraw', r.shared && r.shared.netMargin != null,
+         JSON.stringify(r.shared && Object.keys(r.shared).slice(0, 4)));
+    }));
+
+    pending.push(run({ empty: true }).then(r => {
+      ok('an empty feed says so rather than rendering blank',
+         /No annual statements available/.test(r.html), r.html.slice(0, 200));
+      ok('and names it as a source gap', /gap in the source, not an error here/.test(r.html), 'blames the app');
+    }));
+
+    pending.push(run({ noProxy: true }).then(r => {
+      ok('with no Worker configured it says which step is missing',
+         /Financial statements come through the data proxy/.test(r.html), r.html.slice(0, 200));
+    }));
   }
 }
 
