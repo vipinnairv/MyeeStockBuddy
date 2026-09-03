@@ -1,5 +1,5 @@
 /**
- * MyeeStockBuddy CORS proxy — Cloudflare Worker
+ * MyeeStockBuddy CORS proxy, Cloudflare Worker
  * ---------------------------------------------
  * The app is a static page on GitHub Pages. Browsers block it from reading
  * Yahoo Finance / Stooq directly because those hosts don't send an
@@ -18,7 +18,7 @@
  *                                 P/E, PEG, P/B, EV/EBITDA, dividend yield.
  *                                 Modules are validated, not passed through raw.
  *   ?timeseries=SYM&period=...    Balance sheet, P&L and cash flow history from
- *                                 Yahoo's fundamentals-timeseries endpoint —
+ *                                 Yahoo's fundamentals-timeseries endpoint,
  *                                 the one that still carries the full line
  *                                 items. period=quarterly, otherwise annual.
  *   ?statements=SYM&period=...    The older quoteSummary history modules. Kept

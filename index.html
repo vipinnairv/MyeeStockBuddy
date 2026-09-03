@@ -76,13 +76,13 @@
 .fin-table tbody th{text-transform:none;letter-spacing:0}
 .fin-table thead th{position:sticky;top:0;z-index:2;background:var(--surface2);color:var(--text3);
   font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
-  padding:9px 14px;text-align:right;border-bottom:2px solid var(--border2);white-space:nowrap}
+  padding:10px 18px;text-align:right;border-bottom:2px solid var(--border2);white-space:nowrap}
 .fin-table thead th:first-child{text-align:left}
 .fin-table tbody th{position:sticky;left:0;z-index:1;background:var(--surface);
-  text-align:left;font-weight:600;color:var(--text2);padding:9px 14px;white-space:nowrap;
+  text-align:left;font-weight:600;color:var(--text2);padding:10px 16px 10px 18px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .fin-table tbody td{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;
-  font-feature-settings:'tnum' 1;color:var(--text);padding:9px 14px;white-space:nowrap;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:10px 18px 10px 16px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .fin-table tbody tr:nth-child(even) th,.fin-table tbody tr:nth-child(even) td{background:var(--surface2)}
 .fin-table tbody tr:hover th,.fin-table tbody tr:hover td{background:var(--glow)}
@@ -92,22 +92,23 @@
 .fin-h{font-size:13px;font-weight:800;letter-spacing:.2px;margin:0 0 8px}
 .rt-wrap{margin-bottom:22px}
 .rt-h{font-size:15px;font-weight:800;margin-bottom:10px}
-.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}
+.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px}
 .rt-card{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
 .rt-card-h{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;
   color:var(--text3);padding:9px 13px;background:var(--surface2);border-bottom:1px solid var(--border)}
 .rt-table{width:100%;min-width:0;border-collapse:collapse;font-family:var(--font-num);table-layout:auto}
-.rt-lbl{text-align:left;font-weight:600;font-size:12.5px;color:var(--text2);padding:7px 13px;cursor:help;
-  text-transform:none;letter-spacing:0;white-space:normal;border-bottom:1px solid var(--border)}
+.rt-lbl{text-align:left;font-weight:600;font-size:12.5px;color:var(--text2);
+  padding:9px 10px 9px 16px;cursor:help;width:55%;
+  text-transform:none;letter-spacing:0;white-space:nowrap;border-bottom:1px solid var(--border)}
 .rt-val{text-align:right;font-weight:800;font-size:13.5px;font-variant-numeric:tabular-nums;
-  font-feature-settings:'tnum' 1;color:var(--text);padding:7px 13px;white-space:nowrap;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:9px 16px 9px 10px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .rt-row:last-child .rt-lbl,.rt-row:last-child .rt-val{border-bottom:none}
 .rt-good{color:var(--green)}
 .rt-fair{color:var(--accent)}
 .rt-weak{color:var(--red)}
 .rt-na{color:var(--text3);font-weight:600}
-.rt-note{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.2px}
+.rt-note{font-size:10.5px;font-weight:600;color:var(--text3);letter-spacing:.2px;margin-top:2px;white-space:normal}
 .rt-warn{font-size:12px;line-height:1.5;color:var(--text2);background:var(--surface2);
   border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:9px 13px;margin-bottom:12px}
 .rt-foot{font-size:11px;line-height:1.6;color:var(--text3);background:var(--surface2);
@@ -1737,7 +1738,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Company Name</label>
-              <input class="form-input" id="companyName" placeholder="e.g., BSE Limited" />
+              <input class="form-input" id="companyName" placeholder="e.g. BSE Limited" />
             </div>
             <div class="form-group" style="position:relative;">
               <label class="form-label">Symbol</label>
@@ -2534,7 +2535,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
   <!-- ══ Portfolio X-Ray (Trendlyne-style) ══ -->
   <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
-    <div class="ch"><span class="ct">🩻 Portfolio X-Ray — Equity Allocation</span><span style="font-size:10.5px;color:var(--T3)">India + US equity · by current value</span></div>
+    <div class="ch"><span class="ct">🩻 Portfolio X-Ray, Equity Allocation</span><span style="font-size:10.5px;color:var(--T3)">India + US equity · by current value</span></div>
     <div class="cb" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px">
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Sector / Industry</div><div id="xray-sector"></div></div>
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Market Cap</div><div id="xray-mcap"></div></div>
@@ -3171,7 +3172,7 @@ function selectMarket(mode) {
 
   // ── Company name placeholder
   const cnEl = document.getElementById('companyName');
-  const cnHints = { india:'e.g., BSE Limited', us:'e.g., Apple Inc', crypto:'e.g., Bitcoin', commodity:'e.g., Gold' };
+  const cnHints = { india:'e.g. BSE Limited', us:'e.g. Apple Inc', crypto:'e.g. Bitcoin', commodity:'e.g. Gold' };
   if (cnEl) cnEl.placeholder = cnHints[mode];
 
   // ── Reset prior selection
@@ -3697,7 +3698,7 @@ function searchStocks(query) {
   const exactTicker = db.filter(s => s[1].toUpperCase() === q || (s[2] && s[2].toUpperCase() === q));
   if (exactTicker.length) return exactTicker.slice(0, 8);
 
-  // 2. Ticker starts-with (e.g., "HDFC" → HDFCBANK, HDFCLIFE, HDFCAMC)
+  // 2. Ticker starts-with (e.g. "HDFC" → HDFCBANK, HDFCLIFE, HDFCAMC)
   const prefixTicker = db.filter(s => s[1].toUpperCase().startsWith(q) || (s[2] && s[2].toUpperCase().startsWith(q)));
   if (prefixTicker.length >= 3) return prefixTicker.slice(0, 8);
 
@@ -6437,7 +6438,7 @@ function _fmtCap(v, isIndia) {
 }
 
 // ============================================================
-// OPENING MARKET DASHBOARD — live indices + pattern reads
+// OPENING MARKET DASHBOARD, live indices + pattern reads
 // ============================================================
 // ── Symbol autocomplete ────────────────────────────────────────────────────
 // Yahoo's search endpoint is one of the few that still answers without a crumb
@@ -7010,7 +7011,7 @@ function renderFundamentals(ar) {
     if (!row) return;
     if (!f) {
       row.innerHTML = `<div style="background:var(--surface2);border:1px dashed var(--border2);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--text3);line-height:1.5;">
-        💡 Couldn't reach the keyless valuation feed right now (a public proxy or Yahoo crumb blocked it). It often works on retry — or add an <b>Alpha Vantage</b> key (NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> for reliable <b>P/E, market cap, EPS, dividend yield & sector</b>.</div>`;
+        💡 Couldn't reach the keyless valuation feed right now (a public proxy or Yahoo crumb blocked it). It often works on retry, or add an <b>Alpha Vantage</b> key (NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> for reliable <b>P/E, market cap, EPS, dividend yield & sector</b>.</div>`;
       return;
     }
     const fc = [];
@@ -7989,43 +7990,43 @@ function renderDVMBadges(){
 // corrupt attributes and nested markup.
 const GLOSSARY = {
   rsi:{n:'RSI (Relative Strength Index)',d:'A 0–100 meter of how hard price has been pushed recently.',w:'It tells you whether a move is <b>stretched</b>. It does not tell you direction on its own.',r:'Above 70 = overbought (rallies often pause). Below 30 = oversold (falls often bounce). 45–55 = no one in control.'},
-  macd:{n:'MACD',d:'Compares a fast and a slow average of price to spot momentum turning.',w:'A <b>crossover</b> is an early hint that buyers or sellers are taking over — early, so it misfires often alone.',r:'Trust a crossover far more when the wider trend agrees with it.'},
+  macd:{n:'MACD',d:'Compares a fast and a slow average of price to spot momentum turning.',w:'A <b>crossover</b> is an early hint that buyers or sellers are taking over, early, so it misfires often alone.',r:'Trust a crossover far more when the wider trend agrees with it.'},
   sideways:{n:'Sideways (No Trend)',d:'The stock is drifting up and down inside a range instead of heading clearly up or down.',w:'It is the market saying <b>nobody is in control</b>. Trend-following signals misfire most here, which is why the app holds its call rather than guessing.',r:'Measured by ADX below 20. Wait for a decisive close beyond the range, or for ADX above 25, before treating a signal as real.'},
-  adx:{n:'ADX (Trend Strength)',d:'Measures how strong a trend is — not which way it points.',w:'It is the single best filter for <b>when to ignore other signals</b>. In a flat market most indicators misfire.',r:'Below 20 = no trend, signals unreliable. Above 25 = real trend. Above 40 = very strong.'},
+  adx:{n:'ADX (Trend Strength)',d:'Measures how strong a trend is, not which way it points.',w:'It is the single best filter for <b>when to ignore other signals</b>. In a flat market most indicators misfire.',r:'Below 20 = no trend, signals unreliable. Above 25 = real trend. Above 40 = very strong.'},
   atr:{n:'ATR (Average True Range)',d:'How much the stock typically moves in a single day, in rupees or dollars.',w:'It sizes your <b>stop loss</b>. A stop tighter than one ATR gets hit by ordinary noise.',r:'Stops are commonly placed 1.5–3× ATR away from entry.'},
-  supertrend:{n:'Supertrend',d:'A trailing line that sits below price in an uptrend and above it in a downtrend.',w:'A simple, visual <b>trend-following</b> line — it flips side when the trend changes.',r:'Price above the line favours the upside; a close through it is the usual signal to flip.'},
-  mfi:{n:'MFI (Money Flow Index)',d:'Like RSI, but it also weighs volume — so it tracks money moving in and out.',w:'It shows whether a price move is backed by <b>real buying</b> or is thin and unconvincing.',r:'Above 80 = heavy inflow, watch for exhaustion. Below 20 = washed out.'},
+  supertrend:{n:'Supertrend',d:'A trailing line that sits below price in an uptrend and above it in a downtrend.',w:'A simple, visual <b>trend-following</b> line, it flips side when the trend changes.',r:'Price above the line favours the upside; a close through it is the usual signal to flip.'},
+  mfi:{n:'MFI (Money Flow Index)',d:'Like RSI, but it also weighs volume, so it tracks money moving in and out.',w:'It shows whether a price move is backed by <b>real buying</b> or is thin and unconvincing.',r:'Above 80 = heavy inflow, watch for exhaustion. Below 20 = washed out.'},
   stochastic:{n:'Stochastic (%K / %D)',d:'Where today’s close sits inside the recent high–low range.',w:'It catches <b>short-term turns</b> earlier than RSI, at the cost of more false signals.',r:'Below 20 = oversold, above 80 = overbought. The %K crossing %D is the trigger.'},
-  cci:{n:'CCI (Commodity Channel Index)',d:'How far price has strayed from its own average.',w:'Flags <b>unusual extremes</b> — moves far outside the normal range.',r:'Above +100 = unusually strong. Below −100 = unusually weak.'},
+  cci:{n:'CCI (Commodity Channel Index)',d:'How far price has strayed from its own average.',w:'Flags <b>unusual extremes</b>, moves far outside the normal range.',r:'Above +100 = unusually strong. Below −100 = unusually weak.'},
   obv:{n:'OBV (On-Balance Volume)',d:'Adds volume on up days and subtracts it on down days.',w:'When OBV rises but price does not, <b>accumulation</b> may be happening quietly.',r:'OBV should move with price. A divergence between them is the signal.'},
-  bollinger:{n:'Bollinger Bands',d:'A band drawn two standard deviations either side of a moving average.',w:'Shows whether the stock is <b>calm or volatile</b>, and when it is at an extreme.',r:'Bands squeezing tight often precedes a big move — direction unknown.'},
+  bollinger:{n:'Bollinger Bands',d:'A band drawn two standard deviations either side of a moving average.',w:'Shows whether the stock is <b>calm or volatile</b>, and when it is at an extreme.',r:'Bands squeezing tight often precedes a big move, direction unknown.'},
   vcp:{n:'VCP (Volatility Contraction Pattern)',d:'A base where each pullback is shallower than the last, on falling volume.',w:'Popularised by O’Neil and Minervini as a <b>pre-breakout</b> setup: selling is drying up.',r:'The setup completes only on a close above the pivot, ideally on strong volume.'},
-  cuphandle:{n:'Cup &amp; Handle',d:'A rounded bottom followed by a small drift down — like a teacup with a handle.',w:'A classic <b>continuation</b> shape: the stock digests gains before trying higher.',r:'The buy trigger is a close above the handle’s high, not the cup’s rim.'},
-  symmetrical:{n:'Symmetrical Triangle',d:'Falling highs and rising lows squeezing price into a point.',w:'Shows <b>indecision compressing</b>. The breakout direction is not predictable in advance.',r:'Wait for the close outside the triangle — do not guess which way it breaks.'},
-  ascending:{n:'Ascending Triangle',d:'A flat ceiling of resistance with rising lows pressing into it.',w:'Buyers keep paying more while sellers defend one price — usually a <b>bullish</b> shape.',r:'The trigger is a close above the flat ceiling.'},
+  cuphandle:{n:'Cup &amp; Handle',d:'A rounded bottom followed by a small drift down, like a teacup with a handle.',w:'A classic <b>continuation</b> shape: the stock digests gains before trying higher.',r:'The buy trigger is a close above the handle’s high, not the cup’s rim.'},
+  symmetrical:{n:'Symmetrical Triangle',d:'Falling highs and rising lows squeezing price into a point.',w:'Shows <b>indecision compressing</b>. The breakout direction is not predictable in advance.',r:'Wait for the close outside the triangle, do not guess which way it breaks.'},
+  ascending:{n:'Ascending Triangle',d:'A flat ceiling of resistance with rising lows pressing into it.',w:'Buyers keep paying more while sellers defend one price, usually a <b>bullish</b> shape.',r:'The trigger is a close above the flat ceiling.'},
   doublebottom:{n:'Double Bottom',d:'Two lows at roughly the same price with a bounce between them.',w:'Suggests a floor where buyers stepped in <b>twice</b>.',r:'Confirmed only when price closes above the middle peak (the neckline).'},
-  headshoulders:{n:'Head &amp; Shoulders',d:'Three peaks — a higher middle one flanked by two lower ones.',w:'A classic <b>reversal</b> warning after an uptrend.',r:'Confirmed when price closes below the neckline joining the two troughs.'},
-  gartley:{n:'Gartley',d:'A five-point (X-A-B-C-D) harmonic pattern based on Fibonacci ratios.',w:'Attempts to pinpoint where a pullback <b>exhausts</b> and reverses.',r:'Advanced and easy to over-fit — treat as one input, never the whole case.'},
+  headshoulders:{n:'Head &amp; Shoulders',d:'Three peaks, a higher middle one flanked by two lower ones.',w:'A classic <b>reversal</b> warning after an uptrend.',r:'Confirmed when price closes below the neckline joining the two troughs.'},
+  gartley:{n:'Gartley',d:'A five-point (X-A-B-C-D) harmonic pattern based on Fibonacci ratios.',w:'Attempts to pinpoint where a pullback <b>exhausts</b> and reverses.',r:'Advanced and easy to over-fit, treat as one input, never the whole case.'},
   fibonacci:{n:'Fibonacci Levels',d:'Ratios (38.2%, 50%, 61.8%) marking common pullback depths.',w:'Widely watched, so they often become <b>self-fulfilling</b> support and resistance.',r:'The 50% and 61.8% retracements are where healthy pullbacks usually end.'},
-  divergence:{n:'Divergence',d:'Price makes a new high or low, but the indicator does not follow.',w:'A warning that the move is running on <b>fumes</b>.',r:'Divergence signals timing poorly — treat it as a caution, not an entry.'},
-  support:{n:'Support',d:'A price level where buyers have repeatedly stepped in.',w:'It is where falls tend to <b>stall</b> — a natural place to set a stop just below.',r:'The more times a level holds, the more meaningful a break of it becomes.'},
+  divergence:{n:'Divergence',d:'Price makes a new high or low, but the indicator does not follow.',w:'A warning that the move is running on <b>fumes</b>.',r:'Divergence signals timing poorly, treat it as a caution, not an entry.'},
+  support:{n:'Support',d:'A price level where buyers have repeatedly stepped in.',w:'It is where falls tend to <b>stall</b>, a natural place to set a stop just below.',r:'The more times a level holds, the more meaningful a break of it becomes.'},
   resistance:{n:'Resistance',d:'A price level where sellers have repeatedly appeared.',w:'It is the ceiling a stock must clear before it can <b>run</b>.',r:'A close above resistance on strong volume is the classic breakout.'},
-  breakout:{n:'Breakout',d:'Price closing decisively beyond a level it has respected for a while.',w:'It signals the old balance has <b>broken</b> and a new move may begin.',r:'Intraday pokes fail often — wait for the daily close, ideally on high volume.'},
+  breakout:{n:'Breakout',d:'Price closing decisively beyond a level it has respected for a while.',w:'It signals the old balance has <b>broken</b> and a new move may begin.',r:'Intraday pokes fail often, wait for the daily close, ideally on high volume.'},
   movingaverage:{n:'Moving Average',d:'The average closing price over a set number of days.',w:'It smooths noise so the underlying <b>trend</b> is visible.',r:'The 50-day tracks the medium trend; the 200-day defines the long-term trend.'},
   ema:{n:'EMA (Exponential Moving Average)',d:'A moving average that weights recent days more heavily.',w:'Reacts <b>faster</b> than a simple average, so it turns sooner.',r:'The 20-day EMA is a common short-term trend guide.'},
-  riskreward:{n:'Risk : Reward',d:'How much you stand to gain versus how much you risk to your stop.',w:'The single most important number in a trade plan — it decides if a setup is <b>worth taking</b>.',r:'Below 1:1.5 is usually not worth it. You can be right under half the time and still profit at 1:3.'},
-  stoploss:{n:'Stop Loss',d:'The price at which you accept the idea was wrong and exit.',w:'It caps the damage of any single mistake — the core of <b>survival</b>.',r:'Set it where the setup is invalidated, not at an amount you feel like losing.'},
+  riskreward:{n:'Risk : Reward',d:'How much you stand to gain versus how much you risk to your stop.',w:'The single most important number in a trade plan, it decides if a setup is <b>worth taking</b>.',r:'Below 1:1.5 is usually not worth it. You can be right under half the time and still profit at 1:3.'},
+  stoploss:{n:'Stop Loss',d:'The price at which you accept the idea was wrong and exit.',w:'It caps the damage of any single mistake, the core of <b>survival</b>.',r:'Set it where the setup is invalidated, not at an amount you feel like losing.'},
   drawdown:{n:'Max Drawdown',d:'The largest peak-to-trough fall over the period.',w:'It is the <b>worst pain</b> you would have had to sit through.',r:'If the drawdown is more than you could stomach, the position is too large.'},
-  volatility:{n:'Volatility',d:'How much returns swing around, annualised.',w:'A proxy for <b>risk</b> — higher means wider swings in both directions.',r:'Under 20% is calm; over 40% is jumpy and needs smaller position sizes.'},
+  volatility:{n:'Volatility',d:'How much returns swing around, annualised.',w:'A proxy for <b>risk</b>, higher means wider swings in both directions.',r:'Under 20% is calm; over 40% is jumpy and needs smaller position sizes.'},
   beta:{n:'Beta',d:'How much the stock moves relative to the wider market.',w:'Shows whether it will <b>amplify</b> or cushion market moves.',r:'Beta 1 = moves with the market. Above 1.3 = noticeably more volatile.'},
-  cagr:{n:'CAGR',d:'The smoothed annual growth rate between a start and end value.',w:'Makes returns over <b>different periods</b> comparable.',r:'It ignores when money was added — for SIPs, XIRR is the honest measure.'},
+  cagr:{n:'CAGR',d:'The smoothed annual growth rate between a start and end value.',w:'Makes returns over <b>different periods</b> comparable.',r:'It ignores when money was added, for SIPs, XIRR is the honest measure.'},
   xirr:{n:'XIRR',d:'Annual return that accounts for the date and size of every instalment.',w:'The correct way to judge a <b>SIP</b>, where money went in over time.',r:'Use XIRR for SIPs; CAGR only for a single lump-sum investment.'},
   nav:{n:'NAV (Net Asset Value)',d:'The per-unit price of a mutual fund, published once daily.',w:'Your fund value = units × NAV. NAV level alone says <b>nothing</b> about whether a fund is cheap.',r:'Compare funds by returns and risk, never by a lower NAV.'},
-  pe:{n:'P/E Ratio',d:'Share price divided by earnings per share.',w:'Roughly, the years of current profit you are paying for — a <b>valuation</b> gauge.',r:'Only meaningful against the same sector and the stock’s own history.'},
-  peg:{n:'PEG Ratio',d:'The P/E divided by the earnings growth rate.',w:'Puts a high P/E in context — fast growth can <b>justify</b> it.',r:'Under 1 is often considered good value; over 2 is expensive for the growth.'},
-  pb:{n:'P/B Ratio',d:'Share price divided by book value per share.',w:'Compares price to the <b>assets</b> behind it. Most useful for banks and financials.',r:'Under 1 can signal value — or a business in trouble. Check why.'},
+  pe:{n:'P/E Ratio',d:'Share price divided by earnings per share.',w:'Roughly, the years of current profit you are paying for, a <b>valuation</b> gauge.',r:'Only meaningful against the same sector and the stock’s own history.'},
+  peg:{n:'PEG Ratio',d:'The P/E divided by the earnings growth rate.',w:'Puts a high P/E in context, fast growth can <b>justify</b> it.',r:'Under 1 is often considered good value; over 2 is expensive for the growth.'},
+  pb:{n:'P/B Ratio',d:'Share price divided by book value per share.',w:'Compares price to the <b>assets</b> behind it. Most useful for banks and financials.',r:'Under 1 can signal value, or a business in trouble. Check why.'},
   roe:{n:'ROE (Return on Equity)',d:'Profit generated per rupee of shareholder capital.',w:'A core measure of <b>business quality</b>.',r:'Consistently above 15% is strong; below 5% is weak.'},
-  dvm:{n:'DVM Scores',d:'Durability, Valuation and Momentum, each scored 0–100.',w:'A quick three-way read: is it <b>sound</b>, is it <b>cheap</b>, is it <b>moving</b>?',r:'Strong momentum usually comes with weak valuation — that trade-off is normal.'},
+  dvm:{n:'DVM Scores',d:'Durability, Valuation and Momentum, each scored 0–100.',w:'A quick three-way read: is it <b>sound</b>, is it <b>cheap</b>, is it <b>moving</b>?',r:'Strong momentum usually comes with weak valuation, that trade-off is normal.'},
 };
 const _G_PATTERNS=[
   ['Bollinger Bands?','bollinger'],['Cup (?:&amp;|&|and) Handle','cuphandle'],['Symmetrical Triangles?','symmetrical'],
@@ -8079,7 +8080,7 @@ function glossaryScan(root){
         if(m.index>last) frag.appendChild(document.createTextNode(txt.slice(last,m.index)));
         const s=document.createElement('span');
         s.className='g-term'; s.dataset.g=key; s.tabIndex=0; s.setAttribute('role','button');
-        s.setAttribute('aria-label',m[0]+' — what this means');
+        s.setAttribute('aria-label',m[0]+', what this means');
         s.textContent=m[0];
         frag.appendChild(s); last=m.index+m[0].length;
       }
@@ -8117,7 +8118,7 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('resize',glossaryHide);
 window.addEventListener('scroll',glossaryHide,true);
 
-// ══════════ SIMPLE VIEW — plain-English analysis ══════════
+// ══════════ SIMPLE VIEW, plain-English analysis ══════════
 // Turns the same numbers the Full view shows into sentences a non-trader can
 // act on: the call, why, what to do, and what would falsify it. Deliberately
 // pairs every simplification with its uncertainty - a confident-looking badge
@@ -8127,31 +8128,31 @@ function _svReadouts(s, price){
   const chip=(txt,col)=>({txt,col});
   const rsi=n(s.rsiV);
   if(isFinite(rsi)) out.push({ c: rsi>=70?chip('HOT','var(--red)'):rsi<=30?chip('COLD','var(--green)'):chip('NORMAL','var(--accent)'),
-    t: `<b>Momentum (RSI ${rsi.toFixed(0)})</b> — ` + (rsi>=70
+    t: `<b>Momentum (RSI ${rsi.toFixed(0)})</b>, ` + (rsi>=70
       ? 'buyers have pushed hard; this is the zone where rallies often pause or pull back.'
       : rsi<=30 ? 'sellers have pushed hard; this is where falls often stall and bounce.'
       : rsi>55 ? 'buyers are moderately in control, with room to run before it looks stretched.'
       : rsi<45 ? 'sellers have the upper hand, but it is not yet oversold.'
-      : 'neither side is in control — momentum is balanced.') });
+      : 'neither side is in control, momentum is balanced.') });
   const adx=n(s.adxV);
   if(isFinite(adx)) out.push({ c: adx>=25?chip('TRENDING','var(--green)'):chip('RANGING','var(--text3)'),
-    t: `<b>Trend strength (ADX ${adx.toFixed(0)})</b> — ` + (adx>=40
+    t: `<b>Trend strength (ADX ${adx.toFixed(0)})</b>, ` + (adx>=40
       ? 'a very strong trend is running; moves in the trend direction tend to keep going.'
       : adx>=25 ? 'there is a real trend in place, so trend signals carry weight.'
       : 'the price is drifting sideways with no real trend. Breakout and trend signals misfire most often here.') });
   if(s.sma50v && s.sma200v) out.push({ c: (price>s.sma50v&&price>s.sma200v)?chip('ABOVE','var(--green)'):(price<s.sma50v&&price<s.sma200v)?chip('BELOW','var(--red)'):chip('MIXED','var(--accent)'),
-    t: `<b>The bigger picture</b> — price is ` + (price>s.sma50v?'above':'below') + ' its 50-day average and '
+    t: `<b>The bigger picture</b>, price is ` + (price>s.sma50v?'above':'below') + ' its 50-day average and '
       + (price>s.sma200v?'above':'below') + ' its 200-day average. '
       + ((price>s.sma50v&&price>s.sma200v)?'Both point up: this is an uptrend.'
         :(price<s.sma50v&&price<s.sma200v)?'Both point down: this is a downtrend.'
-        :'They disagree — the trend is turning or unclear.') });
+        :'They disagree, the trend is turning or unclear.') });
   if(s.macdCrossUp||s.macdCrossDown) out.push({ c: s.macdCrossUp?chip('TURNING UP','var(--green)'):chip('TURNING DOWN','var(--red)'),
-    t: `<b>Momentum shift (MACD)</b> — momentum just crossed ${s.macdCrossUp?'upward, an early sign buyers are taking over':'downward, an early sign sellers are taking over'}. Early signals like this fail often on their own; they matter most when the trend agrees.` });
+    t: `<b>Momentum shift (MACD)</b>, momentum just crossed ${s.macdCrossUp?'upward, an early sign buyers are taking over':'downward, an early sign sellers are taking over'}. Early signals like this fail often on their own; they matter most when the trend agrees.` });
   if(s.stV!=null) out.push({ c: s.stV===1?chip('BUY SIDE','var(--green)'):chip('SELL SIDE','var(--red)'),
-    t: `<b>Trend line (Supertrend)</b> — the trailing trend line sits at ${CUR()}${s.stLine} and currently favours the ${s.stV===1?'upside':'downside'}. A close through it is the usual signal to flip.` });
+    t: `<b>Trend line (Supertrend)</b>, the trailing trend line sits at ${CUR()}${s.stLine} and currently favours the ${s.stV===1?'upside':'downside'}. A close through it is the usual signal to flip.` });
   const atr=n(s.atrV);
   if(isFinite(atr)&&price) out.push({ c: chip('SWING','var(--text3)'),
-    t: `<b>Typical daily swing (ATR)</b> — this stock moves about ${CUR()}${atr.toFixed(2)} (${(atr/price*100).toFixed(1)}%) on an average day. Set stops wider than this, or normal noise will knock you out.` });
+    t: `<b>Typical daily swing (ATR)</b>, this stock moves about ${CUR()}${atr.toFixed(2)} (${(atr/price*100).toFixed(1)}%) on an average day. Set stops wider than this, or normal noise will knock you out.` });
   return out;
 }
 function renderSimpleView(){
@@ -8173,31 +8174,31 @@ function renderSimpleView(){
   const R=[], up='var(--green)', dn='var(--red)', nu='var(--text3)';
   const rsi=parseFloat(s.rsiV), adx=parseFloat(s.adxV);
   if(s.sma50v&&s.sma200v){
-    if(price>s.sma50v&&price>s.sma200v) R.push([up,'Price is above both its 50-day and 200-day averages — the longer-term trend is up.']);
-    else if(price<s.sma50v&&price<s.sma200v) R.push([dn,'Price is below both its 50-day and 200-day averages — the longer-term trend is down.']);
-    else R.push([nu,'Price sits between its 50-day and 200-day averages — the trend is changing or unclear.']);
+    if(price>s.sma50v&&price>s.sma200v) R.push([up,'Price is above both its 50-day and 200-day averages, the longer-term trend is up.']);
+    else if(price<s.sma50v&&price<s.sma200v) R.push([dn,'Price is below both its 50-day and 200-day averages, the longer-term trend is down.']);
+    else R.push([nu,'Price sits between its 50-day and 200-day averages, the trend is changing or unclear.']);
   }
   if(isFinite(adx)) R.push(adx>=25?[adx>=25?up:nu,`The trend is genuine (ADX ${adx.toFixed(0)}), so trend signals here are worth trusting.`]
-                                  :[nu,`There is no real trend (ADX ${adx.toFixed(0)}) — the stock is drifting sideways, where most signals misfire.`]);
-  if(isFinite(rsi)) R.push(rsi>=70?[dn,`Momentum is stretched (RSI ${rsi.toFixed(0)}) — buyers have run hard and pullbacks are common from here.`]
-                          :rsi<=30?[up,`Momentum is washed out (RSI ${rsi.toFixed(0)}) — sellers have run hard and bounces are common from here.`]
+                                  :[nu,`There is no real trend (ADX ${adx.toFixed(0)}), the stock is drifting sideways, where most signals misfire.`]);
+  if(isFinite(rsi)) R.push(rsi>=70?[dn,`Momentum is stretched (RSI ${rsi.toFixed(0)}), buyers have run hard and pullbacks are common from here.`]
+                          :rsi<=30?[up,`Momentum is washed out (RSI ${rsi.toFixed(0)}), sellers have run hard and bounces are common from here.`]
                           :rsi>55?[up,`Momentum favours buyers (RSI ${rsi.toFixed(0)}) without being overheated.`]
                           :rsi<45?[dn,`Momentum favours sellers (RSI ${rsi.toFixed(0)}).`]
-                          :[nu,`Momentum is balanced (RSI ${rsi.toFixed(0)}) — neither side is in control.`]);
-  if(s.macdCrossUp) R.push([up,'Momentum has just turned upward (MACD crossover) — an early sign buyers are stepping in.']);
-  if(s.macdCrossDown) R.push([dn,'Momentum has just turned downward (MACD crossover) — an early sign sellers are stepping in.']);
+                          :[nu,`Momentum is balanced (RSI ${rsi.toFixed(0)}), neither side is in control.`]);
+  if(s.macdCrossUp) R.push([up,'Momentum has just turned upward (MACD crossover), an early sign buyers are stepping in.']);
+  if(s.macdCrossDown) R.push([dn,'Momentum has just turned downward (MACD crossover), an early sign sellers are stepping in.']);
   const reasons=R.slice(0,4).map(r=>`<div class="sv-reason"><span class="sv-dot" style="background:${r[0]}"></span><span>${r[1]}</span></div>`).join('');
 
   // ── Honest conflict / low-trust warning ──
   const total=s.bullCount+s.bearCount, split=Math.abs(s.bullCount-s.bearCount);
   let warn='';
   if(s.isChop) warn=`<div class="sv-warn"><b>⚠ Low-trust setup.</b> This stock is <b>moving sideways</b> - drifting with no clear up or down trend (ADX ${s.adxV}). This is where technical signals are least reliable, so the call is held at HOLD no matter what the individual indicators say. Waiting is a position.</div>`;
-  else if(total&&split<=1) warn=`<div class="sv-warn"><b>⚠ The indicators disagree.</b> ${s.bullCount} point up and ${s.bearCount} point down — that is close to a coin flip, not a setup. A near-even split is a reason to wait, not to take a smaller position.</div>`;
+  else if(total&&split<=1) warn=`<div class="sv-warn"><b>⚠ The indicators disagree.</b> ${s.bullCount} point up and ${s.bearCount} point down, that is close to a coin flip, not a setup. A near-even split is a reason to wait, not to take a smaller position.</div>`;
   else if(conf<30) warn=`<div class="sv-warn"><b>⚠ Low confidence.</b> The evidence is thin here. Treat this as one input, not a decision.</div>`;
 
   // ── What would change this view ──
   let flip;
-  if(v==='BUY') flip=`A daily close back below <b>${CUR()}${fmtNum(s.sma50v)}</b> (the 50-day average), or momentum slipping under RSI 45, would break this case. Your stop at <b>${CUR()}${L.sl}</b> is where the idea is simply wrong — exit there rather than hoping.`;
+  if(v==='BUY') flip=`A daily close back below <b>${CUR()}${fmtNum(s.sma50v)}</b> (the 50-day average), or momentum slipping under RSI 45, would break this case. Your stop at <b>${CUR()}${L.sl}</b> is where the idea is simply wrong, exit there rather than hoping.`;
   else if(v==='SELL') flip=`A daily close back above <b>${CUR()}${fmtNum(s.sma50v)}</b> (the 50-day average), or momentum reclaiming RSI 55, would break this case and suggest the fall is over.`;
   else flip=`This turns into a real setup when the stock picks a direction: a close above <b>${CUR()}${s.resist}</b> with ADX rising past 25 would favour buying; a close below <b>${CUR()}${s.support}</b> would favour staying out.`;
 
@@ -8217,13 +8218,13 @@ function renderSimpleView(){
           ${doBox('Entry', CUR()+fmtNum(price))}
           ${doBox('Stop loss', CUR()+L.sl, 'var(--red)')}
           ${doBox('Target', CUR()+L.target, 'var(--green)')}
-          ${doBox('Risk : Reward', L.rr==='N/A'?'—':'1 : '+L.rr, 'var(--accent)')}
+          ${doBox('Risk : Reward', L.rr==='N/A'?'-':'1 : '+L.rr, 'var(--accent)')}
         </div>
         <div style="font-size:12px;color:var(--text3);margin-top:9px;line-height:1.5">Risk only what you can lose to the stop. If the risk-to-reward is below 1:1.5, the trade is usually not worth taking.</div>
       </div>
       <div class="sv-sec"><div class="sv-h">What would change this view</div><div class="sv-flip">${flip}</div></div>
       <div class="sv-sec"><div class="sv-h">The indicators, in plain English</div>${reads}</div>
-      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history — not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Full technicals</b> for every indicator, pattern and backtest behind this summary.</div></div>
+      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history, not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Full technicals</b> for every indicator, pattern and backtest behind this summary.</div></div>
     </div>`;
   glossaryScan(el);
 }
@@ -9087,7 +9088,7 @@ def miyee_momentum(closes):
           return window._miyeePyPromise;
         };
 
-        // JS mirror of the Python engine — used until Pyodide is ready.
+        // JS mirror of the Python engine, used until Pyodide is ready.
         const _jsCalc = (a) => {
           // Reuses the app's single RSI/EMA implementations rather than keeping
           // private copies - duplicated indicator math is how the chart and the
@@ -9159,7 +9160,7 @@ def miyee_momentum(closes):
           }
 
           // ── Industry / Sector from the data model ─────────────────────────
-          let _ind='—', _sec='—';
+          let _ind='-', _sec='-';
           const _entry = (typeof selectedStockEntry!=='undefined') ? selectedStockEntry : null;
           try {
             if (marketMode==='us') { _sec=(_entry&&_entry[3])||'US Equity'; }
@@ -10442,17 +10443,17 @@ function renderIncome(){
     <div class="tax-sum-box-sub">${sub}</div></div>`;
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Portfolio XIRR',
-        xr==null ? '—' : (xr>=0?'+':'')+xr.toFixed(2)+'%',
+        xr==null ? '-' : (xr>=0?'+':'')+xr.toFixed(2)+'%',
         xr==null ? 'needs purchase dates' : cov+'% of holdings dated',
         xr==null ? 'var(--T3)' : (xr>=0?'#00B386':'#D93025'),
         'Money-weighted annualised return. Unlike absolute return it accounts for WHEN you invested, so an old holding and a recent one are compared fairly. Dividends are credited today, which slightly understates it.')}
     ${tile('Dividend Income',
-        inc.total>0 ? F.inr(inc.total) : '—',
+        inc.total>0 ? F.inr(inc.total) : '-',
         inc.total>0 ? inc.paying+' holding'+(inc.paying===1?'':'s')+' paying' : 'add dividends per holding',
         inc.total>0 ? '#7C3AED' : 'var(--T3)',
         'Total dividends recorded against your holdings. Enter it per stock when adding or editing a position.')}
     ${tile('Yield on Cost',
-        inc.yieldOnCost ? inc.yieldOnCost.toFixed(2)+'%' : '—',
+        inc.yieldOnCost ? inc.yieldOnCost.toFixed(2)+'%' : '-',
         inc.yieldOnCost ? 'income vs what you paid' : 'needs dividend data',
         inc.yieldOnCost ? '#F59E0B' : 'var(--T3)',
         'Dividends as a percent of your original cost - what the position actually yields you, not what a new buyer gets at the current price.')}
@@ -10682,14 +10683,14 @@ async function renderBenchmark(){
   }
   const r = _bmReplay(_pmLots(), _bmSeries, new Date());
   if(!r){
-    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings could be dated against ${BENCH_LABEL} yet — add purchase dates to compare.</div>`;
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings could be dated against ${BENCH_LABEL} yet, add purchase dates to compare.</div>`;
     return;
   }
   const ahead = r.valueDiff >= 0;
   const col = ahead ? '#00B386' : '#D93025';
   const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
     + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
-  const pct = v => v==null ? '—' : (v>=0?'+':'')+v.toFixed(2)+'%';
+  const pct = v => v==null ? '-' : (v>=0?'+':'')+v.toFixed(2)+'%';
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Your XIRR', pct(r.portXirr), 'your actual picks', r.portXirr>=0?'#00B386':'#D93025')}
     ${tile(BENCH_LABEL+' XIRR', pct(r.benchXirr), 'same money, same dates', '#1A73E8')}
@@ -10698,7 +10699,7 @@ async function renderBenchmark(){
         r.xirrDiff==null?'':pct(r.xirrDiff)+' a year', col)}
   </div>
   <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-    Every rupee you invested is replayed into ${BENCH_LABEL} <b>on the date you actually invested it</b>, then both sides get the same XIRR — so this isolates your stock picking, not your timing.
+    Every rupee you invested is replayed into ${BENCH_LABEL} <b>on the date you actually invested it</b>, then both sides get the same XIRR, so this isolates your stock picking, not your timing.
     ${r.skipped ? ` <b>${r.skipped}</b> holding${r.skipped===1?'':'s'} excluded from both sides (no usable purchase date).` : ''}
   </div>`;
 }
@@ -10775,7 +10776,7 @@ function renderGrowth(){
   const st = _ghStats(list);
   if(!st || st.days < 2){
     el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">
-      📈 Building your growth history — <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
+      📈 Building your growth history, <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
       A point is saved each day you open the app; the curve appears from the second day.
       <div style="margin-top:5px;font-size:11.5px">This is a forward record: it can't reconstruct value from before tracking began.</div>
     </div>`;
@@ -10796,7 +10797,7 @@ function renderGrowth(){
   el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
     ${tile('Since tracking began', (st.change>=0?'+':'')+st.change.toFixed(2)+'%', `${st.days} days · from ${st.firstDate}`, col)}
     ${tile('Peak value', F.lac(st.peak), 'on '+st.peakDate, '#1A73E8')}
-    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '—', '#D93025')}
+    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '-', '#D93025')}
     ${tile('From peak now', st.currentDD<=0.005?'At peak':'-'+st.currentDD.toFixed(1)+'%', 'current value '+F.lac(st.last), st.currentDD<=0.005?'#00B386':'#F59E0B')}
   </div>
   <div style="overflow-x:auto">
@@ -10880,7 +10881,7 @@ function renderAlerts(){
       <b style="font-size:13px">${r.name}</b>
       <span style="font-size:11px;color:var(--T3)">${r.cls}</span>
       <span style="font-size:12px;color:${isT?'#00B386':'#D93025'};font-weight:700">
-        ${isT?'Target hit':'Stop breached'} — ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
+        ${isT?'Target hit':'Stop breached'}, ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
         (${r.distPct>=0?'+':''}${r.distPct.toFixed(1)}%)
       </span>
     </div>`;
@@ -10888,7 +10889,7 @@ function renderAlerts(){
   host.innerHTML = `<div style="margin:0 0 14px;background:var(--AUL,#FEF3C7);border:1px solid var(--AU,#F59E0B);border-radius:10px;padding:11px 14px">
     <div style="font-size:13px;font-weight:800;color:var(--T1)">🔔 ${hits.length} holding${hits.length===1?'':'s'} crossed a level you set</div>
     ${hits.map(row).join('')}
-    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price — not advice, and not automatic orders.</div>
+    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price, not advice, and not automatic orders.</div>
   </div>`;
 }
 // ══════════ CRYPTO SYMBOL RESOLUTION ══════════
@@ -10972,7 +10973,7 @@ function _atContribution(lots){
     const div = isFinite(+l.dividend) && +l.dividend > 0 ? +l.dividend : 0;
     const pl = (cur - inv) + div;
     invested += inv; current += cur; income += div;
-    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    rows.push({ name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                 dividend:div, pl, retPct: inv > 0 ? pl / inv * 100 : null });
   });
   if(!rows.length) return null;
@@ -10998,7 +10999,7 @@ function _atHarvest(lots, realisedLTCG, realisedSTCG, exemption){
     const inv = +l.invested, cur = +l.current;
     if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return null;
     const loss = inv - cur;                       // positive when under water
-    return loss > 0 ? { name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    return loss > 0 ? { name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                         loss, lossPct: loss / inv * 100 } : null;
   }).filter(Boolean).sort((a,b) => b.loss - a.loss);
 
@@ -11112,22 +11113,22 @@ function renderHarvest(){
       <td class="r" style="font-size:11.5px;color:var(--R)">-${c.lossPct.toFixed(1)}%</td>
     </tr>`).join('');
   el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
-      ${tile('Unrealised losses', h.totalLoss>0?F.inr(h.totalLoss):'—',
+      ${tile('Unrealised losses', h.totalLoss>0?F.inr(h.totalLoss):'-',
              h.candidates.length?h.candidates.length+' holding'+(h.candidates.length===1?'':'s')+' under water':'nothing at a loss',
              h.totalLoss>0?'#D93025':'#00B386')}
-      ${tile('Gains to offset', h.offsettable>0?F.inr(h.offsettable):'—',
+      ${tile('Gains to offset', h.offsettable>0?F.inr(h.offsettable):'-',
              h.offsettable>0?'realised, after exemption':'none booked yet this FY','#1A73E8')}
       ${tile('₹1.25L exemption left', F.inr(h.exemptionLeft),
              h.exemptionUsed>0?F.inr(h.exemptionUsed)+' used':'none used yet','#F59E0B')}
-      ${tile('Worth booking', h.usefulLoss>0?F.inr(h.usefulLoss):'—',
+      ${tile('Worth booking', h.usefulLoss>0?F.inr(h.usefulLoss):'-',
              h.usefulLoss>0?'offsets tax this year':'no gains to offset', h.usefulLoss>0?'#7C3AED':'var(--T3)')}
     </div>
     ${rows?`<div class="ts"><table style="min-width:560px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Now</th><th class="r">Unrealised loss</th><th class="r">%</th></tr></thead><tbody>${rows}</tbody></table></div>`
           :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No holdings are currently at a loss.</div>`}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      These are <b>unrealised</b> losses — nothing is booked until you actually sell and record the transaction.
+      These are <b>unrealised</b> losses, nothing is booked until you actually sell and record the transaction.
       "Worth booking" is capped at the gains you have already realised this year, because a loss beyond that offsets nothing now.
-      Selling purely for tax has real costs (spread, brokerage, and being out of the position) — check with your CA.
+      Selling purely for tax has real costs (spread, brokerage, and being out of the position), check with your CA.
     </div>`;
 }
 // ══════════ PORTFOLIO RISK: VOLATILITY, BETA, SHARPE ══════════
@@ -11296,9 +11297,9 @@ async function renderRisk(){
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Volatility', m.vol.toFixed(1)+'%', 'annualised swing', '#F59E0B',
         'How violently the portfolio moves, annualised from daily returns. Higher means bigger swings both ways - it is not itself bad, but it should be paid for.')}
-    ${tile('Beta vs Nifty', m.beta==null?'—':m.beta.toFixed(2), m.beta==null?'needs more overlap':betaWord, '#1A73E8',
+    ${tile('Beta vs Nifty', m.beta==null?'-':m.beta.toFixed(2), m.beta==null?'needs more overlap':betaWord, '#1A73E8',
         'How much the portfolio moves for a 1% move in the index. Above 1 amplifies the market; below 1 dampens it.')}
-    ${tile('Sharpe ratio', m.sharpe==null?'—':m.sharpe.toFixed(2), m.sharpe==null?'—':sharpeWord,
+    ${tile('Sharpe ratio', m.sharpe==null?'-':m.sharpe.toFixed(2), m.sharpe==null?'-':sharpeWord,
         m.sharpe==null?'var(--T3)':m.sharpe>=0.5?'#00B386':m.sharpe>=0?'#F59E0B':'#D93025',
         'Return above the risk-free rate, per unit of volatility. It answers whether the swings were worth enduring.')}
   </div>
@@ -11385,11 +11386,11 @@ function _ifSoldRows(lots, asOf, ltDays){
     if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return;
     const d = l.buyDate ? new Date(l.buyDate) : null;
     if(!d || isNaN(d.getTime()) || d > asOf){
-      undated.push({ name:l.name || '—', cls:l.cls || '', gain:cur - inv });
+      undated.push({ name:l.name || '-', cls:l.cls || '', gain:cur - inv });
       return;                                        // cannot be classified: excluded
     }
     const days = Math.round((asOf - d) / 864e5);
-    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    rows.push({ name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                 gain:cur - inv, holdingDays:days, isLTCG: days > LT });
   });
   return { rows, undated };
@@ -11454,15 +11455,15 @@ function renderIfSold(){
       ${tile(`STCG tax @${r.stcgRatePct}%`, F.inr(r.stcgTax), `on ${F.inr(r.stcgTaxable)}`, '#F59E0B')}
       ${tile('Estimated total', F.inr(r.totalWithCess), `${F.inr(r.total)} + 4% cess`, r.total>0?'#D93025':'#00B386')}
     </div>
-    ${r.vdaGain>0?`<div style="font-size:12px;color:var(--T2);margin-bottom:10px">Includes crypto (VDA) gains of ${F.inr(r.vdaGain)} taxed at ${r.vdaRatePct}% — losses cannot be set off.</div>`:''}
+    ${r.vdaGain>0?`<div style="font-size:12px;color:var(--T2);margin-bottom:10px">Includes crypto (VDA) gains of ${F.inr(r.vdaGain)} taxed at ${r.vdaRatePct}%, losses cannot be set off.</div>`:''}
     ${body?`<div class="ts"><table style="min-width:660px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Value now</th><th class="r">Unrealised</th><th class="r">Held</th><th>Category</th></tr></thead><tbody>${body}</tbody></table></div>`
           :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No datable holdings to estimate.</div>`}
     ${r.undated.length?`<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
-      ⚠️ <b>${r.undated.length} holding${r.undated.length===1?'':'s'} excluded</b> — no purchase date, so they cannot be classified long or short term. Add a purchase date to include them.
+      ⚠️ <b>${r.undated.length} holding${r.undated.length===1?'':'s'} excluded</b>, no purchase date, so they cannot be classified long or short term. Add a purchase date to include them.
       <div style="margin-top:5px;font-size:11.5px;color:var(--T2)">${r.undated.slice(0,5).map(u=>u.name).join(', ')}${r.undated.length>5?` +${r.undated.length-5} more`:''}</div>
     </div>`:''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      A <b>what-if</b> estimate on today's prices — nothing here is booked. The app stores one average cost and one purchase date per holding, so a position built from several purchases is estimated from its average; actual tax on sale is computed FIFO lot by lot and will differ. Prices move, and so will this. Confirm with your CA before acting.
+      A <b>what-if</b> estimate on today's prices, nothing here is booked. The app stores one average cost and one purchase date per holding, so a position built from several purchases is estimated from its average; actual tax on sale is computed FIFO lot by lot and will differ. Prices move, and so will this. Confirm with your CA before acting.
     </div>`;
 }
 // ══════════ DIVERSIFICATION: CORRELATION & EFFECTIVE HOLDINGS ══════════
@@ -11572,7 +11573,7 @@ function renderDiversification(){
     el.innerHTML = `<div class="tax-sum-grid">${effHtml}</div>
       <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
         ${sp ? 'Correlation appears once the Risk &amp; Reward card above has loaded its price history.'
-             : 'Correlation needs price history via the data proxy — deploy the Worker in <code>proxy/README.md</code>.'}
+             : 'Correlation needs price history via the data proxy, deploy the Worker in <code>proxy/README.md</code>.'}
       </div>`;
     return;
   }
@@ -11594,13 +11595,13 @@ function renderDiversification(){
       ${effHtml}
       ${tile('Average correlation', m.avg.toFixed(2), v ? v.why : '', v ? v.col : 'var(--T3)',
         'How closely your holdings move together on average. 1.00 means identical, 0 means unrelated. High correlation means fewer real bets than the count suggests.')}
-      ${tile('Verdict', v ? v.word : '—', `${m.holdings} holdings · ${m.days} days`, v ? v.col : 'var(--T3)',
+      ${tile('Verdict', v ? v.word : '-', `${m.holdings} holdings · ${m.days} days`, v ? v.col : 'var(--T3)',
         'A plain reading of the average correlation.')}
     </div>
     ${rows ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:12px 0 6px">Most closely linked pairs</div>
     <div class="ts"><table style="min-width:420px"><thead><tr><th>Holding</th><th>Holding</th><th class="r">Correlation</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      Correlation is measured on daily moves over ${m.days} shared days and is <b>weight-blind</b> — it says nothing about position size, which is what "effective holdings" covers. Past correlation rises in a crash; treat a comfortable number with caution.
+      Correlation is measured on daily moves over ${m.days} shared days and is <b>weight-blind</b>, it says nothing about position size, which is what "effective holdings" covers. Past correlation rises in a crash; treat a comfortable number with caution.
     </div>`;
 }
 // ══════════ REBALANCING & CONCENTRATION ══════════
@@ -11698,10 +11699,10 @@ function renderRebalance(){
       <td class="tn">${r.label}</td>
       <td class="r tm">${r.actualPct.toFixed(1)}%</td>
       <td class="r"><input type="number" min="0" max="100" step="any" value="${r.hasTarget ? r.targetPct : ''}"
-          placeholder="—" onchange="rbSetTarget('${r.key}', this.value)"
+          placeholder="-" onchange="rbSetTarget('${r.key}', this.value)"
           style="width:74px;text-align:right;padding:4px 7px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px"></td>
-      <td class="r tm" style="color:${col};font-weight:600">${r.driftPct == null ? '—' : (r.driftPct>=0?'+':'')+r.driftPct.toFixed(1)+'%'}</td>
-      <td class="r tm" style="color:${col}">${r.driftValue == null ? '—'
+      <td class="r tm" style="color:${col};font-weight:600">${r.driftPct == null ? '-' : (r.driftPct>=0?'+':'')+r.driftPct.toFixed(1)+'%'}</td>
+      <td class="r tm" style="color:${col}">${r.driftValue == null ? '-'
           : (r.driftValue>=0 ? 'trim '+F.inr(r.driftValue) : 'add '+F.inr(Math.abs(r.driftValue)))}</td>
     </tr>`;
   }).join('');
@@ -11721,7 +11722,7 @@ function renderRebalance(){
     ${d.anyTarget && !d.targetsSumOk ? `<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
       ⚠️ Your targets add up to <b>${d.targetedPct.toFixed(1)}%</b>, not 100%. The drift figures are still shown, but they cannot all be satisfied at once until the targets balance.
     </div>` : ''}
-    ${!d.anyTarget ? `<div style="font-size:12px;color:var(--T3);margin-top:10px">Set a target % against any class to see drift. Classes left blank are simply untargeted — they are not treated as "should be zero".</div>` : ''}
+    ${!d.anyTarget ? `<div style="font-size:12px;color:var(--T3);margin-top:10px">Set a target % against any class to see drift. Classes left blank are simply untargeted, they are not treated as "should be zero".</div>` : ''}
     ${conc ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:16px 0 6px">
         Single-holding concentration · limit
         <input type="number" min="1" max="100" step="any" value="${lim}" onchange="rbSetLimit(this.value)"
@@ -11733,7 +11734,7 @@ function renderRebalance(){
         </div>`
         : `<div style="font-size:12.5px;color:var(--T2)">No single holding exceeds ${lim}% of the equity book. Top 5 together are ${conc.top5Pct.toFixed(1)}%.</div>`}` : ''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      Targets and the limit are yours and stay on this device. "To reach target" is arithmetic on today's values, not advice — and rebalancing realises gains, which is taxable. Check the Taxation tab before acting.
+      Targets and the limit are yours and stay on this device. "To reach target" is arithmetic on today's values, not advice, and rebalancing realises gains, which is taxable. Check the Taxation tab before acting.
     </div>`;
 }
 // ══════════ TAX REPORTING PERIOD ══════════
@@ -11808,7 +11809,7 @@ function taxPeriodToggle(){
 // the market figures (price, P/E, market cap) the fundamentals feed supplies.
 //
 // All of it runs here, in the browser, in JavaScript. There is no server doing
-// the arithmetic — which is the point: nothing about what you look at or hold
+// the arithmetic, which is the point: nothing about what you look at or hold
 // is sent anywhere.
 //
 // Two rules govern every figure below.
@@ -11837,11 +11838,11 @@ function _finGroup(n, dp, isIndia){
 // Short forms are unavoidable on a statement - the full numbers do not fit -
 // but they are jargon to anyone outside finance, so each carries what it means.
 const FIN_ABBR = {
-  'Cr': 'Crore — 1,00,00,000, i.e. ten million',
-  'L':  'Lakh — 1,00,000, i.e. one hundred thousand',
-  'B':  'Billion — 1,000,000,000',
-  'M':  'Million — 1,000,000',
-  '×':  'Times — a multiple, not a percentage. 2× means twice.',
+  'Cr': 'Crore, 1,00,00,000, i.e. ten million',
+  'L':  'Lakh, 1,00,000, i.e. one hundred thousand',
+  'B':  'Billion, 1,000,000,000',
+  'M':  'Million, 1,000,000',
+  '×':  'Times, a multiple, not a percentage. 2× means twice.',
 };
 function _finUnit(u){
   const tip = FIN_ABBR[u];
@@ -11883,7 +11884,7 @@ function _rtGrowth(pair){
   return (pair.now - pair.prev) / pair.prev * 100;
 }
 // Earnings per share, period by period. The source's own diluted EPS is used
-// where it exists; otherwise EPS is what it is defined as — net profit divided
+// where it exists; otherwise EPS is what it is defined as, net profit divided
 // by the shares outstanding in that same period. Without this fallback a
 // company reporting both of those but no EPS line yielded no EPS at all, and
 // with it no EPS growth and so no PEG.
@@ -11911,6 +11912,32 @@ function _rtSpan(pair){
   return (pair && pair.nowDate && pair.prevDate) ? pair.prevDate + ' → ' + pair.nowDate : null;
 }
 
+// The newest period at which EVERY line a ratio needs is reported, and the
+// values there. This is the fix for a genuine error: reading each line at its
+// own latest date meant a 2026 income statement could be divided by a balance
+// sheet from years earlier, which produced a return on assets of 112%, net
+// income cannot exceed everything a company owns. A ratio is only a ratio if
+// its parts describe the same moment.
+//
+// A key may be an array of alternates, tried in order, for lines the source
+// reports under either of two names.
+function _rtCommon(t, keys){
+  if(!t || !t.line || !t.periodsAll) return null;
+  for(const d of t.periodsAll){
+    const vals = [];
+    let complete = true;
+    for(const key of keys){
+      const alts = Array.isArray(key) ? key : [key];
+      let v = null;
+      for(const k of alts){ const m = t.line[k]; if(m && m[d] != null){ v = m[d]; break; } }
+      if(v == null){ complete = false; break; }
+      vals.push(v);
+    }
+    if(complete) return { v: vals, date: d };
+  }
+  return null;
+}
+
 // First of several lines that is actually reported. Used where the source may
 // carry either of two equivalent names.
 function _rtFirst(t, keys){
@@ -11921,49 +11948,42 @@ function _rtFirst(t, keys){
 // ── The ratios ─────────────────────────────────────────────────────────────
 function computeRatios(t, fund, price){
   const f = fund || {};
-  const rev    = _rtVal(t, 'TotalRevenue');
-  const cogs   = _rtVal(t, 'CostOfRevenue');
-  const gross  = _rtVal(t, 'GrossProfit');
-  const opInc  = _rtVal(t, 'OperatingIncome');
-  const ebit   = _rtFirst(t, ['EBIT', 'OperatingIncome']);
-  const ebitda = _rtVal(t, 'EBITDA');
-  const pretax = _rtVal(t, 'PretaxIncome');
-  const tax    = _rtVal(t, 'TaxProvision');
-  const ni     = _rtVal(t, 'NetIncome');
-  const assets = _rtVal(t, 'TotalAssets');
-  const ca     = _rtVal(t, 'CurrentAssets');
-  const cl     = _rtVal(t, 'CurrentLiabilities');
-  const inv    = _rtVal(t, 'Inventory');
-  const ar     = _rtVal(t, 'AccountsReceivable');
-  const eq     = _rtVal(t, 'StockholdersEquity');
-  const cash   = _rtVal(t, 'CashAndCashEquivalents');
-  const debt   = _rtFirst(t, ['TotalDebt', 'LongTermDebt']);
-  const interest = _rtVal(t, 'InterestExpense');
-  const invCap = _rtVal(t, 'InvestedCapital');
-  const ocf    = _rtVal(t, 'OperatingCashFlow');
-  const capex  = _rtVal(t, 'CapitalExpenditure');
-  const fcfRep = _rtVal(t, 'FreeCashFlow');
-  const shares = _rtVal(t, 'OrdinarySharesNumber');
-
   const r = {};
-  const pct = (a, b) => { const q = _rtDiv(a, b); return q == null ? null : q * 100; };
+
+  // Every ratio below reads its inputs at the newest period where all of them
+  // exist together. Where that period differs between ratios it is recorded,
+  // so the panel can say which one a figure describes.
+  const on = (keys, fn) => {
+    const c = _rtCommon(t, keys);
+    if(!c) return null;
+    const out = fn.apply(null, c.v);
+    if(out != null && isFinite(out)) r._dates = r._dates || {};
+    return out;
+  };
+  const at = (keys) => { const c = _rtCommon(t, keys); return c ? c.date : null; };
+  const pctOf = (a, b) => { const q = _rtDiv(a, b); return q == null ? null : q * 100; };
 
   // Profitability
-  r.grossMargin = pct(gross != null ? gross : (rev != null && cogs != null ? rev - cogs : null), rev);
-  r.opMargin    = pct(opInc, rev);
-  r.netMargin   = pct(ni, rev);
-  r.roe         = pct(ni, eq);
-  r.roa         = pct(ni, assets);
-  // ROCE: operating profit against the capital actually tied up in the
-  // business. Capital employed must be positive for the ratio to mean anything.
-  const capEmployed = (assets != null && cl != null) ? assets - cl : null;
-  r.roce = (capEmployed != null && capEmployed > 0) ? pct(ebit, capEmployed) : null;
-  // ROIC uses after-tax operating profit. The effective tax rate is only
-  // trusted inside a sane band; outside it the ratio is left unreported rather
-  // than scaled by a nonsense rate.
-  const taxRate = _rtDiv(tax, pretax);
-  r.roic = (taxRate != null && taxRate >= 0 && taxRate <= 0.6 && ebit != null && invCap != null)
-         ? pct(ebit * (1 - taxRate), invCap) : null;
+  r.grossMargin = on([['GrossProfit'], 'TotalRevenue'], (g, rev) => pctOf(g, rev));
+  if(r.grossMargin == null)
+    r.grossMargin = on(['TotalRevenue', 'CostOfRevenue'], (rev, c) => pctOf(rev - c, rev));
+  r.opMargin  = on(['OperatingIncome', 'TotalRevenue'], (o, rev) => pctOf(o, rev));
+  r.netMargin = on(['NetIncome', 'TotalRevenue'], (n, rev) => pctOf(n, rev));
+  r.roe       = on(['NetIncome', 'StockholdersEquity'], (n, e) => pctOf(n, e));
+  r.roa       = on(['NetIncome', 'TotalAssets'], (n, a) => pctOf(n, a));
+  r.periodUsed = at(['NetIncome', 'TotalAssets']) || at(['NetIncome', 'TotalRevenue']);
+  // ROCE: operating profit against capital actually tied up in the business.
+  // Capital employed must be positive for the ratio to mean anything.
+  r.roce = on([['EBIT', 'OperatingIncome'], 'TotalAssets', 'CurrentLiabilities'],
+    (e, a, c) => { const cap = a - c; return cap > 0 ? pctOf(e, cap) : null; });
+  // ROIC uses after-tax operating profit. The effective tax rate is trusted
+  // only inside a sane band; outside it the ratio is withheld rather than
+  // scaled by a nonsense rate.
+  r.roic = on([['EBIT', 'OperatingIncome'], 'PretaxIncome', 'TaxProvision', 'InvestedCapital'],
+    (e, pre, tax, cap) => {
+      const rate = _rtDiv(tax, pre);
+      return (rate != null && rate >= 0 && rate <= 0.6) ? pctOf(e * (1 - rate), cap) : null;
+    });
 
   // Growth
   const revPair = _rtPair(t, 'TotalRevenue'), niPair = _rtPair(t, 'NetIncome');
@@ -11976,31 +11996,36 @@ function computeRatios(t, fund, price){
   r.epsSpan   = _rtSpan(epsPair);
 
   // Leverage
-  r.debtToEquity = _rtDiv(debt, eq);
-  const netDebt = (debt != null && cash != null) ? debt - cash : null;
-  r.netDebtEbitda = (netDebt != null && netDebt > 0) ? _rtDiv(netDebt, ebitda) : (netDebt != null ? 0 : null);
-  r.interestCover = (interest != null && Math.abs(interest) > RT_EPS)
-                  ? _rtDiv(ebit, Math.abs(interest)) : null;
+  r.debtToEquity = on([['TotalDebt', 'LongTermDebt'], 'StockholdersEquity'], (d, e) => _rtDiv(d, e));
+  r.netDebtEbitda = on([['TotalDebt', 'LongTermDebt'], 'CashAndCashEquivalents', 'EBITDA'],
+    (d, c, e) => { const nd = d - c; return nd <= 0 ? 0 : _rtDiv(nd, e); });
+  r.interestCover = on([['EBIT', 'OperatingIncome'], 'InterestExpense'],
+    (e, i) => Math.abs(i) > RT_EPS ? _rtDiv(e, Math.abs(i)) : null);
 
   // Liquidity
-  r.currentRatio = _rtDiv(ca, cl);
-  r.quickRatio   = (ca != null && inv != null) ? _rtDiv(ca - inv, cl) : null;
+  r.currentRatio = on(['CurrentAssets', 'CurrentLiabilities'], (a, l) => _rtDiv(a, l));
+  r.quickRatio   = on(['CurrentAssets', 'Inventory', 'CurrentLiabilities'], (a, i, l) => _rtDiv(a - i, l));
 
   // Efficiency
-  r.assetTurnover = _rtDiv(rev, assets);
-  r.invTurnover   = _rtDiv(cogs, inv);
-  r.receivableDays = (() => { const q = _rtDiv(ar, rev); return q == null ? null : q * 365; })();
+  r.assetTurnover  = on(['TotalRevenue', 'TotalAssets'], (rev, a) => _rtDiv(rev, a));
+  r.invTurnover    = on(['CostOfRevenue', 'Inventory'], (c, i) => _rtDiv(c, i));
+  r.receivableDays = on(['AccountsReceivable', 'TotalRevenue'],
+    (ar, rev) => { const q = _rtDiv(ar, rev); return q == null ? null : q * 365; });
 
   // Cash quality
-  const fcf = fcfRep != null ? fcfRep : ((ocf != null && capex != null) ? ocf + capex : null);
-  r.fcf = fcf;
-  r.fcfMargin = pct(fcf, rev);
-  // Only meaningful when the company actually made a profit; against a loss the
-  // ratio flips sign and reads as if cash conversion were terrible or superb.
-  r.cashConversion = (ni != null && ni > 0) ? _rtDiv(ocf, ni) : null;
+  r.fcf = _rtVal(t, 'FreeCashFlow');
+  if(r.fcf == null) r.fcf = on(['OperatingCashFlow', 'CapitalExpenditure'], (o, c) => o + c);
+  r.fcfMargin = (r.fcf != null) ? on(['TotalRevenue'], (rev) => pctOf(r.fcf, rev)) : null;
+  // Only meaningful against a profit; against a loss the ratio flips sign and
+  // reads as if cash conversion were terrible or superb.
+  r.cashConversion = on(['OperatingCashFlow', 'NetIncome'], (o, n) => n > 0 ? _rtDiv(o, n) : null);
 
   // Valuation. These need the market's price, not just the accounts.
   const p = (typeof price === 'number' && isFinite(price) && price > 0) ? price : null;
+  const eq = _rtVal(t, 'StockholdersEquity'), rev = _rtVal(t, 'TotalRevenue');
+  const shares = _rtVal(t, 'OrdinarySharesNumber');
+  const netDebtV = on([['TotalDebt', 'LongTermDebt'], 'CashAndCashEquivalents'], (d, c) => d - c);
+  const ebitdaV = _rtVal(t, 'EBITDA');
   let eps = null;
   if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
   r.eps = eps;
@@ -12012,9 +12037,9 @@ function computeRatios(t, fund, price){
   r.earningsYield = r.pe != null ? _rtDiv(100, r.pe) : null;
   r.divYield = (f.divYield != null && isFinite(f.divYield)) ? f.divYield : null;
   // EV/EBITDA from the accounts when the feed does not carry it.
-  const ev = (f.mktCap != null && netDebt != null) ? f.mktCap + netDebt : null;
+  const ev = (f.mktCap != null && netDebtV != null) ? f.mktCap + netDebtV : null;
   r.evEbitda = (f.evEbitda != null && isFinite(f.evEbitda) && f.evEbitda > 0) ? f.evEbitda
-             : ((ev != null && ebitda != null && ebitda > 0) ? _rtDiv(ev, ebitda) : null);
+             : ((ev != null && ebitdaV != null && ebitdaV > 0) ? _rtDiv(ev, ebitdaV) : null);
   // PEG: P/E divided by the growth rate it is being paid for. Against flat or
   // shrinking earnings the ratio has no meaning at all - a negative PEG is not
   // "cheap" - so it is withheld rather than shown as a bargain.
@@ -12049,7 +12074,9 @@ function computeRatios(t, fund, price){
   const deciding = annualMeasures.length ? annualMeasures[0] : feedMeasure;
   r.pegBlocked = !!(r.pe != null && deciding && !pegOn);
   r.pegBlockedOnAnnual = !!(r.pegBlocked && deciding.annual);
-  r.pegBlockedBy = r.pegBlocked ? deciding : null;
+  r.pegBlockedBy = r.pegBlocked
+    ? { label: deciding.label, value: deciding.v, span: deciding.span, annual: deciding.annual }
+    : null;
 
   return r;
 }
@@ -12101,7 +12128,12 @@ function isLender(fund){
 }
 
 // ── Display ────────────────────────────────────────────────────────────────
-const RT_DASH = '<span class="rt-na">—</span>';
+// Three markers, each a different statement, none of them a blank or a dash a
+// reader has to decode:
+//   n/r  the source did not report this line
+//   n/a  the ratio does not describe this kind of business
+//   n/m  it applies, but cannot be computed to anything meaningful
+const RT_DASH = '<span class="rt-na" title="Not reported: the data source did not carry this line.">n/r</span>';
 function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
 function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + _finUnit('×'); }
 function _rtRaw(v, dp){ return v == null ? RT_DASH : _finGroup(v, dp == null ? 2 : dp, true); }
@@ -12121,7 +12153,7 @@ const RT_GROUPS = [
   ['📈 Growth', [
     ['Revenue growth',    'revGrowth',   _rtPct, 'Change in revenue against the previous reported period.'],
     ['Net income growth', 'niGrowth',    _rtPct, 'Change in net profit against the previous reported period.'],
-    ['EPS growth',        'epsGrowth',   _rtPct, 'Change in earnings per share — growth after any dilution.'],
+    ['EPS growth',        'epsGrowth',   _rtPct, 'Change in earnings per share, growth after any dilution.'],
   ]],
   ['⚖️ Leverage & solvency', [
     ['Debt / Equity',     'debtToEquity',  v => _rtRaw(v), 'Borrowings against shareholders’ funds. Above 1 means the business leans more on lenders than on owners.'],
@@ -12130,7 +12162,7 @@ const RT_GROUPS = [
   ]],
   ['💧 Liquidity', [
     ['Current ratio',     'currentRatio', v => _rtRaw(v), 'Short-term assets against short-term dues. Below 1 means near-term bills exceed near-term resources.'],
-    ['Quick ratio',       'quickRatio',   v => _rtRaw(v), 'The same, excluding inventory — what could be paid without selling stock first.'],
+    ['Quick ratio',       'quickRatio',   v => _rtRaw(v), 'The same, excluding inventory, what could be paid without selling stock first.'],
   ]],
   ['⚙️ Efficiency', [
     ['Asset turnover',    'assetTurnover', v => _rtX(v),   'Revenue generated per rupee of assets.'],
@@ -12138,17 +12170,17 @@ const RT_GROUPS = [
     ['Receivable days',   'receivableDays', _rtDays,       'Average days customers take to pay.'],
   ]],
   ['💵 Cash quality', [
-    ['FCF margin',        'fcfMargin',     _rtPct,         'Free cash flow as a share of revenue — cash left after running and maintaining the business.'],
+    ['FCF margin',        'fcfMargin',     _rtPct,         'Free cash flow as a share of revenue, cash left after running and maintaining the business.'],
     ['Cash conversion',   'cashConversion', v => _rtX(v),  'Operating cash flow divided by net profit. Well under 1 means profits are not turning into cash.'],
   ]],
   ['🏷️ Valuation', [
     ['EPS',               'eps',           v => _rtRaw(v),    'Earnings per share: net profit divided by the shares outstanding, or the source\u2019s own diluted figure where it reports one.'],
     ['P/E',               'pe',            v => _rtRaw(v, 1), 'Price paid per rupee of annual earnings.'],
     ['PEG',               'peg',           v => _rtRaw(v),    'P/E divided by the earnings growth rate being paid for. Around 1 means growth and price are roughly in line; under 1 is the classic screen for growth at a reasonable price.'],
-    ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value — the accounting net worth per share.'],
+    ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value, the accounting net worth per share.'],
     ['P/S',               'ps',            v => _rtRaw(v),    'Price against annual revenue. Useful where earnings are small or negative.'],
     ['EV / EBITDA',       'evEbitda',      v => _rtRaw(v, 1), 'Whole-company value (market cap plus net debt) against operating earnings. Comparable across different debt loads.'],
-    ['Earnings yield',    'earningsYield', _rtPct,            'Earnings per rupee invested — the P/E inverted, so it can be read against a deposit rate.'],
+    ['Earnings yield',    'earningsYield', _rtPct,            'Earnings per rupee invested, the P/E inverted, so it can be read against a deposit rate.'],
     ['Dividend yield',    'divYield',      _rtPct,            'Annual dividend as a share of the current price.'],
   ]],
 ];
@@ -12169,19 +12201,25 @@ function ratiosHtml(t, fund, price){
       tip += ' Growth measured: ' + r.pegGrowths.map(g =>
         g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
     }
-    let note = '';
+    let note = '', display = shown;
     if(key === 'peg'){
       if(v != null && r.pegBasis){
-        note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ' · ' + r.pegSpan : ''}</div>`;
+        note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ', ' + r.pegSpan : ''}</div>`;
       } else if(v == null && r.pegBlocked && r.pegBlockedBy){
         const b = r.pegBlockedBy;
-        const fig = b.value < 0 ? 'fell ' + Math.abs(b.value).toFixed(1) + '%' : 'flat';
-        note = `<div class="rt-note">earnings ${fig} (${b.label}${b.span ? ', ' + b.span : ''})` +
-               `${r.pegBlockedOnAnnual ? '' : ' — one quarter only'}</div>`;
+        // The figure itself, not merely the fact that one exists. PEG divides
+        // the P/E by a growth rate; with no positive growth there is no value
+        // to print, so the cell carries "n/m" (not meaningful) and the growth
+        // rate that made it so. That is distinct from "n/a", which means the
+        // ratio does not describe this kind of business at all.
+        const fig = (b.value < 0 ? '-' : '+') + Math.abs(b.value).toFixed(1) + '%';
+        display = `<span class="rt-na" title="Not meaningful: PEG divides the P/E by the growth rate, and there is no positive growth to divide by.">n/m</span>`;
+        note = `<div class="rt-note">growth ${fig} (${b.label}${b.span ? ', ' + b.span : ''})` +
+               `${r.pegBlockedOnAnnual ? '' : ', one quarter only'}</div>`;
       }
     }
     return `<tr class="rt-row"><th scope="row" class="rt-lbl" title="${tip.replace(/"/g,'&quot;')}">${label}</th>
-      <td class="rt-val ${band ? 'rt-'+band : ''}">${shown}${note}</td></tr>`;
+      <td class="rt-val ${band ? 'rt-'+band : ''}">${display}${note}</td></tr>`;
   };
   const groups = RT_GROUPS.map(([title, rows]) => `
     <div class="rt-card">
@@ -12189,28 +12227,28 @@ function ratiosHtml(t, fund, price){
       <table class="rt-table"><tbody>${rows.map(x => cell(x[0], x[1], x[2], x[3])).join('')}</tbody></table>
     </div>`).join('');
   const lenderNote = lender
-    ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders — for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
+    ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders, for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
     : '';
   return `<div class="rt-wrap">
     <div class="rt-h">📐 Key Ratios</div>
     ${lenderNote}
     <div class="rt-grid">${groups}</div>
-    <div class="rt-foot">Computed in your browser from the reported statements above and the current price — nothing is sent anywhere.
-      A dash means the source did not carry the inputs, so the ratio is not shown rather than estimated.
+    <div class="rt-foot">Computed in your browser from the reported statements above and the current price, nothing is sent anywhere.
+      n/r means the source did not carry the inputs, so the ratio is not shown rather than estimated.
       Colours are broad rules of thumb across ordinary businesses; a capital-heavy company and an asset-light one are not judged on the same numbers.
       Hover any label for what it measures.</div>
   </div>`;
 }
-const PY_INTERPRET = "\"\"\"Reads a set of computed ratios and says, in plain English, what they show.\n\nWhy this is Python and the rest of the app is not\n------------------------------------------------\nThe ratios themselves are computed in JavaScript and arrive here already\nworked out, along with the band (good / fair / weak) each one fell into. That\nsplit is deliberate: thresholds live in exactly one place, so this file cannot\ndrift out of agreement with the numbers on screen. What Python does here is the\npart it is actually better at — reading across the ratios, weighing them\nagainst each other, and turning the result into sentences.\n\nIt runs in the browser through Pyodide (CPython compiled to WebAssembly), so\n\"no server\" still holds: the figures never leave the machine. The same file is\nimported directly by tests/test_interpret.py under normal CPython, which is\nwhat makes the logic here verified rather than merely present.\n\nTwo rules govern every sentence produced:\n\n  1. Nothing is said about a ratio that was not computed. A missing input\n     yields silence, never a guess and never a reassuring absence.\n  2. Nothing here is advice. Every finding describes what the reported numbers\n     show. What to do about it is the reader's judgement, and the caller is\n     expected to say so.\n\"\"\"\n\nimport json\n\nGOOD, FAIR, WEAK = \"good\", \"fair\", \"weak\"\n\n\ndef _f(x):\n    \"\"\"A finite float, or None. Guards against NaN and infinity arriving as JSON.\"\"\"\n    if x is None:\n        return None\n    try:\n        v = float(x)\n    except (TypeError, ValueError):\n        return None\n    if v != v or v in (float(\"inf\"), float(\"-inf\")):\n        return None\n    return v\n\n\ndef _pct(v, dp=1):\n    return \"{:.{dp}f}%\".format(v, dp=dp)\n\n\ndef _x(v, dp=2):\n    return \"{:.{dp}f}x\".format(v, dp=dp)\n\n\n# Each entry: key, tone by band, and the sentence template. Only ratios worth\n# narrating appear here - a list of every number would be a table, not a read.\ndef _profitability(r, b, lender, out):\n    roce, roe, nm, gm = r.get(\"roce\"), r.get(\"roe\"), r.get(\"netMargin\"), r.get(\"grossMargin\")\n\n    if roce is not None and not lender:\n        band = b.get(\"roce\")\n        if band == GOOD:\n            out.append((GOOD, \"Returns on capital\",\n                        \"ROCE of %s means the business earns well on the capital tied up in it. \"\n                        \"This is the number that is hardest to flatter with borrowing, so a high \"\n                        \"one is worth more than a high ROE.\" % _pct(roce)))\n        elif band == FAIR:\n            out.append((\"info\", \"Returns on capital\",\n                        \"ROCE of %s is moderate - the business earns its keep on the capital \"\n                        \"employed without standing out.\" % _pct(roce)))\n        elif band == WEAK:\n            out.append((WEAK, \"Returns on capital\",\n                        \"ROCE of %s is low. The business is not generating much from the capital \"\n                        \"tied up in it, which over time limits how fast it can grow without \"\n                        \"raising more money.\" % _pct(roce)))\n\n    if roe is not None:\n        band = b.get(\"roe\")\n        if roce is not None and not lender and roe - roce > 10:\n            out.append((\"info\", \"ROE flattered by debt\",\n                        \"ROE of %s sits well above ROCE of %s. That gap is usually borrowing: \"\n                        \"debt lifts the return to shareholders while adding risk that ROE alone \"\n                        \"does not show.\" % (_pct(roe), _pct(roce))))\n        elif band == GOOD:\n            out.append((GOOD, \"Return on equity\",\n                        \"ROE of %s is a strong return on shareholders' money.\" % _pct(roe)))\n        elif band == WEAK:\n            out.append((WEAK, \"Return on equity\",\n                        \"ROE of %s is a weak return on shareholders' money.\" % _pct(roe)))\n\n    if nm is not None:\n        band = b.get(\"netMargin\")\n        if band == GOOD:\n            out.append((GOOD, \"Margins\",\n                        \"Net margin of %s means the business keeps a healthy share of every \"\n                        \"rupee it sells.\" % _pct(nm)))\n        elif band == WEAK:\n            out.append((WEAK, \"Margins\",\n                        \"Net margin of %s is thin, so profit is sensitive to small moves in \"\n                        \"costs or pricing.\" % _pct(nm)))\n        if nm < 0:\n            out.append((WEAK, \"Loss-making\",\n                        \"Net margin is negative: the business lost money over this period. \"\n                        \"Several ratios below are withheld because they are meaningless \"\n                        \"against a loss.\"))\n\n    if gm is not None and nm is not None and gm > 0 and nm > 0 and gm - nm > 45:\n        out.append((\"info\", \"Costs below the gross line\",\n                    \"Gross margin is %s but net margin is only %s. Most of what the business \"\n                    \"earns on its product is spent before it reaches the bottom line - overheads, \"\n                    \"interest or tax.\" % (_pct(gm), _pct(nm))))\n\n\ndef _growth(r, b, out):\n    rev, ni, eps = r.get(\"revGrowth\"), r.get(\"niGrowth\"), r.get(\"epsGrowth\")\n\n    if rev is not None and ni is not None:\n        if ni < rev - 10:\n            out.append((WEAK, \"Profit lagging sales\",\n                        \"Revenue grew %s but net profit only %s. Sales are rising faster than \"\n                        \"profits, which means margins are compressing - growth is being bought \"\n                        \"rather than earned.\" % (_pct(rev), _pct(ni))))\n        elif ni > rev + 10:\n            out.append((GOOD, \"Profit outpacing sales\",\n                        \"Net profit grew %s against revenue growth of %s. The business is getting \"\n                        \"more profitable as it grows, not just bigger.\" % (_pct(ni), _pct(rev))))\n\n    if eps is not None and ni is not None and ni - eps > 5:\n        out.append((\"info\", \"Dilution\",\n                    \"Net profit grew %s but earnings per share only %s. The share count rose, so \"\n                    \"each existing share captured less of that growth than the headline suggests.\"\n                    % (_pct(ni), _pct(eps))))\n\n    if rev is not None and rev < 0:\n        out.append((WEAK, \"Shrinking\",\n                    \"Revenue fell %s against the previous period. The business sold less, not \"\n                    \"more.\" % _pct(abs(rev))))\n\n\ndef _solvency(r, b, lender, out):\n    if lender:\n        return\n    de, cover, nde = r.get(\"debtToEquity\"), r.get(\"interestCover\"), r.get(\"netDebtEbitda\")\n\n    if de is not None:\n        band = b.get(\"debtToEquity\")\n        if band == WEAK:\n            out.append((WEAK, \"Debt load\",\n                        \"Debt of %s times equity means the business leans more on lenders than on \"\n                        \"its owners. That magnifies both good years and bad ones.\" % _x(de)))\n        elif band == GOOD:\n            out.append((GOOD, \"Debt load\",\n                        \"Debt is %s times equity - a conservative balance sheet.\" % _x(de)))\n\n    if cover is not None:\n        if cover < 2:\n            out.append((WEAK, \"Interest burden\",\n                        \"Operating profit covers the interest bill only %s. There is little room \"\n                        \"for a bad year before interest becomes hard to service.\" % _x(cover, 1)))\n        elif b.get(\"interestCover\") == GOOD:\n            out.append((GOOD, \"Interest burden\",\n                        \"Operating profit covers interest %s over - comfortable.\" % _x(cover, 1)))\n\n    if nde is not None and nde <= 0:\n        out.append((GOOD, \"Net cash\",\n                    \"The business holds more cash than debt.\"))\n    elif nde is not None and b.get(\"netDebtEbitda\") == WEAK:\n        out.append((WEAK, \"Debt against earnings\",\n                    \"Net debt is %s years of operating earnings. Above about three, lenders and \"\n                    \"rating agencies start to take notice.\" % _x(nde, 1)))\n\n\ndef _liquidity(r, b, lender, out):\n    if lender:\n        return\n    cr, qr = r.get(\"currentRatio\"), r.get(\"quickRatio\")\n    if cr is not None and cr < 1:\n        out.append((WEAK, \"Short-term cover\",\n                    \"Current ratio of %s means short-term dues exceed short-term assets. The \"\n                    \"business depends on new cash coming in to meet bills already due.\" % _x(cr)))\n    elif cr is not None and qr is not None and cr >= 1.5 and qr < 1:\n        out.append((\"info\", \"Cover depends on inventory\",\n                    \"Current ratio looks comfortable at %s, but stripping out inventory drops it \"\n                    \"to %s. The cushion is stock that still has to be sold.\" % (_x(cr), _x(qr))))\n\n\ndef _cash(r, b, out):\n    cc, fcfm = r.get(\"cashConversion\"), r.get(\"fcfMargin\")\n    if cc is not None:\n        if cc < 0.6:\n            out.append((WEAK, \"Profits not becoming cash\",\n                        \"Only %s of net profit came through as operating cash. Reported profit is \"\n                        \"running ahead of money actually collected - worth checking receivables \"\n                        \"and inventory.\" % _x(cc)))\n        elif cc >= 1:\n            out.append((GOOD, \"Profits backed by cash\",\n                        \"Operating cash flow is %s of net profit, so the earnings are real cash \"\n                        \"rather than accounting entries.\" % _x(cc)))\n    if fcfm is not None and fcfm < 0:\n        out.append((WEAK, \"Cash consumed\",\n                    \"Free cash flow is negative: after capital spending, the business used more \"\n                    \"cash than it produced. That is normal while building capacity and a problem \"\n                    \"when it is not.\"))\n    elif fcfm is not None and b.get(\"fcfMargin\") == GOOD:\n        out.append((GOOD, \"Cash generative\",\n                    \"Free cash flow is %s of revenue - real money left after running and \"\n                    \"maintaining the business.\" % _pct(fcfm)))\n\n\ndef _valuation(r, b, out, deposit_rate=7.0):\n    pe, peg, ey, basis = r.get(\"pe\"), r.get(\"peg\"), r.get(\"earningsYield\"), r.get(\"pegBasis\")\n\n    if peg is not None:\n        if peg < 1:\n            out.append((GOOD, \"Price against growth\",\n                        \"PEG of %s: the price is below what the growth rate alone would justify, \"\n                        \"measured against %s.\" % (\"{:.2f}\".format(peg), basis or \"reported growth\")))\n        elif peg > 2:\n            out.append((WEAK, \"Price against growth\",\n                        \"PEG of %s: the price is well ahead of the growth being delivered. That \"\n                        \"only works out if growth accelerates.\" % \"{:.2f}\".format(peg)))\n    elif r.get(\"pegBlocked\"):\n        out.append((\"info\", \"PEG not meaningful\",\n                    \"Earnings are flat or shrinking, so PEG has no meaning here - dividing a \"\n                    \"price by negative growth produces a number that looks cheap and is not.\"))\n\n    if ey is not None:\n        if ey < deposit_rate - 2:\n            out.append((\"info\", \"Against a deposit\",\n                        \"The earnings yield is %s. A fixed deposit pays roughly %s with no \"\n                        \"business risk, so the case for holding this rests on growth rather than \"\n                        \"current earnings.\" % (_pct(ey), _pct(deposit_rate, 0))))\n        elif ey > deposit_rate + 3:\n            out.append((GOOD, \"Against a deposit\",\n                        \"The earnings yield is %s, comfortably above a deposit rate of about %s.\"\n                        % (_pct(ey), _pct(deposit_rate, 0))))\n\n    if pe is not None and pe > 60:\n        out.append((\"info\", \"High multiple\",\n                    \"A P/E of %s prices in a great deal of future growth. It is not wrong on its \"\n                    \"own, but it leaves little margin for disappointment.\"\n                    % \"{:.1f}\".format(pe)))\n\n\n# Ratios worth reporting coverage against. A read built on four numbers is a\n# different thing from one built on twenty, and the reader should be told which.\n_TRACKED = [\n    \"grossMargin\", \"opMargin\", \"netMargin\", \"roe\", \"roce\", \"roic\", \"roa\",\n    \"revGrowth\", \"niGrowth\", \"epsGrowth\", \"debtToEquity\", \"netDebtEbitda\",\n    \"interestCover\", \"currentRatio\", \"quickRatio\", \"assetTurnover\",\n    \"invTurnover\", \"receivableDays\", \"fcfMargin\", \"cashConversion\",\n    \"pe\", \"peg\", \"pb\", \"ps\", \"evEbitda\", \"earningsYield\", \"divYield\",\n]\n\n\ndef interpret(payload):\n    \"\"\"payload: {ratios, bands, lender, symbol, depositRate}. Returns a dict.\"\"\"\n    payload = payload or {}\n    raw = payload.get(\"ratios\") or {}\n    ratios = {}\n    for k in raw:\n        v = _f(raw[k])\n        if v is not None:\n            ratios[k] = v\n    # pegBasis is text and pegBlocked is a flag; neither survives the float pass.\n    if raw.get(\"pegBasis\"):\n        ratios[\"pegBasis\"] = raw[\"pegBasis\"]\n    ratios[\"pegBlocked\"] = bool(raw.get(\"pegBlocked\"))\n\n    bands = payload.get(\"bands\") or {}\n    lender = bool(payload.get(\"lender\"))\n    deposit = _f(payload.get(\"depositRate\"))\n    if deposit is None:\n        deposit = 7.0\n\n    out = []\n    _profitability(ratios, bands, lender, out)\n    _growth(ratios, bands, out)\n    _solvency(ratios, bands, lender, out)\n    _liquidity(ratios, bands, lender, out)\n    _cash(ratios, bands, out)\n    _valuation(ratios, bands, out, deposit)\n\n    findings = [{\"tone\": t, \"label\": l, \"text\": s} for (t, l, s) in out]\n    have = [k for k in _TRACKED if k in ratios]\n    coverage = {\"available\": len(have), \"tracked\": len(_TRACKED)}\n\n    strengths = len([f for f in findings if f[\"tone\"] == GOOD])\n    concerns = len([f for f in findings if f[\"tone\"] == WEAK])\n\n    if not findings:\n        summary = (\"Not enough of the statements came through to say anything useful. \"\n                   \"%d of %d ratios could be computed.\" % (coverage[\"available\"], coverage[\"tracked\"]))\n    elif concerns == 0 and strengths:\n        summary = (\"The reported numbers read well: %d point%s in favour and nothing that stands \"\n                   \"out as a concern, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    elif strengths == 0 and concerns:\n        summary = (\"The reported numbers read poorly: %d concern%s and nothing that stands out in \"\n                   \"favour, from %d of %d ratios.\"\n                   % (concerns, \"\" if concerns == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    else:\n        summary = (\"A mixed picture: %d point%s in favour, %d concern%s, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\",\n                      concerns, \"\" if concerns == 1 else \"s\",\n                      coverage[\"available\"], coverage[\"tracked\"]))\n\n    if lender:\n        summary += (\" Ratios that describe manufacturers rather than lenders have been left out \"\n                    \"of this reading.\")\n\n    return {\"summary\": summary, \"findings\": findings, \"coverage\": coverage,\n            \"strengths\": strengths, \"concerns\": concerns}\n\n\ndef interpret_json(s):\n    \"\"\"String in, string out - the shape Pyodide passes across cleanly.\"\"\"\n    return json.dumps(interpret(json.loads(s)))\n";
+const PY_INTERPRET = "\"\"\"Reads a set of computed ratios and says, in plain English, what they show.\n\nWhy this is Python and the rest of the app is not\n------------------------------------------------\nThe ratios themselves are computed in JavaScript and arrive here already\nworked out, along with the band (good / fair / weak) each one fell into. That\nsplit is deliberate: thresholds live in exactly one place, so this file cannot\ndrift out of agreement with the numbers on screen. What Python does here is the\npart it is actually better at, reading across the ratios, weighing them\nagainst each other, and turning the result into sentences.\n\nIt runs in the browser through Pyodide (CPython compiled to WebAssembly), so\n\"no server\" still holds: the figures never leave the machine. The same file is\nimported directly by tests/test_interpret.py under normal CPython, which is\nwhat makes the logic here verified rather than merely present.\n\nTwo rules govern every sentence produced:\n\n  1. Nothing is said about a ratio that was not computed. A missing input\n     yields silence, never a guess and never a reassuring absence.\n  2. Nothing here is advice. Every finding describes what the reported numbers\n     show. What to do about it is the reader's judgement, and the caller is\n     expected to say so.\n\"\"\"\n\nimport json\n\nGOOD, FAIR, WEAK = \"good\", \"fair\", \"weak\"\n\n\ndef _f(x):\n    \"\"\"A finite float, or None. Guards against NaN and infinity arriving as JSON.\"\"\"\n    if x is None:\n        return None\n    try:\n        v = float(x)\n    except (TypeError, ValueError):\n        return None\n    if v != v or v in (float(\"inf\"), float(\"-inf\")):\n        return None\n    return v\n\n\ndef _pct(v, dp=1):\n    return \"{:.{dp}f}%\".format(v, dp=dp)\n\n\ndef _x(v, dp=2):\n    return \"{:.{dp}f}x\".format(v, dp=dp)\n\n\n# Each entry: key, tone by band, and the sentence template. Only ratios worth\n# narrating appear here - a list of every number would be a table, not a read.\ndef _profitability(r, b, lender, out):\n    roce, roe, nm, gm = r.get(\"roce\"), r.get(\"roe\"), r.get(\"netMargin\"), r.get(\"grossMargin\")\n\n    if roce is not None and not lender:\n        band = b.get(\"roce\")\n        if band == GOOD:\n            out.append((GOOD, \"Returns on capital\",\n                        \"ROCE of %s means the business earns well on the capital tied up in it. \"\n                        \"This is the number that is hardest to flatter with borrowing, so a high \"\n                        \"one is worth more than a high ROE.\" % _pct(roce)))\n        elif band == FAIR:\n            out.append((\"info\", \"Returns on capital\",\n                        \"ROCE of %s is moderate - the business earns its keep on the capital \"\n                        \"employed without standing out.\" % _pct(roce)))\n        elif band == WEAK:\n            out.append((WEAK, \"Returns on capital\",\n                        \"ROCE of %s is low. The business is not generating much from the capital \"\n                        \"tied up in it, which over time limits how fast it can grow without \"\n                        \"raising more money.\" % _pct(roce)))\n\n    if roe is not None:\n        band = b.get(\"roe\")\n        if roce is not None and not lender and roe - roce > 10:\n            out.append((\"info\", \"ROE flattered by debt\",\n                        \"ROE of %s sits well above ROCE of %s. That gap is usually borrowing: \"\n                        \"debt lifts the return to shareholders while adding risk that ROE alone \"\n                        \"does not show.\" % (_pct(roe), _pct(roce))))\n        elif band == GOOD:\n            out.append((GOOD, \"Return on equity\",\n                        \"ROE of %s is a strong return on shareholders' money.\" % _pct(roe)))\n        elif band == WEAK:\n            out.append((WEAK, \"Return on equity\",\n                        \"ROE of %s is a weak return on shareholders' money.\" % _pct(roe)))\n\n    if nm is not None:\n        band = b.get(\"netMargin\")\n        if band == GOOD:\n            out.append((GOOD, \"Margins\",\n                        \"Net margin of %s means the business keeps a healthy share of every \"\n                        \"rupee it sells.\" % _pct(nm)))\n        elif band == WEAK:\n            out.append((WEAK, \"Margins\",\n                        \"Net margin of %s is thin, so profit is sensitive to small moves in \"\n                        \"costs or pricing.\" % _pct(nm)))\n        if nm < 0:\n            out.append((WEAK, \"Loss-making\",\n                        \"Net margin is negative: the business lost money over this period. \"\n                        \"Several ratios below are withheld because they are meaningless \"\n                        \"against a loss.\"))\n\n    if gm is not None and nm is not None and gm > 0 and nm > 0 and gm - nm > 45:\n        out.append((\"info\", \"Costs below the gross line\",\n                    \"Gross margin is %s but net margin is only %s. Most of what the business \"\n                    \"earns on its product is spent before it reaches the bottom line - overheads, \"\n                    \"interest or tax.\" % (_pct(gm), _pct(nm))))\n\n\ndef _growth(r, b, out):\n    rev, ni, eps = r.get(\"revGrowth\"), r.get(\"niGrowth\"), r.get(\"epsGrowth\")\n\n    if rev is not None and ni is not None:\n        if ni < rev - 10:\n            out.append((WEAK, \"Profit lagging sales\",\n                        \"Revenue grew %s but net profit only %s. Sales are rising faster than \"\n                        \"profits, which means margins are compressing - growth is being bought \"\n                        \"rather than earned.\" % (_pct(rev), _pct(ni))))\n        elif ni > rev + 10:\n            out.append((GOOD, \"Profit outpacing sales\",\n                        \"Net profit grew %s against revenue growth of %s. The business is getting \"\n                        \"more profitable as it grows, not just bigger.\" % (_pct(ni), _pct(rev))))\n\n    if eps is not None and ni is not None and ni - eps > 5:\n        out.append((\"info\", \"Dilution\",\n                    \"Net profit grew %s but earnings per share only %s. The share count rose, so \"\n                    \"each existing share captured less of that growth than the headline suggests.\"\n                    % (_pct(ni), _pct(eps))))\n\n    if rev is not None and rev < 0:\n        out.append((WEAK, \"Shrinking\",\n                    \"Revenue fell %s against the previous period. The business sold less, not \"\n                    \"more.\" % _pct(abs(rev))))\n\n\ndef _solvency(r, b, lender, out):\n    if lender:\n        return\n    de, cover, nde = r.get(\"debtToEquity\"), r.get(\"interestCover\"), r.get(\"netDebtEbitda\")\n\n    if de is not None:\n        band = b.get(\"debtToEquity\")\n        if band == WEAK:\n            out.append((WEAK, \"Debt load\",\n                        \"Debt of %s times equity means the business leans more on lenders than on \"\n                        \"its owners. That magnifies both good years and bad ones.\" % _x(de)))\n        elif band == GOOD:\n            out.append((GOOD, \"Debt load\",\n                        \"Debt is %s times equity - a conservative balance sheet.\" % _x(de)))\n\n    if cover is not None:\n        if cover < 2:\n            out.append((WEAK, \"Interest burden\",\n                        \"Operating profit covers the interest bill only %s. There is little room \"\n                        \"for a bad year before interest becomes hard to service.\" % _x(cover, 1)))\n        elif b.get(\"interestCover\") == GOOD:\n            out.append((GOOD, \"Interest burden\",\n                        \"Operating profit covers interest %s over - comfortable.\" % _x(cover, 1)))\n\n    if nde is not None and nde <= 0:\n        out.append((GOOD, \"Net cash\",\n                    \"The business holds more cash than debt.\"))\n    elif nde is not None and b.get(\"netDebtEbitda\") == WEAK:\n        out.append((WEAK, \"Debt against earnings\",\n                    \"Net debt is %s years of operating earnings. Above about three, lenders and \"\n                    \"rating agencies start to take notice.\" % _x(nde, 1)))\n\n\ndef _liquidity(r, b, lender, out):\n    if lender:\n        return\n    cr, qr = r.get(\"currentRatio\"), r.get(\"quickRatio\")\n    if cr is not None and cr < 1:\n        out.append((WEAK, \"Short-term cover\",\n                    \"Current ratio of %s means short-term dues exceed short-term assets. The \"\n                    \"business depends on new cash coming in to meet bills already due.\" % _x(cr)))\n    elif cr is not None and qr is not None and cr >= 1.5 and qr < 1:\n        out.append((\"info\", \"Cover depends on inventory\",\n                    \"Current ratio looks comfortable at %s, but stripping out inventory drops it \"\n                    \"to %s. The cushion is stock that still has to be sold.\" % (_x(cr), _x(qr))))\n\n\ndef _cash(r, b, out):\n    cc, fcfm = r.get(\"cashConversion\"), r.get(\"fcfMargin\")\n    if cc is not None:\n        if cc < 0.6:\n            out.append((WEAK, \"Profits not becoming cash\",\n                        \"Only %s of net profit came through as operating cash. Reported profit is \"\n                        \"running ahead of money actually collected - worth checking receivables \"\n                        \"and inventory.\" % _x(cc)))\n        elif cc >= 1:\n            out.append((GOOD, \"Profits backed by cash\",\n                        \"Operating cash flow is %s of net profit, so the earnings are real cash \"\n                        \"rather than accounting entries.\" % _x(cc)))\n    if fcfm is not None and fcfm < 0:\n        out.append((WEAK, \"Cash consumed\",\n                    \"Free cash flow is negative: after capital spending, the business used more \"\n                    \"cash than it produced. That is normal while building capacity and a problem \"\n                    \"when it is not.\"))\n    elif fcfm is not None and b.get(\"fcfMargin\") == GOOD:\n        out.append((GOOD, \"Cash generative\",\n                    \"Free cash flow is %s of revenue - real money left after running and \"\n                    \"maintaining the business.\" % _pct(fcfm)))\n\n\ndef _valuation(r, b, out, deposit_rate=7.0):\n    pe, peg, ey, basis = r.get(\"pe\"), r.get(\"peg\"), r.get(\"earningsYield\"), r.get(\"pegBasis\")\n\n    if peg is not None:\n        if peg < 1:\n            out.append((GOOD, \"Price against growth\",\n                        \"PEG of %s: the price is below what the growth rate alone would justify, \"\n                        \"measured against %s.\" % (\"{:.2f}\".format(peg), basis or \"reported growth\")))\n        elif peg > 2:\n            out.append((WEAK, \"Price against growth\",\n                        \"PEG of %s: the price is well ahead of the growth being delivered. That \"\n                        \"only works out if growth accelerates.\" % \"{:.2f}\".format(peg)))\n    elif r.get(\"pegBlocked\"):\n        out.append((\"info\", \"PEG not meaningful\",\n                    \"Earnings are flat or shrinking, so PEG has no meaning here - dividing a \"\n                    \"price by negative growth produces a number that looks cheap and is not.\"))\n\n    if ey is not None:\n        if ey < deposit_rate - 2:\n            out.append((\"info\", \"Against a deposit\",\n                        \"The earnings yield is %s. A fixed deposit pays roughly %s with no \"\n                        \"business risk, so the case for holding this rests on growth rather than \"\n                        \"current earnings.\" % (_pct(ey), _pct(deposit_rate, 0))))\n        elif ey > deposit_rate + 3:\n            out.append((GOOD, \"Against a deposit\",\n                        \"The earnings yield is %s, comfortably above a deposit rate of about %s.\"\n                        % (_pct(ey), _pct(deposit_rate, 0))))\n\n    if pe is not None and pe > 60:\n        out.append((\"info\", \"High multiple\",\n                    \"A P/E of %s prices in a great deal of future growth. It is not wrong on its \"\n                    \"own, but it leaves little margin for disappointment.\"\n                    % \"{:.1f}\".format(pe)))\n\n\n# Ratios worth reporting coverage against. A read built on four numbers is a\n# different thing from one built on twenty, and the reader should be told which.\n_TRACKED = [\n    \"grossMargin\", \"opMargin\", \"netMargin\", \"roe\", \"roce\", \"roic\", \"roa\",\n    \"revGrowth\", \"niGrowth\", \"epsGrowth\", \"debtToEquity\", \"netDebtEbitda\",\n    \"interestCover\", \"currentRatio\", \"quickRatio\", \"assetTurnover\",\n    \"invTurnover\", \"receivableDays\", \"fcfMargin\", \"cashConversion\",\n    \"pe\", \"peg\", \"pb\", \"ps\", \"evEbitda\", \"earningsYield\", \"divYield\",\n]\n\n\ndef interpret(payload):\n    \"\"\"payload: {ratios, bands, lender, symbol, depositRate}. Returns a dict.\"\"\"\n    payload = payload or {}\n    raw = payload.get(\"ratios\") or {}\n    ratios = {}\n    for k in raw:\n        v = _f(raw[k])\n        if v is not None:\n            ratios[k] = v\n    # pegBasis is text and pegBlocked is a flag; neither survives the float pass.\n    if raw.get(\"pegBasis\"):\n        ratios[\"pegBasis\"] = raw[\"pegBasis\"]\n    ratios[\"pegBlocked\"] = bool(raw.get(\"pegBlocked\"))\n\n    bands = payload.get(\"bands\") or {}\n    lender = bool(payload.get(\"lender\"))\n    deposit = _f(payload.get(\"depositRate\"))\n    if deposit is None:\n        deposit = 7.0\n\n    out = []\n    _profitability(ratios, bands, lender, out)\n    _growth(ratios, bands, out)\n    _solvency(ratios, bands, lender, out)\n    _liquidity(ratios, bands, lender, out)\n    _cash(ratios, bands, out)\n    _valuation(ratios, bands, out, deposit)\n\n    findings = [{\"tone\": t, \"label\": l, \"text\": s} for (t, l, s) in out]\n    have = [k for k in _TRACKED if k in ratios]\n    coverage = {\"available\": len(have), \"tracked\": len(_TRACKED)}\n\n    strengths = len([f for f in findings if f[\"tone\"] == GOOD])\n    concerns = len([f for f in findings if f[\"tone\"] == WEAK])\n\n    if not findings:\n        summary = (\"Not enough of the statements came through to say anything useful. \"\n                   \"%d of %d ratios could be computed.\" % (coverage[\"available\"], coverage[\"tracked\"]))\n    elif concerns == 0 and strengths:\n        summary = (\"The reported numbers read well: %d point%s in favour and nothing that stands \"\n                   \"out as a concern, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    elif strengths == 0 and concerns:\n        summary = (\"The reported numbers read poorly: %d concern%s and nothing that stands out in \"\n                   \"favour, from %d of %d ratios.\"\n                   % (concerns, \"\" if concerns == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    else:\n        summary = (\"A mixed picture: %d point%s in favour, %d concern%s, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\",\n                      concerns, \"\" if concerns == 1 else \"s\",\n                      coverage[\"available\"], coverage[\"tracked\"]))\n\n    if lender:\n        summary += (\" Ratios that describe manufacturers rather than lenders have been left out \"\n                    \"of this reading.\")\n\n    return {\"summary\": summary, \"findings\": findings, \"coverage\": coverage,\n            \"strengths\": strengths, \"concerns\": concerns}\n\n\ndef interpret_json(s):\n    \"\"\"String in, string out - the shape Pyodide passes across cleanly.\"\"\"\n    return json.dumps(interpret(json.loads(s)))\n";
 // ══════════════════════ INSIGHTS ══════════════════════
 // Two readings of the same numbers, and they are not equivalent.
 //
-//  Built-in — src/py/interpret.py, real CPython running in this tab through
+//  Built-in, src/py/interpret.py, real CPython running in this tab through
 //  Pyodide (WebAssembly). Free, deterministic, and nothing leaves the device.
 //  The Python is unit-tested in tests/test_interpret.py, so what it says here
 //  is what the test suite proved it says.
 //
-//  AI model — your own API key, your own account, your own bill. This one DOES
+//  AI model, your own API key, your own account, your own bill. This one DOES
 //  send the figures to the provider you pick, so it is opt-in per session and
 //  says so before it sends anything. The key is kept in this browser's
 //  localStorage and goes nowhere except that provider's API.
@@ -12218,13 +12256,13 @@ const PY_INTERPRET = "\"\"\"Reads a set of computed ratios and says, in plain En
 const AI_PROVIDERS = {
   gemini: {
     label: 'Google Gemini',
-    cost: 'Has a genuinely free tier — the usual starting point.',
+    cost: 'Has a genuinely free tier, the usual starting point.',
     model: 'gemini-2.0-flash',
     keyUrl: 'https://aistudio.google.com/app/apikey',
     steps: [
       'Open <b>aistudio.google.com/app/apikey</b> and sign in with a Google account.',
       'Click <b>Create API key</b>, then pick a Google Cloud project (or let it make one).',
-      'Copy the key — it starts with <code>AIza</code> — and paste it below.',
+      'Copy the key, it starts with <code>AIza</code>, and paste it below.',
       'The free tier is rate-limited per minute, not billed. No card needed to start.',
     ],
   },
@@ -12236,8 +12274,8 @@ const AI_PROVIDERS = {
     steps: [
       'Open <b>console.anthropic.com</b> and sign in.',
       'Go to <b>Settings → API keys</b> and click <b>Create key</b>.',
-      'Add credit under <b>Billing</b> — there is no free tier, so a key with no credit will fail.',
-      'Copy the key — it starts with <code>sk-ant-</code> — and paste it below.',
+      'Add credit under <b>Billing</b>, there is no free tier, so a key with no credit will fail.',
+      'Copy the key, it starts with <code>sk-ant-</code>, and paste it below.',
     ],
   },
   openai: {
@@ -12247,7 +12285,7 @@ const AI_PROVIDERS = {
     keyUrl: 'https://platform.openai.com/api-keys',
     steps: [
       'Open <b>platform.openai.com/api-keys</b> and sign in.',
-      'Click <b>Create new secret key</b> and copy it immediately — it is shown once.',
+      'Click <b>Create new secret key</b> and copy it immediately, it is shown once.',
       'Add credit under <b>Billing</b>; a key on an account with no credit returns a quota error.',
       'The key starts with <code>sk-</code>.',
     ],
@@ -12329,7 +12367,7 @@ function aiPrompt(payload){
   if(payload.sector) lines.push('Sector: ' + payload.sector);
   if(payload.lender) lines.push('This is a bank or financial company. Ratios built for manufacturers (current ratio, inventory turnover, debt/equity) do not describe it; do not judge it on those.');
   lines.push('');
-  lines.push('Ratios actually reported (anything absent was not available — say so rather than guessing):');
+  lines.push('Ratios actually reported (anything absent was not available, say so rather than guessing):');
   for(const k of Object.keys(payload.ratios)){
     const v = payload.ratios[k];
     if(v == null || typeof v === 'boolean') continue;
@@ -12426,14 +12464,14 @@ function insightsHtml(){
     </div>
 
     <div id="ins-pane-free">
-      <div class="ins-note">Runs <b>Python on your device</b> — the same <code>interpret.py</code> the test suite checks — reading the ratios above.
+      <div class="ins-note">Runs <b>Python on your device</b>, the same <code>interpret.py</code> the test suite checks, reading the ratios above.
         Nothing is sent anywhere. The runtime is about 10 MB and is fetched once per visit, so the first run is the slow one.</div>
-      <button class="btn btn-sec btn-sm" onclick="insRunBuiltin()">▶ Read the numbers</button>
       <div id="ins-free-out" style="margin-top:12px"></div>
+      <button class="btn btn-sec btn-sm" style="margin-top:10px" onclick="insRunBuiltin()">↻ Run again</button>
     </div>
 
     <div id="ins-pane-ai" style="display:none">
-      <div class="ins-warn">⚠️ This one <b>sends the ratios above to ${cfg.label}</b> — figures and the ticker, never your holdings or portfolio.
+      <div class="ins-warn">⚠️ This one <b>sends the ratios above to ${cfg.label}</b>, figures and the ticker, never your holdings or portfolio.
         Your key is stored in this browser only and is sent to that provider and nowhere else. It is your account and your bill.</div>
       <div class="ins-row">
         <label class="ins-lbl">Provider</label>
@@ -12506,7 +12544,7 @@ function insFindingsHtml(res){
     ? `<div class="ins-cov">Read from <b>${res.coverage.available}</b> of ${res.coverage.tracked} ratios. The rest were not reported by the source, so nothing is claimed about them.</div>`
     : '';
   return `<div class="ins-sum">${res.summary || ''}</div>${rows}${cov}
-    <div class="ins-foot">A description of what the reported numbers show — not advice, not a recommendation, and no substitute for the company's own filings.</div>`;
+    <div class="ins-foot">A description of what the reported numbers show, not advice, not a recommendation, and no substitute for the company's own filings.</div>`;
 }
 
 async function insRunBuiltin(){
@@ -12521,7 +12559,7 @@ async function insRunBuiltin(){
   } catch(e){
     out.innerHTML = `<div class="ins-err">The Python runtime could not start: ${String(e && e.message || e)}.
       It is fetched from a public CDN, so a blocked network or an offline device will stop it.
-      The ratio tables above are unaffected — they are computed without it.</div>`;
+      The ratio tables above are unaffected, they are computed without it.</div>`;
   }
 }
 
@@ -12538,7 +12576,7 @@ async function insRunAi(){
   const keyEl = document.getElementById('ins-key'), modelEl = document.getElementById('ins-model');
   const key = (keyEl && keyEl.value.trim()) || _aiGet(AI_KEY_PREFIX + pv, '');
   const model = (modelEl && modelEl.value.trim()) || _aiGet(AI_MODEL_PREFIX + pv, cfg.model);
-  if(!key){ out.innerHTML = `<div class="ins-err">No ${cfg.label} key yet — see “How do I get a key?” above.</div>`; return; }
+  if(!key){ out.innerHTML = `<div class="ins-err">No ${cfg.label} key yet, see “How do I get a key?” above.</div>`; return; }
   out.innerHTML = `<div class="ins-busy">Asking ${cfg.label}…</div>`;
   try {
     const text = await callAiProvider(pv, model, key, aiPrompt(_insPayload));
@@ -12557,15 +12595,15 @@ async function insRunAi(){
 // These come from Yahoo through the owner Worker (both endpoints need the
 // cookie+crumb handshake a browser cannot perform). There are two of them:
 //
-//   1. fundamentals-timeseries — the endpoint Yahoo's own site uses. It carries
+//   1. fundamentals-timeseries, the endpoint Yahoo's own site uses. It carries
 //      the full line items and simply omits what it does not have.
-//   2. quoteSummary history modules — the older endpoint. Yahoo has hollowed
+//   2. quoteSummary history modules, the older endpoint. Yahoo has hollowed
 //      these out: for many listings it returns literal zeros for cost of
 //      revenue, gross profit, operating expenses and tax, drops the balance
 //      sheet entirely, and leaves cash flow with nothing but net income. It is
 //      kept only as a fallback for symbols the timeseries endpoint misses.
 //
-// Coverage is honest, not assumed. A missing line shows as a dash, never as
+// Coverage is honest, not assumed. A missing line shows as n/r, never as
 // zero, because "we do not have this" and "this is zero" are different claims
 // about a company's accounts. On the fallback endpoint a line that reads zero
 // in every period is treated as unreported, because that endpoint is known to
@@ -12784,7 +12822,7 @@ async function _stFetch(sym, quarterly){
     const tsJson = await _stOne(`${sp}/?timeseries=${enc}${per}`);
     out = tsJson ? _stTsParse(tsJson, quarterly) : null;
     // Only reach for the hollowed-out endpoint when the good one came back
-    // empty or near-empty — never to "top up" an answer that already stands.
+    // empty or near-empty, never to "top up" an answer that already stands.
     if(_stCells(out) < 4){
       const qsJson = await _stOne(`${sp}/?statements=${enc}${per}`);
       const alt = qsJson ? _stParse(qsJson, quarterly) : null;
@@ -12796,7 +12834,7 @@ async function _stFetch(sym, quarterly){
 }
 
 function _stFmt(v, isIndia){
-  if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
+  if(v == null) return '<span class="rt-na" title="Not reported: the data source did not carry this line.">n/r</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
   // Grouped, always. A bare 192566.78 is read wrong at a glance far too easily.
@@ -12850,7 +12888,7 @@ async function renderStatements(){
   if(!t){
     el.innerHTML = toggle + `<div style="font-size:12.5px;color:var(--text3)">
       No ${_stQuarterly ? 'quarterly' : 'annual'} statements available for <b>${sym}</b>.
-      Yahoo's statement history is often thin or absent for smaller Indian listings — that is a gap in the source, not an error here.</div>`;
+      Yahoo's statement history is often thin or absent for smaller Indian listings, that is a gap in the source, not an error here.</div>`;
     return;
   }
   const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
@@ -12863,24 +12901,29 @@ async function renderStatements(){
     insights = `<div id="ins-body">${insightsHtml()}</div>`;
   }
   const fallbackNote = t.source === 'quoteSummary'
-    ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
+    ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one, expect gaps.`
     : '';
   el.innerHTML = toggle + ratios
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)
     + `<div class="fin-legend"><b>Reading the short forms:</b>
-        <abbr class="fin-abbr" title="Crore — 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
-        <abbr class="fin-abbr" title="Lakh — 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
-        <abbr class="fin-abbr" title="Times — a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
-        <b>—</b> = the source did not report it ·
-        <b>n/a</b> = the ratio does not describe this kind of business.
+        <abbr class="fin-abbr" title="Crore, 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
+        <abbr class="fin-abbr" title="Lakh, 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
+        <abbr class="fin-abbr" title="Times, a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
+        <b>n/r</b> = not reported by the data source ·
+        <b>n/a</b> = does not describe this kind of business ·
+        <b>n/m</b> = applies, but cannot be computed to anything meaningful.
         Hover any underlined term.</div>`
     + insights
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:8px 12px;background:var(--surface2);border-radius:8px">
-        Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.${fallbackNote}
+        Reported figures from the data source, newest period first. n/r means the source did not carry that line, not that the value is zero.${fallbackNote}
         Statement data can lag the latest filing; check the company's own filing before relying on it.
       </div>`;
+  // The reading runs on its own rather than waiting to be asked for. It costs
+  // a one-off runtime download, so it is deliberately the last thing to start
+  // and the tables are already on screen by the time it does.
+  if(typeof insRunBuiltin === 'function') insRunBuiltin();
 }
 /* ══ COMPUTED ══ */
 function _safeCAGR(cur, inv, buyDateStr) {
@@ -14374,7 +14417,7 @@ function showGDrivePanel(){
 // MF state already in S.mf = [] - seeded below
 
 function xirr(cfs){
-  // cfs: [{date:Date, amount:Number}] — outflows negative, inflows positive.
+  // cfs: [{date:Date, amount:Number}], outflows negative, inflows positive.
   // Newton-Raphson with a bracketed bisection fallback for robustness.
   if(!cfs||cfs.length<2) return null;
   let neg=false,pos=false; for(const c of cfs){ if(c.amount<0)neg=true; if(c.amount>0)pos=true; }
@@ -14621,7 +14664,7 @@ function renderTaxation(){
     </div>
     ${unmatched.length ? `<div style="font-size:12px;color:var(--T1);margin-top:8px;padding:11px 14px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
       ⚠️ <strong>${unmatched.length} sale${unmatched.length===1?'':'s'} could not be matched to a purchase</strong> and ${unmatched.length===1?'is':'are'} <strong>excluded</strong> from the figures above - the cost basis and holding period are unknown, and guessing them would misstate your tax.
-      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date} — <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date}, <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
       <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">Add the matching <b>BUY</b> in the Transactions tab and this recomputes automatically.</div>
     </div>` : ''}
     <div style="font-size:11.5px;color:var(--T2);margin-top:8px;padding:10px 14px;background:var(--GL);border-radius:var(--r3);border-left:3px solid var(--G)">
@@ -14724,7 +14767,7 @@ function renderXRay(){
   // Value-weighted valuation metrics (coverage-aware)
   const w=key=>{let ww=0,acc=0;book.forEach(x=>{const v=x[key];if(v!=null&&isFinite(v)&&v>0&&x.cur>0){ww+=x.cur;acc+=x.cur*v;}});return{v:ww>0?acc/ww:null,cov:totV>0?ww/totV*100:0};};
   const pe=w('pe'),pb=w('pb'),dy=w('dy');
-  const vtile=(lbl,o,fmt,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${o.v!=null?fmt(o.v):'—'}</div><div class="tax-sum-box-sub">${o.v!=null?o.cov.toFixed(0)+'% coverage':'add data in holding'}</div></div>`;
+  const vtile=(lbl,o,fmt,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${o.v!=null?fmt(o.v):'-'}</div><div class="tax-sum-box-sub">${o.v!=null?o.cov.toFixed(0)+'% coverage':'add data in holding'}</div></div>`;
   valEl.innerHTML=`<div class="tax-sum-grid">
     ${vtile('Weighted P/E',pe,v=>v.toFixed(1),'#1A73E8')}
     ${vtile('Weighted P/B',pb,v=>v.toFixed(2),'#7C3AED')}
@@ -14878,7 +14921,7 @@ async function fetchGSheetLTP(){
       // Support both comma and tab delimited
       const parts=line.split(/,|\t/).map(s=>s.trim().replace(/^"|"$/g,''));
       if(parts.length<3) return;
-      const [cls,,ticker,ltp]=parts.length>=4?parts:[parts[0],null,parts[1],parts[2]];
+      const [cls,ticker,ltp]=parts.length>=4?parts:[parts[0],null,parts[1],parts[2]];
       // handle 3-col format: AssetClass, Ticker, LTP
       const tickerVal=parts.length>=4?parts[2]:parts[1];
       const ltpVal=parts.length>=4?parts[3]:parts[2];
@@ -15808,15 +15851,15 @@ function addToPortfolioFromAnalysis() {
     const vol=k>1? Math.sqrt((sum2-sum*sum/k)/(k-1))*Math.sqrt(252)*100 : null;
 
     const tile=(l,v,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${l}</div><div class="tax-sum-box-val" style="color:${c||'var(--T1)'}">${v}</div></div>`;
-    const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
+    const pct=v=>v==null?'-':(v>=0?'+':'')+v.toFixed(1)+'%';
     const g=v=>v==null?'var(--T3)':(v>=0?'var(--G)':'var(--R)');
     document.getElementById('mfnav-metrics').innerHTML=
       tile('Latest NAV', cur(last.nav)+'<div style="font-size:10px;color:var(--T3)">'+last.t.toLocaleDateString('en-IN')+'</div>','var(--P)')+
       tile('1Y Return', pct(ret(365)), g(ret(365)))+
       tile('3Y CAGR', pct(cagr(1095)), g(cagr(1095)))+
       tile('5Y CAGR', pct(cagr(1825)), g(cagr(1825)))+
-      tile('Max Drawdown', mdd?(mdd*100).toFixed(1)+'%':'—','var(--R)')+
-      tile('Volatility (ann.)', vol==null?'—':vol.toFixed(1)+'%');
+      tile('Max Drawdown', mdd?(mdd*100).toFixed(1)+'%':'-','var(--R)')+
+      tile('Volatility (ann.)', vol==null?'-':vol.toFixed(1)+'%');
 
     // Chart last ~3Y for readability.
     const cut=last.t.getTime()-1100*864e5; const view=ser.filter(p=>p.t.getTime()>=cut);
@@ -15902,7 +15945,7 @@ window.mfFormFind = async function(){
   if(sel) sel.innerHTML='<option>Searching…</option>';
   let list=[];
   try{ const r=await fetch('https://api.mfapi.in/mf/search?q='+encodeURIComponent(q)); list=await r.json(); }
-  catch(e){ if(sel) sel.innerHTML='<option value="">Search failed — check connection</option>'; return; }
+  catch(e){ if(sel) sel.innerHTML='<option value="">Search failed, check connection</option>'; return; }
   if(!Array.isArray(list)||!list.length){ if(sel) sel.innerHTML='<option value="">No AMFI schemes matched</option>'; return; }
   const tokens=q.toLowerCase().split(/\s+/).filter(Boolean);
   const matches=list.filter(x=>{const nm=(x.schemeName||'').toLowerCase(); return tokens.every(tk=>nm.includes(tk));});
@@ -15920,7 +15963,7 @@ window.mfFormLink = async function(){
 };
 window.mfRefreshLiveNAV = async function(){
   const linked=(typeof S!=='undefined'&&S.mf?S.mf:[]).filter(f=>f.schemeCode);
-  if(!linked.length){ if(typeof toast==='function') toast('No funds linked yet — Edit a fund → 🔗 Link Live NAV','err'); return; }
+  if(!linked.length){ if(typeof toast==='function') toast('No funds linked yet, Edit a fund → 🔗 Link Live NAV','err'); return; }
   if(typeof toast==='function') toast('Fetching live NAV for '+linked.length+' fund(s)…');
   let ok=0;
   for(const f of linked){ const nav=await mfFetchLatestNAV(f.schemeCode); if(nav!=null){ f.currentNAV=nav; ok++; } }

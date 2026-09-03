@@ -70,7 +70,7 @@ function renderAlerts(){
       <b style="font-size:13px">${r.name}</b>
       <span style="font-size:11px;color:var(--T3)">${r.cls}</span>
       <span style="font-size:12px;color:${isT?'#00B386':'#D93025'};font-weight:700">
-        ${isT?'Target hit':'Stop breached'} — ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
+        ${isT?'Target hit':'Stop breached'}, ${F.inr(r.ltp)} vs ${F.inr(isT?r.target:r.stop)}
         (${r.distPct>=0?'+':''}${r.distPct.toFixed(1)}%)
       </span>
     </div>`;
@@ -78,6 +78,6 @@ function renderAlerts(){
   host.innerHTML = `<div style="margin:0 0 14px;background:var(--AUL,#FEF3C7);border:1px solid var(--AU,#F59E0B);border-radius:10px;padding:11px 14px">
     <div style="font-size:13px;font-weight:800;color:var(--T1)">🔔 ${hits.length} holding${hits.length===1?'':'s'} crossed a level you set</div>
     ${hits.map(row).join('')}
-    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price — not advice, and not automatic orders.</div>
+    <div style="font-size:11px;color:var(--T3);margin-top:8px">These are your own target/stop levels, checked against the latest fetched price, not advice, and not automatic orders.</div>
   </div>`;
 }

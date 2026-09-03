@@ -1,8 +1,7 @@
 # MyeeStockBuddy data proxy (Cloudflare Worker)
 
 A ~85-line Cloudflare Worker that lets the static app fetch Yahoo Finance and
-Stooq **without any API key**. It adds the CORS header those hosts don't send,
-so the browser is allowed to read the response. Because the Worker is *yours*,
+Stooq **without any API key**. It adds the CORS header those hosts don't send, so the browser is allowed to read the response. Because the Worker is *yours*,
 it can't be rate-limited or shut off the way the public CORS proxies were.
 
 - **Free:** Cloudflare's free plan gives 100,000 requests/day. No credit card.
@@ -13,17 +12,17 @@ it can't be rate-limited or shut off the way the public CORS proxies were.
 
 ## Deploy in ~5 minutes
 
-### Option A — Cloudflare dashboard (no tools to install)
+### Option A, Cloudflare dashboard (no tools to install)
 
 1. Sign up / log in at <https://dash.cloudflare.com>.
 2. Left sidebar → **Workers & Pages** → **Create** → **Create Worker**.
 3. Give it a name, e.g. `myee-proxy`. Click **Deploy** (the placeholder code).
 4. Click **Edit code**. Delete everything, paste the full contents of
    [`worker.js`](./worker.js), then **Deploy**.
-5. Copy the Worker URL shown at the top — it looks like
+5. Copy the Worker URL shown at the top, it looks like
    `https://myee-proxy.<your-subdomain>.workers.dev`.
 
-### Option B — Wrangler CLI
+### Option B, Wrangler CLI
 
 ```bash
 npm i -g wrangler
@@ -52,7 +51,7 @@ Once you have the Worker URL, plug it into the app one of two ways:
 
 **If you deployed before the Financials tab existed, redeploy now.** The latest
 `worker.js` adds a **timeseries route** that reads Yahoo's
-`fundamentals-timeseries` endpoint — the one Yahoo's own site uses. The older
+`fundamentals-timeseries` endpoint, the one Yahoo's own site uses. The older
 `quoteSummary` history modules it replaces have been hollowed out: for many
 listings they return literal zeros for cost of revenue, gross profit, operating
 expenses and tax, drop the balance sheet entirely, and leave cash flow with
