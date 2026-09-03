@@ -6348,7 +6348,16 @@ async function fetchFundamentals(sym, exch, isUS, isCrypto) {
     const ySym = isUS ? sym : sym + (exch === 'BSE' ? '.BO' : '.NS');
     const yUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ySym)}?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile`;
     const enc = encodeURIComponent;
+    // The owner Worker first. quoteSummary needs Yahoo's cookie+crumb, which a
+    // browser cannot obtain cross-site, so the public relays below cannot
+    // authenticate this call even when they are up - and all three have been
+    // dead or rate-limited for a while. Without this the whole Valuation card
+    // and the sector (which decides whether bank ratios are marked n/a) stay
+    // empty however healthy the statements feed is.
+    const _sp = _selfProxyUrl();
+    const modules = 'summaryDetail,defaultKeyStatistics,financialData,assetProfile';
     const proxies = [
+      ...(_sp ? [[`${_sp}/?quotesummary=${enc(ySym)}&modules=${modules}`, false]] : []),
       ['https://corsproxy.io/?url='+enc(yUrl), false],
       ['https://api.allorigins.win/raw?url='+enc(yUrl), false],
       ['https://api.codetabs.com/v1/proxy?quest='+enc(yUrl), false],

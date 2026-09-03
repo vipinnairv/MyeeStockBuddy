@@ -14,6 +14,9 @@
  *   ?fundamentals=SYM1,SYM2,...   Yahoo quote with the cookie+crumb handshake
  *                                 that its fundamentals endpoint requires
  *                                 (P/E, P/B, dividend yield, market cap, ...).
+ *   ?quotesummary=SYM&modules=..  Yahoo quoteSummary with the handshake: sector,
+ *                                 P/E, PEG, P/B, EV/EBITDA, dividend yield.
+ *                                 Modules are validated, not passed through raw.
  *   ?timeseries=SYM&period=...    Balance sheet, P&L and cash flow history from
  *                                 Yahoo's fundamentals-timeseries endpoint —
  *                                 the one that still carries the full line
@@ -122,6 +125,25 @@ export default {
         return _relay(r);
       } catch (e) {
         return _text('Fundamentals fetch failed: ' + (e && e.message), 502);
+      }
+    }
+
+    // ── quoteSummary: the valuation figures, which also need the crumb ─────
+    const qsym = params.get('quotesummary');
+    if (qsym) {
+      if (!/^[A-Za-z0-9.\-^]{1,20}$/.test(qsym)) return _text('Bad symbol', 400);
+      const mods = (params.get('modules') || '').trim();
+      // Module names only. Not a pass-through: anything else is refused rather
+      // than forwarded to Yahoo on the caller's say-so.
+      if (!/^[A-Za-z]{1,40}(,[A-Za-z]{1,40}){0,9}$/.test(mods)) return _text('Bad modules', 400);
+      try {
+        const { cookie, crumb } = await _yahooAuth();
+        const u = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(qsym)}`
+                + `?modules=${mods}&crumb=${encodeURIComponent(crumb)}`;
+        const r = await fetch(u, { headers: { 'User-Agent': UA, 'Cookie': cookie, 'Accept': 'application/json' } });
+        return _relay(r);
+      } catch (e) {
+        return _text('quoteSummary fetch failed: ' + (e && e.message), 502);
       }
     }
 
