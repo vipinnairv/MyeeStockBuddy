@@ -63,12 +63,15 @@ function _aiProvider(){ const p = _aiGet(AI_PROVIDER_KEY, 'gemini'); return AI_P
 // holdings, no portfolio, no key material.
 function insightPayload(t, fund, price, symbol){
   const r = computeRatios(t, fund, price);
+  const lender = isLender(fund);
   const bands = {};
-  for(const k of Object.keys(r)) { const b = ratioBand(k, r[k]); if(b) bands[k] = b; }
+  // Banded the same way the panel bands them, lender rules included, so the
+  // written reading and the coloured table cannot disagree.
+  for(const k of Object.keys(r)) { const b = ratioBand(k, r[k], lender); if(b) bands[k] = b; }
   return {
     symbol: symbol || null,
     sector: (fund && (fund.sector || fund.industry)) || null,
-    lender: isLender(fund),
+    lender: lender,
     depositRate: 7.0,
     ratios: r,
     bands: bands,

@@ -213,32 +213,38 @@ function computeRatios(t, fund, price){
   // PEG: P/E divided by the growth rate it is being paid for. Against flat or
   // shrinking earnings the ratio has no meaning at all - a negative PEG is not
   // "cheap" - so it is withheld rather than shown as a bargain.
-  // Preference order matters. Annual EPS growth from the statements is what
-  // PEG is defined against. The feed's own earningsGrowth is a quarterly
-  // year-on-year figure that is often negative for a company whose annual
-  // earnings grew, and taking it unconditionally withheld PEG on the weaker
-  // measure. Net income growth is the last resort: it ignores dilution.
-  const pegCandidates = [
+  // An annual measure decides, whichever way it points. The earlier rule took
+  // the first POSITIVE measure, which was meant to stop one weak quarter
+  // blocking a healthy annual figure - but it also let one strong quarter
+  // override a negative annual one, publishing a flattering PEG in green for a
+  // company whose earnings actually shrank over the year. That error runs the
+  // dangerous way: understating growth only withholds a ratio, while
+  // overstating it calls a shrinking business cheap.
+  //
+  // So: annual EPS growth if reported, else annual net income growth. The
+  // feed's earningsGrowth is one quarter against the same quarter a year back,
+  // and is used only when no annual measure exists at all.
+  const annualMeasures = [
     { label: 'annual EPS growth', v: r.epsGrowth, span: r.epsSpan, annual: true },
-    { label: 'the feed\u2019s earnings growth', annual: false,
-      v: (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth : null, span: null },
     { label: 'net income growth', v: r.niGrowth, span: r.niSpan, annual: true },
   ].filter(c => c.v != null);
-  const pegOn = pegCandidates.find(c => c.v > 0);
+  const feedMeasure = (f.earnGrowth != null && isFinite(f.earnGrowth))
+    ? { label: 'the feed\u2019s earnings growth (one quarter)', v: f.earnGrowth, span: null, annual: false }
+    : null;
+  const pegOn = annualMeasures.length
+    ? (annualMeasures[0].v > 0 ? annualMeasures[0] : null)
+    : (feedMeasure && feedMeasure.v > 0 ? feedMeasure : null);
   r.peg = (r.pe != null && pegOn) ? _rtDiv(r.pe, pegOn.v) : null;
   r.pegBasis = r.peg != null ? pegOn.label : null;
   r.pegSpan  = r.peg != null ? pegOn.span : null;
-  // Everything that was measured, so the panel can show its working rather than
-  // leaving a dash the reader cannot argue with.
+  // Everything measured, so the panel can show its working rather than leaving
+  // a dash the reader cannot argue with.
+  const pegCandidates = annualMeasures.concat(feedMeasure ? [feedMeasure] : []);
   r.pegGrowths = pegCandidates.map(c => ({ label: c.label, value: c.v, span: c.span }));
-  // A verdict of "earnings are not growing" needs a full-year measure behind
-  // it. The feed's figure is a single quarter against the same quarter a year
-  // earlier; one weak quarter is not the same claim, so on its own it withholds
-  // PEG without asserting the company has stopped growing.
-  const blockingAnnual = pegCandidates.find(c => c.annual && c.v <= 0);
-  r.pegBlocked = !!(r.pe != null && pegCandidates.length > 0 && !pegOn);
-  r.pegBlockedOnAnnual = !!(r.pegBlocked && blockingAnnual);
-  r.pegBlockedBy = blockingAnnual || (r.pegBlocked ? pegCandidates[0] : null);
+  const deciding = annualMeasures.length ? annualMeasures[0] : feedMeasure;
+  r.pegBlocked = !!(r.pe != null && deciding && !pegOn);
+  r.pegBlockedOnAnnual = !!(r.pegBlocked && deciding.annual);
+  r.pegBlockedBy = r.pegBlocked ? deciding : null;
 
   return r;
 }
@@ -265,8 +271,15 @@ const RT_BANDS = {
   peg:           { hi:false, good:1,   fair:2 },
   earningsYield: { hi:true,  good:6,   fair:3 },
 };
-function ratioBand(key, v){
-  const b = RT_BANDS[key];
+// Banks are judged on different numbers. A return on assets of 1.4% is
+// healthy for a lender and weak for a manufacturer; one threshold cannot serve
+// both, and colouring a good bank red is a wrong answer, not a rough one.
+const RT_BANDS_LENDER = {
+  roa: { hi:true, good:1.5,  fair:1.0 },
+  roe: { hi:true, good:15,   fair:10 },
+};
+function ratioBand(key, v, lender){
+  const b = (lender && RT_BANDS_LENDER[key]) || RT_BANDS[key];
   if(!b || v == null || !isFinite(v)) return null;
   if(b.hi) return v >= b.good ? 'good' : v >= b.fair ? 'fair' : 'weak';
   return v <= b.good ? 'good' : v <= b.fair ? 'fair' : 'weak';
@@ -275,7 +288,8 @@ function ratioBand(key, v){
 // Ratios that describe a manufacturer or retailer and say nothing useful about
 // a lender: a bank holds no inventory, its "current ratio" is an artefact of
 // how deposits are classified, and debt is its input, not its risk.
-const RT_LENDER_NA = ['currentRatio','quickRatio','invTurnover','debtToEquity','netDebtEbitda','evEbitda','assetTurnover'];
+const RT_LENDER_NA = ['currentRatio','quickRatio','invTurnover','debtToEquity','netDebtEbitda',
+  'evEbitda','assetTurnover','fcfMargin','cashConversion','receivableDays'];
 function isLender(fund){
   const s = ((fund && (fund.sector || fund.industry)) || '').toLowerCase();
   return /bank|financial|insur|nbfc|capital market|credit/.test(s);
@@ -340,7 +354,7 @@ function ratiosHtml(t, fund, price){
   const cell = (label, key, fmt, tip) => {
     const v = r[key];
     const na = lender && RT_LENDER_NA.indexOf(key) >= 0;
-    const band = na ? null : ratioBand(key, v);
+    const band = na ? null : ratioBand(key, v, lender);
     const shown = na && v != null
       ? `<span class="rt-na" title="This ratio does not describe a lender's balance sheet.">n/a</span>`
       : fmt(v);
