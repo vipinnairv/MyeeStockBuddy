@@ -2096,6 +2096,46 @@ group('key ratios');
   // it would add a request that can fail exactly when the app is offline - and
   // Carlito is already installed on most Linux systems that lack Calibri.
   ok('the Calibri stack pulls no webfont of its own', !/family=(Calibri|Carlito)/.test(SRC), 'font fetched over the network');
+
+  // ── the panel must survive the stylesheet it lives in ──
+  // These are regressions, not hypotheticals: the ratio panel first shipped
+  // with every value blank because the global table rules below reached into
+  // it. Each assertion is paired with the global rule it has to beat, so if
+  // that rule is ever removed the pairing is what tells us the override can go.
+  {
+    const globalMin = /\btable\{[^}]*min-width:800px/.test(SRC);
+    ok('the wide-grid global table rule is still present', globalMin, 'global rule gone - the override below may be stale');
+    // Inherited into a ~440px card with clipped overflow, an 800px minimum
+    // pushes the whole value column out of sight: labels render, numbers vanish.
+    ok('the ratio table overrides it so values are not pushed out of the card',
+       /\.rt-table\{[^}]*min-width:0/.test(SRC), 'ratio values will be clipped out of view');
+    ok('the statement table sets its own width too',
+       /\.fin-table\{[^}]*min-width:520px/.test(SRC), 'statement table inherits 800px');
+  }
+  {
+    const globalUpper = /\bth\{[^}]*text-transform:uppercase/.test(SRC);
+    ok('the global th rule still uppercases', globalUpper, 'global rule gone - the override below may be stale');
+    ok('ratio labels opt out, so they read as written',
+       /\.rt-lbl\{[^}]*text-transform:none/.test(SRC), 'labels render shouting');
+    ok('statement line items opt out too',
+       /\.fin-table tbody th\{[^}]*text-transform:none/.test(SRC), 'line items render shouting');
+  }
+  {
+    // Whatever the CSS does, every row must actually carry a value cell with
+    // something in it - a dash at minimum. A blank cell is never correct.
+    const dsrc = slice('const RT_DASH =', '\n// ══', 'ratiosui');
+    const ui = load(src + '\n' + dsrc,
+      ['ratiosHtml'], { Math, Object, Array, isFinite, Number });
+    const t = { line: { TotalRevenue: { '2025-03-31': 1000 } }, periodsAll: ['2025-03-31'] };
+    for(const [label, fund, price] of [['no data at all', null, null],
+                                        ['a lender', { sector: 'Financial Services' }, 100]]) {
+      const html = ui.ratiosHtml(t, fund, price);
+      const cells = html.match(/<td class="rt-val[^"]*">(.*?)<\/td>/g) || [];
+      ok('rows are rendered for ' + label, cells.length >= 20, 'only ' + cells.length + ' rows');
+      const blank = cells.filter(c => /">\s*<\/td>$/.test(c));
+      eq('no value cell is blank for ' + label, blank.length, 0);
+    }
+  }
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────
