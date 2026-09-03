@@ -7952,7 +7952,7 @@ function _rrColor(rr) {
   return r >= 2 ? 'var(--green)' : r >= 1 ? 'var(--accent)' : 'var(--red)';
 }
 
-function computeDVM(ar){
+function computeDVM(ar, ratios){
   // Durability / Valuation / Momentum as TECHNICAL proxies (no fundamentals):
   //  D - trend consistency above the 200-DMA, drawdown and volatility.
   //  V - relative cheapness: position in the 52w range + extension over 200-DMA.
@@ -7992,17 +7992,42 @@ function computeDVM(ar){
     // technical relative-cheapness proxy (52w position + extension vs 200-DMA).
     const ext=s200?(price/s200-1)*100:0;
     const vTech=Math.round(0.5*(100-pos52) + 0.5*mapR(ext,40,-20));
-    let V=vTech, vSource='technical';
-    const fu=ar.fundamentals;
-    if(fu){
+    let V=vTech, vSource='technical', vUsed=[], vFloored=false;
+    // Read the feed first, then fall back to the ratios computed from the
+    // statements. This score used to read `ar.fundamentals` alone, so a PEG the
+    // ratio panel had worked out sat unused a few centimetres away: on a stock
+    // whose feed carried no pegRatio, the score averaged only P/E and P/B, both
+    // of which were far past the top of their scale and clamped to zero. The
+    // badge then read 0/100 while the panel below it showed a PEG of 1.61,
+    // worth 52 on the same scale. Two valuation views on one page, disagreeing
+    // because they read different sources.
+    const fu = ar.fundamentals || {};
+    const rt = ratios || ar.ratios || {};
+    const pick = (a, b) => {
+      const av = (a != null && isFinite(a) && a > 0) ? a : null;
+      if(av != null) return av;
+      return (b != null && isFinite(b) && b > 0) ? b : null;
+    };
+    const vPe  = pick(fu.pe,  rt.pe);
+    const vPeg = pick(fu.peg, rt.peg);
+    const vPb  = pick(fu.pb,  rt.pb);
+    {
       const parts=[];
-      if(fu.pe!=null && fu.pe>0)  parts.push(mapR(fu.pe,45,8));   // cheap P/E -> high
-      if(fu.peg!=null && fu.peg>0) parts.push(mapR(fu.peg,2.5,0.8)); // PEG<1 cheap
-      if(fu.pb!=null && fu.pb>0)  parts.push(mapR(fu.pb,8,1));    // low P/B -> high
-      if(parts.length){ V=Math.round(parts.reduce((a,b)=>a+b,0)/parts.length); vSource='fundamental'; }
+      if(vPe  != null){ parts.push(mapR(vPe,45,8));   vUsed.push('P/E'); }   // cheap P/E -> high
+      if(vPeg != null){ parts.push(mapR(vPeg,2.5,0.8)); vUsed.push('PEG'); } // PEG<1 cheap
+      if(vPb  != null){ parts.push(mapR(vPb,8,1));    vUsed.push('P/B'); }   // low P/B -> high
+      if(parts.length){
+        V=Math.round(parts.reduce((a,b)=>a+b,0)/parts.length);
+        vSource='fundamental';
+        // Every input past the far end of its scale. The score is at the floor
+        // rather than merely low, and a reader deserves to know the difference:
+        // a P/E of 46 and a P/E of 277 both map to zero.
+        vFloored = parts.every(x => x <= 0);
+      }
     }
 
-    return { d:clamp(D,0,100), v:clamp(V,0,100), m:clamp(M,0,100), vSource };
+    return { d:clamp(D,0,100), v:clamp(V,0,100), m:clamp(M,0,100), vSource, vUsed, vFloored,
+             vInputs:{ pe:vPe, peg:vPeg, pb:vPb } };
   }catch(e){ return null; }
 }
 function renderDVMBadges(){
@@ -8017,9 +8042,15 @@ function renderDVMBadges(){
     +`<div style="display:flex;flex-wrap:wrap;gap:10px">`
     + badge('D',s.d,'Durability','Durability (technical proxy): how consistently price holds above its 200-day average, plus drawdown and volatility. Not a fundamental quality score.')
     + badge('V',s.v,'Valuation', s.vSource==='fundamental'
-        ? 'Valuation from real fundamentals: blended P/E, PEG and P/B (higher = cheaper / better value).'
+        ? `Valuation from real fundamentals: ${(s.vUsed||[]).join(', ')} blended (higher = cheaper). `
+          + `${(s.vInputs&&s.vInputs.pe!=null)?`P/E ${(+s.vInputs.pe).toFixed(1)}. `:''}`
+          + `${(s.vInputs&&s.vInputs.peg!=null)?`PEG ${(+s.vInputs.peg).toFixed(2)}. `:''}`
+          + `${(s.vInputs&&s.vInputs.pb!=null)?`P/B ${(+s.vInputs.pb).toFixed(2)}. `:''}`
+          + (s.vFloored
+             ? 'Every input sits past the expensive end of its scale, so this is the floor of the range rather than a measured zero: it means "expensive on all of these", not "worth nothing".'
+             : (s.vUsed||[]).length < 3 ? 'The remaining inputs were not reported by the data source.' : '')
         : 'Valuation (technical proxy): position in the 52-week range and extension above the 200-day average. A P/E-based score loads once the fundamentals feed responds (or add an API key).',
-        s.vSource==='fundamental'?'P/E based':'technical')
+        s.vSource==='fundamental'?((s.vUsed||[]).join('+')||'P/E based'):'technical')
     + badge('M',s.m,'Momentum','Momentum: price vs 50/200-day averages, RSI, Supertrend and 3-month return.')
     + `</div>`;
 }
@@ -13318,6 +13349,18 @@ async function renderStatements(){
   if(typeof insightsHtml === 'function'){
     _insPayload = insightPayload(t, ar.fundamentals, price, sym);
     insights = `<div id="ins-body">${insightsHtml()}</div>`;
+  }
+  // Hand the computed ratios back to the analysis result and redraw the DVM
+  // badges. The valuation badge reads the raw feed first and these second, so
+  // until they exist it can be scoring on fewer inputs than the page already
+  // has: that is how a PEG shown in this panel went unused by the badge above
+  // it. Ratios arrive asynchronously, so the badge is refreshed rather than
+  // left holding the earlier, thinner answer.
+  if(typeof computeRatios === 'function'){
+    try {
+      ar.ratios = computeRatios(t, ar.fundamentals, price);
+      if(typeof renderDVMBadges === 'function') renderDVMBadges();
+    } catch(e) {}
   }
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one, expect gaps.`

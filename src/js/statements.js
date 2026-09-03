@@ -310,6 +310,18 @@ async function renderStatements(){
     _insPayload = insightPayload(t, ar.fundamentals, price, sym);
     insights = `<div id="ins-body">${insightsHtml()}</div>`;
   }
+  // Hand the computed ratios back to the analysis result and redraw the DVM
+  // badges. The valuation badge reads the raw feed first and these second, so
+  // until they exist it can be scoring on fewer inputs than the page already
+  // has: that is how a PEG shown in this panel went unused by the badge above
+  // it. Ratios arrive asynchronously, so the badge is refreshed rather than
+  // left holding the earlier, thinner answer.
+  if(typeof computeRatios === 'function'){
+    try {
+      ar.ratios = computeRatios(t, ar.fundamentals, price);
+      if(typeof renderDVMBadges === 'function') renderDVMBadges();
+    } catch(e) {}
+  }
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one, expect gaps.`
     : '';
