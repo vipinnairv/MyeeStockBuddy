@@ -2649,6 +2649,90 @@ group('combined read');
        c.limits.join(' '));
   }
 
+  // ── an unreliable half must not drive the conclusion ──
+  // From the NHPC report: verdict HOLD, score 12/100, confidence 25%, ADX 6.7,
+  // fundamental 73/100. The summary announced "the business figures are strong
+  // while the price is falling" - a direction claim - from a score the analyser
+  // had already declared unreliable, next to a verdict box reading HOLD. Two
+  // conclusions from one dataset, disagreeing, side by side.
+  {
+    const c = combinedRead({ verdict:'HOLD', score:12, confidence:25, isChop:true }, F(73), null);
+    ok('a ranging market is not read as a falling price',
+       !/price is falling/.test(c.headline + c.detail), c.headline);
+    eq('the fundamentals carry the reading instead', c.stance, 'Fundamentals lead; no usable trend signal');
+    eq('and the technical half is marked unusable', c.techUsable, false);
+    ok('the reason names ADX rather than hand-waving',
+       /ADX below 20/.test(c.limits.join(' ')), c.limits.join(' '));
+    ok('and says what would make it usable again',
+       /once ADX clears 20 to 25/.test(c.limits.join(' ')), c.limits.join(' '));
+    ok('the score is still disclosed, not hidden',
+       /12\/100/.test(c.limits.join(' ')), c.limits.join(' '));
+    ok('it states plainly that the score is not what the conclusion rests on',
+       /not what the\s+conclusion above rests on/.test(c.limits.join(' ').replace(/\s+/g,' '))
+       || /not what the conclusion above rests on/.test(c.limits.join(' ')), c.limits.join(' '));
+  }
+  {
+    // Low confidence without chop is the same problem: split indicators are not
+    // evidence of a direction either.
+    const c = combinedRead({ verdict:'SELL', score:22, confidence:20 }, F(73), null);
+    eq('a low-confidence technical read is also set aside', c.techUsable, false);
+    ok('and the reason is the disagreement, not the trend', /confidence below 35%/.test(c.limits.join(' ')), c.limits.join(' '));
+    ok('a middling score is not spun as a "hold" answer',
+       /the evidence\s+is split, not that the answer is "hold"/.test(c.limits.join(' ').replace(/\s+/g,' '))
+       || /not that the answer is "hold"/.test(c.limits.join(' ')), c.limits.join(' '));
+  }
+  {
+    // Weak fundamentals with no usable technical read must not be softened.
+    const c = combinedRead({ verdict:'HOLD', score:50, confidence:10, isChop:true }, F(30), null);
+    eq('weak accounts still lead when they are all there is', c.stance, 'Fundamentals lead, and they are weak');
+    eq('and the tone stays negative', c.tone, 'weak');
+  }
+  {
+    const c = combinedRead({ verdict:'HOLD', score:50, confidence:10, isChop:true }, F(52), null);
+    eq('two inconclusive halves conclude nothing', c.stance, 'No usable reading on either side');
+    ok('and it says it will not invent one', /will not manufacture one/.test(c.detail), c.detail);
+  }
+  {
+    // A confident technical read is still used. The fix must not disable the
+    // technical half wholesale.
+    const c = combinedRead({ verdict:'BUY', score:78, confidence:56 }, F(80), null);
+    eq('a confident trend reading is still used', c.techUsable, true);
+    eq('and the quadrants still work', c.stance, 'Aligned, constructive');
+  }
+  {
+    const c = combinedRead({ verdict:'SELL', score:20, confidence:60 }, F(80), null);
+    eq('a genuine downtrend against strong accounts is still called that',
+       c.stance, 'Accounts ahead of the price');
+  }
+  // ── the summary explains the divergence rather than printing both blankly ──
+  {
+    const rsrc = slice('const CR_TONE_COL', '\n// ══', 'reliabui');
+    const csrc = slice('const CR_BULL = 60', '\n// ── Report sections', 'reliabcomb');
+    const { repExecSummaryHtml } = load(csrc + '\n' + rsrc, ['repExecSummaryHtml'],
+      { Math, isFinite, Number, String, Object, Array, RT_LENDER_NA: [] });
+    const ar = { currentPrice: 76.45, priceChg: 1.63, pricePct: 2.18,
+                 signals: { verdict:'HOLD', score:12, isChop:true, long:{ confidence:25 } } };
+    const c = combinedRead({ verdict:'HOLD', score:12, confidence:25, isChop:true }, F(73), null);
+    const html = repExecSummaryHtml(ar, c, F(73), '₹');
+    ok('the summary reconciles the HOLD verdict with the low score',
+       /They are not\s+in\s+conflict/.test(html.replace(/\s+/g,' ')) || /not in\s*conflict/.test(html), html.slice(0,1200));
+    ok('and marks the score as not used', /not used/.test(html), html.slice(0,1200));
+    ok('the fundamental grade is still shown', />B</.test(html), 'grade missing');
+  }
+  {
+    const rsrc = slice('const CR_TONE_COL', '\n// ══', 'reliabui2');
+    const csrc = slice('const CR_BULL = 60', '\n// ── Report sections', 'reliabcomb2');
+    const { repExecSummaryHtml } = load(csrc + '\n' + rsrc, ['repExecSummaryHtml'],
+      { Math, isFinite, Number, String, Object, Array, RT_LENDER_NA: [] });
+    // When the technical read IS usable, no such explanation should appear.
+    const ar = { currentPrice: 100, priceChg: 1, pricePct: 1,
+                 signals: { verdict:'BUY', score:78, long:{ confidence:56 } } };
+    const c = combinedRead({ verdict:'BUY', score:78, confidence:56 }, F(80), null);
+    const html = repExecSummaryHtml(ar, c, F(80), '₹');
+    ok('no divergence note when there is no divergence', !/not in conflict/.test(html), 'spurious note');
+    ok('and the score is not marked unused', !/not used/.test(html), 'wrongly discounted');
+  }
+
   // ── never advice ──
   {
     const all = [combinedRead(T(75), F(80)), combinedRead(T(20), F(20)),
