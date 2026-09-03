@@ -62,9 +62,56 @@
   --glow: rgba(0,106,255,0.10);
   /* Trendlyne uses a wide, very soft shadow rather than borders */
   --card-shadow: 0 8px 32px -12px rgba(76,86,115,0.18);
+  /* Calibri where it exists; Carlito is the metric-identical open clone, and
+     the rest of the chain keeps close proportions rather than dropping to a
+     generic face. No webfont: the app must still work with no network. */
+  --font: 'Calibri','Carlito','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --font-num: 'Calibri','Carlito','Segoe UI',system-ui,Arial,sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min-height:100vh;transition:background .3s,color .3s;}
+/* ── FINANCIALS: statements + ratios ──────────────────────────────────────
+   Figures are the content here, so they carry the weight: bold, tabular
+   (every digit the same width, so columns line up), right-aligned. */
+.fin-table{width:100%;border-collapse:separate;border-spacing:0;font-family:var(--font-num);font-size:13.5px;min-width:520px}
+.fin-table thead th{position:sticky;top:0;z-index:2;background:var(--surface2);color:var(--text3);
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  padding:9px 14px;text-align:right;border-bottom:2px solid var(--border2);white-space:nowrap}
+.fin-table thead th:first-child{text-align:left}
+.fin-table tbody th{position:sticky;left:0;z-index:1;background:var(--surface);
+  text-align:left;font-weight:600;color:var(--text2);padding:9px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--border)}
+.fin-table tbody td{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:9px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--border)}
+.fin-table tbody tr:nth-child(even) th,.fin-table tbody tr:nth-child(even) td{background:var(--surface2)}
+.fin-table tbody tr:hover th,.fin-table tbody tr:hover td{background:var(--glow)}
+.fin-table tr.fin-total th,.fin-table tr.fin-total td{font-weight:800;color:var(--text);
+  border-top:2px solid var(--border2);border-bottom:none}
+.fin-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.fin-h{font-size:13px;font-weight:800;letter-spacing:.2px;margin:0 0 8px}
+.rt-wrap{margin-bottom:22px}
+.rt-h{font-size:15px;font-weight:800;margin-bottom:10px}
+.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}
+.rt-card{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.rt-card-h{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--text3);padding:9px 13px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.rt-table{width:100%;border-collapse:collapse;font-family:var(--font-num)}
+.rt-lbl{text-align:left;font-weight:600;font-size:12.5px;color:var(--text2);padding:7px 13px;cursor:help;
+  border-bottom:1px solid var(--border)}
+.rt-val{text-align:right;font-weight:800;font-size:13.5px;font-variant-numeric:tabular-nums;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:7px 13px;white-space:nowrap;
+  border-bottom:1px solid var(--border)}
+.rt-row:last-child .rt-lbl,.rt-row:last-child .rt-val{border-bottom:none}
+.rt-good{color:var(--green)}
+.rt-fair{color:var(--accent)}
+.rt-weak{color:var(--red)}
+.rt-na{color:var(--text3);font-weight:600}
+.rt-note{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.2px}
+.rt-warn{font-size:12px;line-height:1.5;color:var(--text2);background:var(--surface2);
+  border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:9px 13px;margin-bottom:12px}
+.rt-foot{font-size:11px;line-height:1.6;color:var(--text3);background:var(--surface2);
+  border-radius:8px;padding:9px 13px;margin-top:12px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;transition:background .3s,color .3s;}
 /* SCROLLBAR */
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:var(--surface);}
@@ -79,7 +126,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .logo-area{display:flex;align-items:center;gap:12px;}
 .logo-icon{font-size:28px;filter:drop-shadow(0 0 8px var(--accent));}
 .logo-text{display:flex;flex-direction:column;}
-.logo-title{font-family:'Calibri',serif;font-size:20px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.logo-title{font-family:var(--font);font-size:20px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .logo-sub{font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;}
 .header-right{display:flex;align-items:center;gap:12px;}
 .theme-toggle{background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:7px 14px;border-radius:20px;cursor:pointer;font-size:13px;transition:all .2s;}
@@ -104,7 +151,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 @media (prefers-reduced-motion:reduce){.bb-candle{animation:none!important;transform:scaleY(1);opacity:1}}
 .disclaimer-icon{font-size:80px;margin-bottom:16px;animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
-.disclaimer-title{font-family:'Calibri',serif;font-size:clamp(32px,5vw,56px);font-weight:900;background:linear-gradient(135deg,var(--accent),#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;}
+.disclaimer-title{font-family:var(--font);font-size:clamp(32px,5vw,56px);font-weight:900;background:linear-gradient(135deg,var(--accent),#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;}
 .disclaimer-subtitle{color:var(--text2);font-size:16px;}
 .open-quote{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid var(--border2);border-left:4px solid var(--accent);border-radius:var(--radius);padding:24px 28px;margin:0 auto 32px;max-width:700px;text-align:left;}
 .open-quote-text{font-size:18px;font-style:italic;color:var(--text);line-height:1.6;margin-bottom:8px;}
@@ -115,7 +162,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .disclaimer-items li{display:flex;gap:10px;color:var(--text2);font-size:14px;line-height:1.5;}
 .disclaimer-items li span:first-child{color:var(--accent);flex-shrink:0;}
 .disclaimer-actions{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}
-.btn{padding:11px 26px;border-radius:var(--radius-pill);font-family:'Calibri',sans-serif;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s;letter-spacing:.2px;}
+.btn{padding:11px 26px;border-radius:var(--radius-pill);font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s;letter-spacing:.2px;}
 .btn-primary{background:var(--brand1);color:#fff;}
 .btn-primary:hover{background:var(--brand2);box-shadow:0 6px 18px rgba(0,106,255,0.32);}
 .btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
@@ -130,7 +177,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 /* === DECLINE PAGE === */
 .decline-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;}
 .decline-emoji{font-size:80px;margin-bottom:24px;}
-.decline-title{font-family:'Calibri',serif;font-size:36px;font-weight:900;color:var(--text);margin-bottom:8px;}
+.decline-title{font-family:var(--font);font-size:36px;font-weight:900;color:var(--text);margin-bottom:8px;}
 .decline-sub{color:var(--text2);margin-bottom:32px;font-size:15px;}
 .decline-quotes{display:flex;flex-direction:column;gap:16px;max-width:600px;margin:0 auto 32px;}
 .decline-quote{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--purple);border-radius:var(--radius-sm);padding:16px 20px;text-align:left;}
@@ -147,7 +194,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 /* HERO SECTION */
 .hero-section{text-align:center;padding:40px 20px;background:linear-gradient(180deg,var(--surface) 0%,transparent 100%);border-bottom:1px solid var(--border);margin-bottom:32px;}
 .hero-tag{display:inline-block;background:rgba(0,106,255,0.1);border:1px solid rgba(0,106,255,0.3);color:var(--accent);padding:4px 14px;border-radius:20px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;}
-.hero-title{font-family:'Calibri',serif;font-size:clamp(28px,4vw,42px);font-weight:900;margin-bottom:8px;}
+.hero-title{font-family:var(--font);font-size:clamp(28px,4vw,42px);font-weight:900;margin-bottom:8px;}
 .hero-title span{background:linear-gradient(135deg,var(--accent),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .hero-sub{color:var(--text2);font-size:15px;}
 
@@ -158,7 +205,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 
 /* DATA INGESTION */
 .ingestion-tabs{display:flex;gap:8px;margin-bottom:24px;background:var(--surface2);padding:4px;border-radius:10px;border:1px solid var(--border);}
-.tab-btn{flex:1;padding:10px;border:none;background:transparent;color:var(--text3);font-family:'Calibri',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s;}
+.tab-btn{flex:1;padding:10px;border:none;background:transparent;color:var(--text3);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s;}
 .tab-btn.active{background:var(--brand1);color:#fff;box-shadow:0 2px 8px rgba(0,106,255,.28);}
 .tab-btn:not(.active):hover{background:var(--tint);color:var(--accent);}
 .tab-panel{display:none;}
@@ -212,7 +259,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px;}
 .form-group{display:flex;flex-direction:column;gap:6px;}
 .form-label{font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
-.form-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'Calibri',sans-serif;font-size:14px;transition:border-color .2s;}
+.form-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:var(--font);font-size:14px;transition:border-color .2s;}
 .form-input:focus{outline:none;border-color:var(--accent);}
 .form-input option{background:var(--surface);}
 
@@ -223,7 +270,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .api-row .form-input{flex:1;font-family:'JetBrains Mono',monospace;font-size:12px;}
 
 /* ANALYSE BUTTON */
-.analyse-btn{width:100%;padding:16px;background:var(--brand1);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Calibri',sans-serif;font-size:16px;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.5px;margin-top:8px;}
+.analyse-btn{width:100%;padding:16px;background:var(--brand1);color:#fff;border:none;border-radius:var(--radius-pill);font-family:var(--font);font-size:16px;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.5px;margin-top:8px;}
 .analyse-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,106,255,0.4);}
 .analyse-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
 
@@ -235,7 +282,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .loading-step{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text3);transition:color .3s;}
 .loading-step.done{color:var(--green);}
 .loading-step.active{color:var(--accent);}
-.loading-text{font-family:'Calibri',serif;font-size:20px;color:var(--text);text-align:center;}
+.loading-text{font-family:var(--font);font-size:20px;color:var(--text);text-align:center;}
 
 /* RESULTS */
 .results-section{animation:fadeIn .5s ease;}
@@ -258,7 +305,7 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .reco-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center;position:relative;overflow:hidden;}
 .reco-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--reco-color);}
 .reco-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;}
-.reco-signal{font-family:'Calibri',serif;font-size:24px;font-weight:900;margin-bottom:6px;}
+.reco-signal{font-family:var(--font);font-size:24px;font-weight:900;margin-bottom:6px;}
 .reco-signal.BUY{color:var(--green);}
 .reco-signal.SELL{color:var(--red);}
 .reco-signal.HOLD{color:var(--accent);}
@@ -281,11 +328,11 @@ body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min
 .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px;}
 .chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
 .chart-tabs{display:flex;gap:6px;}
-.chart-tab{padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Calibri',sans-serif;transition:all .2s;}
+.chart-tab{padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:var(--font);transition:all .2s;}
 .chart-tab.active{background:var(--brand1);color:#fff;border-color:var(--accent);}
 /* RESULTS TABS */
 .res-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:0;}
-.res-tab{padding:10px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-size:13.5px;font-weight:600;cursor:pointer;font-family:'Calibri',sans-serif;transition:all .2s;margin-bottom:-1px;}
+.res-tab{padding:10px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-size:13.5px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .2s;margin-bottom:-1px;}
 .res-tab:hover{color:var(--text2);}
 .res-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 canvas{max-width:100%;}
@@ -354,7 +401,7 @@ canvas{max-width:100%;}
   .disc-quote{display:none;}
 }
 .disc-icon{font-size:64px;text-align:center;margin-bottom:12px;animation:pulse 2s infinite;}
-.disc-title{font-family:'Calibri',serif;font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
+.disc-title{font-family:var(--font);font-size:clamp(26px,5vw,42px);font-weight:900;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:6px;}
 .disc-sub{color:#94a3b8;font-size:14px;text-align:center;margin-bottom:28px;}
 .disc-quote{background:linear-gradient(135deg,#1a2236,#111827);border:1px solid #2d3f5a;border-left:4px solid #f59e0b;border-radius:12px;padding:18px 22px;margin-bottom:24px;}
 .disc-quote p{font-size:16px;font-style:italic;color:#e2e8f0;line-height:1.6;margin-bottom:6px;}
@@ -369,10 +416,10 @@ canvas{max-width:100%;}
 .disc-checkbox-row label{font-size:13px;color:#94a3b8;line-height:1.5;cursor:pointer;}
 .disc-checkbox-row label b{color:#e2e8f0;}
 .disc-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
-.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:'Calibri',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#006aff,#0052cc);color:#fff;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
+.disc-btn-accept{padding:14px 32px;border-radius:10px;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#006aff,#0052cc);color:#fff;letter-spacing:.5px;transition:all .2s;opacity:.5;pointer-events:none;}
 .disc-btn-accept.enabled{opacity:1;pointer-events:all;}
 .disc-btn-accept.enabled:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,106,255,.4);}
-.disc-btn-decline{padding:14px 24px;border-radius:10px;font-family:'Calibri',sans-serif;font-size:14px;font-weight:600;cursor:pointer;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.3);transition:all .2s;}
+.disc-btn-decline{padding:14px 24px;border-radius:10px;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.3);transition:all .2s;}
 .disc-btn-decline:hover{background:rgba(239,68,68,.18);}
 .disc-declined-msg{display:none;text-align:center;padding:32px 20px;}
 .disc-declined-msg h3{color:#ef4444;font-size:22px;margin-bottom:10px;}
@@ -413,7 +460,7 @@ canvas{max-width:100%;}
 .rsi-fill{height:100%;border-radius:3px;transition:width .5s ease;}
 
 /* AI ENGINE BUTTONS */
-.ai-engine-btn{padding:7px 14px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-family:'Calibri',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s;}
+.ai-engine-btn{padding:7px 14px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s;}
 .ai-engine-btn:hover{border-color:var(--accent);color:var(--accent);}
 .ai-engine-btn.active{background:var(--brand1);color:#fff;border-color:var(--accent);}
 .ai-engine-btn.premium.active{background:linear-gradient(135deg,#8b5cf6,#6d28d9);border-color:#8b5cf6;color:#fff;}
@@ -422,7 +469,7 @@ canvas{max-width:100%;}
 
 /* VERDICT BANNER */
 .verdict-banner{border-radius:var(--radius);padding:20px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
-.verdict-signal{font-family:'Calibri',serif;font-size:36px;font-weight:900;}
+.verdict-signal{font-family:var(--font);font-size:36px;font-weight:900;}
 .verdict-signal.BUY{color:var(--green);}
 .verdict-signal.SELL{color:var(--red);}
 .verdict-signal.HOLD{color:var(--accent);}
@@ -487,7 +534,7 @@ canvas{max-width:100%;}
 .market-selector-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;}
 .market-hero{text-align:center;margin-bottom:48px;}
 .market-hero-icon{font-size:56px;margin-bottom:16px;filter:drop-shadow(0 0 16px var(--accent));}
-.market-hero-title{font-family:'Calibri',serif;font-size:40px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;}
+.market-hero-title{font-family:var(--font);font-size:40px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;}
 .market-hero-sub{font-size:15px;color:var(--text2);max-width:480px;line-height:1.6;}
 .market-cards{display:flex;gap:28px;flex-wrap:wrap;justify-content:center;margin-bottom:40px;}
 .market-card{background:var(--surface);border:2px solid var(--border);border-radius:24px;padding:44px 56px;cursor:pointer;transition:all .3s;text-align:center;min-width:220px;}
@@ -1526,7 +1573,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       </div>
       <div style="text-align:center;padding:22px 0 24px;">
         <div style="display:inline-block;background:rgba(0,106,255,0.1);border:1px solid rgba(0,106,255,0.3);color:var(--accent);padding:4px 14px;border-radius:20px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">Step 1 of 3</div>
-        <h2 style="font-family:'Calibri',serif;font-size:28px;font-weight:900;margin-bottom:6px;" id="ingestionTitle">Load Your Stock Data</h2>
+        <h2 style="font-family:var(--font);font-size:28px;font-weight:900;margin-bottom:6px;" id="ingestionTitle">Load Your Stock Data</h2>
         <p style="color:var(--text2);font-size:14px;" id="ingestionSubtitle">Search any stock by name or ticker for live technical analysis</p>
       </div>
 
@@ -1692,7 +1739,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
         <div>
-          <h2 style="font-family:'Calibri',serif;font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
+          <h2 style="font-family:var(--font);font-size:24px;font-weight:900;" id="resultsTitle">Analysis Results</h2>
           <p style="font-size:13px;color:var(--text3);" id="resultsSubtitle">Technical analysis complete</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;" class="no-print">
@@ -1759,7 +1806,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
           <span style="font-size:15px;font-weight:700;">📈 Price Charts</span>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="font-size:11px;color:var(--text3);">🖱️ Scroll to zoom · Drag to pan</div>
-            <button onclick="resetZoom()" style="padding:4px 10px;font-size:11px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);border-radius:6px;cursor:pointer;font-family:'Calibri',sans-serif;">↩ Reset Zoom</button>
+            <button onclick="resetZoom()" style="padding:4px 10px;font-size:11px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);border-radius:6px;cursor:pointer;font-family:var(--font);">↩ Reset Zoom</button>
           </div>
         </div>
         <div class="chart-tabs" style="margin-bottom:12px;">
@@ -1775,7 +1822,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
           <div id="lw-container" style="display:none;width:100%;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;position:relative;">
             <!-- Floating OHLC tooltip -->
             <div id="lw-tooltip" style="position:absolute;top:10px;left:12px;z-index:100;pointer-events:none;background:rgba(19,23,34,0.88);border:1px solid #363c4e;border-radius:5px;padding:8px 12px;font-size:11.5px;color:#d1d4dc;font-family:'JetBrains Mono',monospace;min-width:160px;display:none;">
-              <div style="font-weight:700;color:#fff;margin-bottom:5px;font-family:'Calibri',sans-serif;" id="lw-tt-date"></div>
+              <div style="font-weight:700;color:#fff;margin-bottom:5px;font-family:var(--font);" id="lw-tt-date"></div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
                 <span style="color:#94a3b8;">O</span><span id="lw-tt-o" style="color:#fff;font-weight:600;"></span>
                 <span style="color:#94a3b8;">H</span><span id="lw-tt-h" style="color:#26a69a;font-weight:600;"></span>
@@ -1934,7 +1981,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:28px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;position:relative;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <div>
-        <div style="font-family:'Calibri',serif;font-size:20px;font-weight:900;">⚙️ AI Engine Configuration</div>
+        <div style="font-family:var(--font);font-size:20px;font-weight:900;">⚙️ AI Engine Configuration</div>
         <div style="font-size:12px;color:var(--text3);margin-top:2px;">API keys are stored in your browser session only - never sent to any server except the AI provider.</div>
       </div>
       <button onclick="closeAIConfig()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;flex-shrink:0;">✕</button>
@@ -11707,6 +11754,300 @@ function taxPeriodToggle(){
   if(typeof renderTaxation === 'function') renderTaxation();
   if(typeof renderIfSold === 'function') { try { renderIfSold(); } catch(e) {} }
 }
+// ══════════════════════ KEY RATIOS ══════════════════════
+// Ratios computed from the statements the Financials tab already fetched, plus
+// the market figures (price, P/E, market cap) the fundamentals feed supplies.
+//
+// All of it runs here, in the browser, in JavaScript. There is no server doing
+// the arithmetic — which is the point: nothing about what you look at or hold
+// is sent anywhere.
+//
+// Two rules govern every figure below.
+//
+//  1. A ratio whose inputs are missing is null and shows as a dash. None of
+//     these are estimated, substituted or carried over from another period.
+//  2. A ratio whose denominator is at or near zero is null, not Infinity, and
+//     not a huge number that looks like a real result.
+//
+// Bands (good / fair / weak) are shown only where a rule holds across ordinary
+// businesses. They are wrong for lenders, and the UI says so when the sector
+// is known: a bank has no inventory, no meaningful current ratio, and debt is
+// its raw material rather than a risk measure.
+
+const RT_EPS = 1e-9;
+
+// Latest reported value for a line, and the period it came from. Lines are not
+// all published on the same date - a balance sheet can lag an income statement
+// - so each line is read at its own newest date rather than forced onto one.
+function _rtLatest(t, key){
+  if(!t || !t.line || !t.periodsAll) return null;
+  const m = t.line[key];
+  if(!m) return null;
+  for(const d of t.periodsAll) if(m[d] != null) return { v: m[d], date: d };
+  return null;
+}
+function _rtVal(t, key){
+  const r = _rtLatest(t, key);
+  return r ? r.v : null;
+}
+// The two most recent values of a line, for a growth rate. Both must be real
+// reported numbers - a single period cannot produce a growth rate.
+function _rtPair(t, key){
+  if(!t || !t.line || !t.periodsAll) return null;
+  const m = t.line[key];
+  if(!m) return null;
+  const got = [];
+  for(const d of t.periodsAll){ if(m[d] != null) got.push(m[d]); if(got.length === 2) break; }
+  return got.length === 2 ? { now: got[0], prev: got[1] } : null;
+}
+// Division that refuses to produce a number it cannot stand behind.
+function _rtDiv(a, b){
+  if(a == null || b == null) return null;
+  if(!isFinite(a) || !isFinite(b)) return null;
+  if(Math.abs(b) < RT_EPS) return null;
+  const r = a / b;
+  return isFinite(r) ? r : null;
+}
+// Growth from a to b. A negative or zero base makes a percentage change
+// meaningless (a swing from -100 to 50 is not "150% growth"), so it is null.
+function _rtGrowth(pair){
+  if(!pair) return null;
+  if(pair.prev == null || pair.prev <= 0) return null;
+  return (pair.now - pair.prev) / pair.prev * 100;
+}
+// First of several lines that is actually reported. Used where the source may
+// carry either of two equivalent names.
+function _rtFirst(t, keys){
+  for(const k of keys){ const v = _rtVal(t, k); if(v != null) return v; }
+  return null;
+}
+
+// ── The ratios ─────────────────────────────────────────────────────────────
+function computeRatios(t, fund, price){
+  const f = fund || {};
+  const rev    = _rtVal(t, 'TotalRevenue');
+  const cogs   = _rtVal(t, 'CostOfRevenue');
+  const gross  = _rtVal(t, 'GrossProfit');
+  const opInc  = _rtVal(t, 'OperatingIncome');
+  const ebit   = _rtFirst(t, ['EBIT', 'OperatingIncome']);
+  const ebitda = _rtVal(t, 'EBITDA');
+  const pretax = _rtVal(t, 'PretaxIncome');
+  const tax    = _rtVal(t, 'TaxProvision');
+  const ni     = _rtVal(t, 'NetIncome');
+  const assets = _rtVal(t, 'TotalAssets');
+  const ca     = _rtVal(t, 'CurrentAssets');
+  const cl     = _rtVal(t, 'CurrentLiabilities');
+  const inv    = _rtVal(t, 'Inventory');
+  const ar     = _rtVal(t, 'AccountsReceivable');
+  const eq     = _rtVal(t, 'StockholdersEquity');
+  const cash   = _rtVal(t, 'CashAndCashEquivalents');
+  const debt   = _rtFirst(t, ['TotalDebt', 'LongTermDebt']);
+  const interest = _rtVal(t, 'InterestExpense');
+  const invCap = _rtVal(t, 'InvestedCapital');
+  const ocf    = _rtVal(t, 'OperatingCashFlow');
+  const capex  = _rtVal(t, 'CapitalExpenditure');
+  const fcfRep = _rtVal(t, 'FreeCashFlow');
+  const shares = _rtVal(t, 'OrdinarySharesNumber');
+
+  const r = {};
+  const pct = (a, b) => { const q = _rtDiv(a, b); return q == null ? null : q * 100; };
+
+  // Profitability
+  r.grossMargin = pct(gross != null ? gross : (rev != null && cogs != null ? rev - cogs : null), rev);
+  r.opMargin    = pct(opInc, rev);
+  r.netMargin   = pct(ni, rev);
+  r.roe         = pct(ni, eq);
+  r.roa         = pct(ni, assets);
+  // ROCE: operating profit against the capital actually tied up in the
+  // business. Capital employed must be positive for the ratio to mean anything.
+  const capEmployed = (assets != null && cl != null) ? assets - cl : null;
+  r.roce = (capEmployed != null && capEmployed > 0) ? pct(ebit, capEmployed) : null;
+  // ROIC uses after-tax operating profit. The effective tax rate is only
+  // trusted inside a sane band; outside it the ratio is left unreported rather
+  // than scaled by a nonsense rate.
+  const taxRate = _rtDiv(tax, pretax);
+  r.roic = (taxRate != null && taxRate >= 0 && taxRate <= 0.6 && ebit != null && invCap != null)
+         ? pct(ebit * (1 - taxRate), invCap) : null;
+
+  // Growth
+  r.revGrowth = _rtGrowth(_rtPair(t, 'TotalRevenue'));
+  r.niGrowth  = _rtGrowth(_rtPair(t, 'NetIncome'));
+  r.epsGrowth = _rtGrowth(_rtPair(t, 'DilutedEPS'));
+
+  // Leverage
+  r.debtToEquity = _rtDiv(debt, eq);
+  const netDebt = (debt != null && cash != null) ? debt - cash : null;
+  r.netDebtEbitda = (netDebt != null && netDebt > 0) ? _rtDiv(netDebt, ebitda) : (netDebt != null ? 0 : null);
+  r.interestCover = (interest != null && Math.abs(interest) > RT_EPS)
+                  ? _rtDiv(ebit, Math.abs(interest)) : null;
+
+  // Liquidity
+  r.currentRatio = _rtDiv(ca, cl);
+  r.quickRatio   = (ca != null && inv != null) ? _rtDiv(ca - inv, cl) : null;
+
+  // Efficiency
+  r.assetTurnover = _rtDiv(rev, assets);
+  r.invTurnover   = _rtDiv(cogs, inv);
+  r.receivableDays = (() => { const q = _rtDiv(ar, rev); return q == null ? null : q * 365; })();
+
+  // Cash quality
+  const fcf = fcfRep != null ? fcfRep : ((ocf != null && capex != null) ? ocf + capex : null);
+  r.fcf = fcf;
+  r.fcfMargin = pct(fcf, rev);
+  // Only meaningful when the company actually made a profit; against a loss the
+  // ratio flips sign and reads as if cash conversion were terrible or superb.
+  r.cashConversion = (ni != null && ni > 0) ? _rtDiv(ocf, ni) : null;
+
+  // Valuation. These need the market's price, not just the accounts.
+  const p = (typeof price === 'number' && isFinite(price) && price > 0) ? price : null;
+  const eps = _rtFirst(t, ['DilutedEPS']) != null ? _rtVal(t, 'DilutedEPS')
+            : ((ni != null && shares != null) ? _rtDiv(ni, shares) : null);
+  r.eps = eps;
+  r.pe  = (f.pe != null && isFinite(f.pe) && f.pe > 0) ? f.pe : (p != null && eps != null && eps > 0 ? _rtDiv(p, eps) : null);
+  r.pb  = (f.pb != null && isFinite(f.pb) && f.pb > 0) ? f.pb
+        : ((p != null && eq != null && shares != null) ? _rtDiv(p, _rtDiv(eq, shares)) : null);
+  r.ps  = (f.ps != null && isFinite(f.ps) && f.ps > 0) ? f.ps
+        : ((f.mktCap != null && rev != null) ? _rtDiv(f.mktCap, rev) : null);
+  r.earningsYield = r.pe != null ? _rtDiv(100, r.pe) : null;
+  r.divYield = (f.divYield != null && isFinite(f.divYield)) ? f.divYield : null;
+  // EV/EBITDA from the accounts when the feed does not carry it.
+  const ev = (f.mktCap != null && netDebt != null) ? f.mktCap + netDebt : null;
+  r.evEbitda = (f.evEbitda != null && isFinite(f.evEbitda) && f.evEbitda > 0) ? f.evEbitda
+             : ((ev != null && ebitda != null && ebitda > 0) ? _rtDiv(ev, ebitda) : null);
+  // PEG: P/E divided by the growth rate it is being paid for. Against flat or
+  // shrinking earnings the ratio has no meaning at all - a negative PEG is not
+  // "cheap" - so it is withheld rather than shown as a bargain.
+  const g = (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth
+          : (r.epsGrowth != null ? r.epsGrowth : r.niGrowth);
+  r.peg = (r.pe != null && g != null && g > 0) ? _rtDiv(r.pe, g) : null;
+  r.pegBlocked = (r.pe != null && g != null && g <= 0);
+
+  return r;
+}
+
+// Bands. `hi` means a bigger number is better. A ratio with no entry here is
+// shown without a colour, because no single threshold is defensible for it.
+const RT_BANDS = {
+  grossMargin:   { hi:true,  good:40,  fair:20 },
+  opMargin:      { hi:true,  good:15,  fair:8 },
+  netMargin:     { hi:true,  good:10,  fair:5 },
+  roe:           { hi:true,  good:18,  fair:12 },
+  roce:          { hi:true,  good:18,  fair:12 },
+  roic:          { hi:true,  good:15,  fair:10 },
+  roa:           { hi:true,  good:8,   fair:4 },
+  revGrowth:     { hi:true,  good:15,  fair:5 },
+  niGrowth:      { hi:true,  good:15,  fair:5 },
+  debtToEquity:  { hi:false, good:0.5, fair:1 },
+  netDebtEbitda: { hi:false, good:1.5, fair:3 },
+  interestCover: { hi:true,  good:5,   fair:2.5 },
+  currentRatio:  { hi:true,  good:1.5, fair:1 },
+  quickRatio:    { hi:true,  good:1,   fair:0.7 },
+  cashConversion:{ hi:true,  good:0.9, fair:0.6 },
+  fcfMargin:     { hi:true,  good:10,  fair:4 },
+  peg:           { hi:false, good:1,   fair:2 },
+  earningsYield: { hi:true,  good:6,   fair:3 },
+};
+function ratioBand(key, v){
+  const b = RT_BANDS[key];
+  if(!b || v == null || !isFinite(v)) return null;
+  if(b.hi) return v >= b.good ? 'good' : v >= b.fair ? 'fair' : 'weak';
+  return v <= b.good ? 'good' : v <= b.fair ? 'fair' : 'weak';
+}
+
+// Ratios that describe a manufacturer or retailer and say nothing useful about
+// a lender: a bank holds no inventory, its "current ratio" is an artefact of
+// how deposits are classified, and debt is its input, not its risk.
+const RT_LENDER_NA = ['currentRatio','quickRatio','invTurnover','debtToEquity','netDebtEbitda','evEbitda','assetTurnover'];
+function isLender(fund){
+  const s = ((fund && (fund.sector || fund.industry)) || '').toLowerCase();
+  return /bank|financial|insur|nbfc|capital market|credit/.test(s);
+}
+
+// ── Display ────────────────────────────────────────────────────────────────
+const RT_DASH = '<span class="rt-na">—</span>';
+function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
+function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + '×'; }
+function _rtRaw(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp); }
+function _rtDays(v){ return v == null ? RT_DASH : Math.round(v) + ' days'; }
+
+// label, key, formatter, what it actually tells you
+const RT_GROUPS = [
+  ['💰 Profitability', [
+    ['Gross margin',      'grossMargin', _rtPct, 'What is left of each rupee of sales after the direct cost of producing it.'],
+    ['Operating margin',  'opMargin',    _rtPct, 'Profit from running the business, before interest and tax.'],
+    ['Net margin',        'netMargin',   _rtPct, 'What finally reaches the bottom line, per rupee of sales.'],
+    ['ROE',               'roe',         _rtPct, 'Return on equity: profit earned on the shareholders’ own money.'],
+    ['ROCE',              'roce',        _rtPct, 'Return on capital employed: operating profit against all capital tied up in the business (total assets less current liabilities). Harder to flatter with debt than ROE, which is why it is the one to look at first.'],
+    ['ROIC',              'roic',        _rtPct, 'Return on invested capital: after-tax operating profit against invested capital.'],
+    ['ROA',               'roa',         _rtPct, 'Return on assets: profit against everything the company owns.'],
+  ]],
+  ['📈 Growth', [
+    ['Revenue growth',    'revGrowth',   _rtPct, 'Change in revenue against the previous reported period.'],
+    ['Net income growth', 'niGrowth',    _rtPct, 'Change in net profit against the previous reported period.'],
+    ['EPS growth',        'epsGrowth',   _rtPct, 'Change in earnings per share — growth after any dilution.'],
+  ]],
+  ['⚖️ Leverage & solvency', [
+    ['Debt / Equity',     'debtToEquity',  v => _rtRaw(v), 'Borrowings against shareholders’ funds. Above 1 means the business leans more on lenders than on owners.'],
+    ['Net debt / EBITDA', 'netDebtEbitda', v => _rtX(v),   'Years of operating earnings it would take to clear debt net of cash. Above 3 is where lenders start to care.'],
+    ['Interest coverage', 'interestCover', v => _rtX(v, 1),'How many times operating profit covers the interest bill. Under 2 is fragile.'],
+  ]],
+  ['💧 Liquidity', [
+    ['Current ratio',     'currentRatio', v => _rtRaw(v), 'Short-term assets against short-term dues. Below 1 means near-term bills exceed near-term resources.'],
+    ['Quick ratio',       'quickRatio',   v => _rtRaw(v), 'The same, excluding inventory — what could be paid without selling stock first.'],
+  ]],
+  ['⚙️ Efficiency', [
+    ['Asset turnover',    'assetTurnover', v => _rtX(v),   'Revenue generated per rupee of assets.'],
+    ['Inventory turnover','invTurnover',   v => _rtX(v, 1),'How many times inventory is sold and replaced in a period.'],
+    ['Receivable days',   'receivableDays', _rtDays,       'Average days customers take to pay.'],
+  ]],
+  ['💵 Cash quality', [
+    ['FCF margin',        'fcfMargin',     _rtPct,         'Free cash flow as a share of revenue — cash left after running and maintaining the business.'],
+    ['Cash conversion',   'cashConversion', v => _rtX(v),  'Operating cash flow divided by net profit. Well under 1 means profits are not turning into cash.'],
+  ]],
+  ['🏷️ Valuation', [
+    ['P/E',               'pe',            v => _rtRaw(v, 1), 'Price paid per rupee of annual earnings.'],
+    ['PEG',               'peg',           v => _rtRaw(v),    'P/E divided by the earnings growth rate being paid for. Around 1 means growth and price are roughly in line; under 1 is the classic screen for growth at a reasonable price.'],
+    ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value — the accounting net worth per share.'],
+    ['P/S',               'ps',            v => _rtRaw(v),    'Price against annual revenue. Useful where earnings are small or negative.'],
+    ['EV / EBITDA',       'evEbitda',      v => _rtRaw(v, 1), 'Whole-company value (market cap plus net debt) against operating earnings. Comparable across different debt loads.'],
+    ['Earnings yield',    'earningsYield', _rtPct,            'Earnings per rupee invested — the P/E inverted, so it can be read against a deposit rate.'],
+    ['Dividend yield',    'divYield',      _rtPct,            'Annual dividend as a share of the current price.'],
+  ]],
+];
+
+function ratiosHtml(t, fund, price){
+  const r = computeRatios(t, fund, price);
+  const lender = isLender(fund);
+  const cell = (label, key, fmt, tip) => {
+    const v = r[key];
+    const na = lender && RT_LENDER_NA.indexOf(key) >= 0;
+    const band = na ? null : ratioBand(key, v);
+    const shown = na && v != null
+      ? `<span class="rt-na" title="This ratio does not describe a lender's balance sheet.">n/a</span>`
+      : fmt(v);
+    const note = (key === 'peg' && v == null && r.pegBlocked)
+      ? `<div class="rt-note">no growth to price</div>` : '';
+    return `<tr class="rt-row"><th scope="row" class="rt-lbl" title="${tip.replace(/"/g,'&quot;')}">${label}</th>
+      <td class="rt-val ${band ? 'rt-'+band : ''}">${shown}${note}</td></tr>`;
+  };
+  const groups = RT_GROUPS.map(([title, rows]) => `
+    <div class="rt-card">
+      <div class="rt-card-h">${title}</div>
+      <table class="rt-table"><tbody>${rows.map(x => cell(x[0], x[1], x[2], x[3])).join('')}</tbody></table>
+    </div>`).join('');
+  const lenderNote = lender
+    ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders — for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
+    : '';
+  return `<div class="rt-wrap">
+    <div class="rt-h">📐 Key Ratios</div>
+    ${lenderNote}
+    <div class="rt-grid">${groups}</div>
+    <div class="rt-foot">Computed in your browser from the reported statements above and the current price — nothing is sent anywhere.
+      A dash means the source did not carry the inputs, so the ratio is not shown rather than estimated.
+      Colours are broad rules of thumb across ordinary businesses; a capital-heavy company and an asset-light one are not judged on the same numbers.
+      Hover any label for what it measures.</div>
+  </div>`;
+}
 // ══════════ FINANCIAL STATEMENTS: BALANCE SHEET / P&L / CASH FLOW ══════════
 // Ratios like P/E tell you what the market thinks. The statements tell you what
 // the business actually did.
@@ -11821,6 +12162,38 @@ function _stTsTable(series, fields, prefix){
   }));
   return _stFinish(periods, rows);
 }
+// Every line the endpoint returned, keyed without the period prefix, plus the
+// union of every date seen. The ratio engine reads this: it needs line items
+// (EBIT, inventory, share count) that the three display tables do not show.
+function _stTsLines(series, prefix){
+  if(!series) return null;
+  const out = {};
+  for(const k of Object.keys(series)){
+    if(k.indexOf(prefix) !== 0) continue;
+    out[k.slice(prefix.length)] = series[k];
+  }
+  return out;
+}
+function _stPeriodsAll(line){
+  const dates = new Set();
+  for(const k of Object.keys(line || {})) Object.keys(line[k]).forEach(d => dates.add(d));
+  return Array.from(dates).sort().reverse();
+}
+// The fallback endpoint has no extra lines to offer, so its line map is just
+// what the display tables already hold - nothing is invented to fill the gap.
+function _stLinesFromTables(o){
+  const line = {};
+  for(const k of ['income','balance','cashflow']){
+    const t = o[k];
+    if(!t) continue;
+    for(const r of t.rows){
+      const m = line[r.key] || (line[r.key] = {});
+      t.periods.forEach((d, i) => { if(r.values[i] != null) m[d] = r.values[i]; });
+    }
+  }
+  return line;
+}
+
 function _stTsParse(json, quarterly){
   const series = _stTsSeries(json);
   if(!series) return null;
@@ -11831,7 +12204,10 @@ function _stTsParse(json, quarterly){
     balance:  _stTsTable(series, ST_BALANCE,  pre),
     cashflow: _stTsTable(series, ST_CASHFLOW, pre),
   };
-  return (out.income || out.balance || out.cashflow) ? out : null;
+  if(!(out.income || out.balance || out.cashflow)) return null;
+  out.line = _stTsLines(series, pre) || {};
+  out.periodsAll = _stPeriodsAll(out.line);
+  return out;
 }
 
 // ── quoteSummary history modules (fallback) ────────────────────────────────
@@ -11863,7 +12239,10 @@ function _stParse(json, quarterly){
     balance:  _stTable(pick('balanceSheetHistory'+q,      'balanceSheetStatements'),   ST_BALANCE),
     cashflow: _stTable(pick('cashflowStatementHistory'+q, 'cashflowStatements'),       ST_CASHFLOW),
   };
-  return (out.income || out.balance || out.cashflow) ? out : null;
+  if(!(out.income || out.balance || out.cashflow)) return null;
+  out.line = _stLinesFromTables(out);
+  out.periodsAll = _stPeriodsAll(out.line);
+  return out;
 }
 
 // How much of a parsed result is actually filled in. Used to decide whether the
@@ -11875,34 +12254,6 @@ function _stCells(t){
     if(t[k]) for(const r of t[k].rows) for(const v of r.values) if(v != null) n++;
   }
   return n;
-}
-
-// Derived figures the statements support and ratios alone do not.
-function _stDerived(t){
-  if(!t) return null;
-  const first = (tab, key) => {
-    if(!tab) return null;
-    const r = tab.rows.find(x => x.key === key);
-    return r ? r.values[0] : null;
-  };
-  const rev   = first(t.income, 'TotalRevenue');
-  const ni    = first(t.income, 'NetIncome');
-  const ocf   = first(t.cashflow, 'OperatingCashFlow');
-  const capex = first(t.cashflow, 'CapitalExpenditure');
-  const fcf   = first(t.cashflow, 'FreeCashFlow');
-  const eq    = first(t.balance, 'StockholdersEquity');
-  const debt  = first(t.balance, 'LongTermDebt');
-  const out = {};
-  if(rev != null && rev !== 0 && ni != null) out.netMargin = ni / rev * 100;
-  if(eq  != null && eq  !== 0 && ni != null) out.roe = ni / eq * 100;
-  if(eq  != null && eq  !== 0 && debt != null) out.debtToEquity = debt / eq;
-  // Prefer the reported figure; otherwise derive it. Capex comes back negative,
-  // so free cash flow is operating cash flow plus that negative number.
-  if(fcf != null) out.freeCashFlow = fcf;
-  else if(ocf != null && capex != null) out.freeCashFlow = ocf + capex;
-  // Earnings backed by cash, or by accounting? A ratio well under 1 is a flag.
-  if(ni != null && ni > 0 && ocf != null) out.cashConversion = ocf / ni;
-  return Object.keys(out).length ? out : null;
 }
 
 // ── Fetch + render ─────────────────────────────────────────────────────────
@@ -11943,7 +12294,7 @@ async function _stFetch(sym, quarterly){
 }
 
 function _stFmt(v, isIndia){
-  if(v == null) return '<span style="color:var(--text3)">—</span>';   // absent, not zero
+  if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
   if(isIndia){
@@ -11956,15 +12307,20 @@ function _stFmt(v, isIndia){
   return sign + unit + a.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
+const ST_TOTAL_ROWS = ['NetIncome', 'StockholdersEquity', 'FreeCashFlow'];
+
 function _stTableHtml(t, title, isIndia){
-  if(!t) return `<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:800;margin-bottom:6px">${title}</div>
+  if(!t) return `<div style="margin-bottom:18px"><div class="fin-h">${title}</div>
     <div style="font-size:12.5px;color:var(--text3)">Not available for this stock from the data source.</div></div>`;
-  const head = t.periods.map(p => `<th class="r" style="white-space:nowrap">${p}</th>`).join('');
-  const body = t.rows.map(r => `<tr><td class="tn">${r.label}</td>${
-      r.values.map(v => `<td class="r tm">${_stFmt(v, isIndia)}</td>`).join('')}</tr>`).join('');
+  const head = t.periods.map(p => `<th>${p}</th>`).join('');
+  const body = t.rows.map(r => {
+    const cls = ST_TOTAL_ROWS.indexOf(r.key) >= 0 ? ' class="fin-total"' : '';
+    return `<tr${cls}><th scope="row">${r.label}</th>${
+      r.values.map(v => `<td>${_stFmt(v, isIndia)}</td>`).join('')}</tr>`;
+  }).join('');
   return `<div style="margin-bottom:18px">
-    <div style="font-size:12px;font-weight:800;margin-bottom:6px">${title}</div>
-    <div class="ts"><table style="min-width:520px"><thead><tr><th>Line item</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="fin-h">${title}</div>
+    <div class="fin-scroll"><table class="fin-table"><thead><tr><th>Line item</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
   </div>`;
 }
 
@@ -11993,19 +12349,12 @@ async function renderStatements(){
       Yahoo's statement history is often thin or absent for smaller Indian listings — that is a gap in the source, not an error here.</div>`;
     return;
   }
-  const d = _stDerived(t);
-  const chip = (lbl,val,tip) => `<span title="${tip||''}" style="cursor:help;font-size:11.5px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:20px;margin:0 6px 6px 0;display:inline-block">${lbl}: <b>${val}</b></span>`;
-  const derived = d ? `<div style="margin-bottom:14px">
-      ${d.netMargin!=null?chip('Net margin', d.netMargin.toFixed(1)+'%','Net income as a share of revenue, from the latest period shown.'):''}
-      ${d.roe!=null?chip('ROE', d.roe.toFixed(1)+'%','Net income against shareholders equity.'):''}
-      ${d.debtToEquity!=null?chip('Debt/Equity', d.debtToEquity.toFixed(2),'Long-term debt against equity. Above ~1 means the business leans on borrowing.'):''}
-      ${d.freeCashFlow!=null?chip('Free cash flow', _stFmt(d.freeCashFlow, isIndia),'Operating cash flow after capital expenditure - what is actually left over.'):''}
-      ${d.cashConversion!=null?chip('Cash conversion', d.cashConversion.toFixed(2),'Operating cash flow divided by net income. Well below 1 means profits are not turning into cash.'):''}
-    </div>` : '';
+  const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
+  const ratios = (typeof ratiosHtml === 'function') ? ratiosHtml(t, ar.fundamentals, price) : '';
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
     : '';
-  el.innerHTML = toggle + derived
+  el.innerHTML = toggle + ratios
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)

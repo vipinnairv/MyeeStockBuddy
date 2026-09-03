@@ -63,6 +63,11 @@ const TS_FIELDS = [
   // Cash flow
   'OperatingCashFlow', 'CapitalExpenditure', 'InvestingCashFlow',
   'FinancingCashFlow', 'ChangesInCash', 'FreeCashFlow',
+  // Not shown as statement rows, but the ratio engine needs them: ROCE and
+  // interest cover want EBIT, the liquidity and turnover ratios want inventory
+  // and receivables, and per-share figures want the share count.
+  'EBIT', 'EBITDA', 'InterestExpense', 'Inventory', 'AccountsReceivable',
+  'TotalDebt', 'InvestedCapital', 'DilutedEPS', 'OrdinarySharesNumber',
 ];
 
 const CORS_HEADERS = {
