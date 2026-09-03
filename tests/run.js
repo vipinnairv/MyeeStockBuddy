@@ -87,7 +87,7 @@ group('momentum engine — whipsaw resistance');
 // ── DVM scoring ────────────────────────────────────────────────────────────
 group('DVM scores');
 {
-  const { computeDVM } = load(slice('function computeDVM(ar){', 'function renderDVMBadges()', 'computeDVM'), ['computeDVM']);
+  const { computeDVM } = load(slice('function computeDVM(ar, ratios){', 'function renderDVMBadges()', 'computeDVM'), ['computeDVM']);
   const mk = (gen, sig) => {
     const data = [], closes = []; let p = 100;
     for (let i = 0; i < 400; i++) { p = gen(p, i); const c = +p.toFixed(2);
@@ -112,6 +112,72 @@ group('DVM scores');
   base.fundamentals = { roe:18 };
   eq('no valuation fields -> falls back to proxy', computeDVM(base).vSource, 'technical');
   ok('all scores clamp to 0..100', [up,dn].every(s => [s.d,s.v,s.m].every(x => x>=0 && x<=100)), 'out of range');
+
+  // ── the valuation badge must use every input the page already has ──
+  // Cupid Ltd scored 0/100. Its feed carried no pegRatio, so the badge averaged
+  // P/E 277.2 and P/B 83.39 - both far past the expensive end of their scales,
+  // both clamped to zero - while the ratio panel a few centimetres below showed
+  // a PEG of 1.61, worth 52 on the same scale. Two valuation views on one page,
+  // disagreeing because they read different sources.
+  {
+    const base = mk(p => p * 1.0005, { rsiV: 50, stV: 1 });
+    const cupidFeed = { pe: 277.2, pb: 83.39 };          // no pegRatio, as reported
+    {
+      const s = computeDVM(Object.assign({}, base, { fundamentals: cupidFeed }));
+      eq('with the feed alone the score is the floor', s.v, 0);
+      eq('and only two inputs were available', s.vUsed.join('+'), 'P/E+P/B');
+      eq('which the badge reports rather than implying a full reading', s.vFloored, true);
+    }
+    {
+      // The PEG the ratio panel computed, handed to the same score.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: cupidFeed }), { peg: 1.61 });
+      ok('the computed PEG is picked up', s.vUsed.indexOf('PEG') >= 0, s.vUsed.join('+'));
+      eq('and the score is no longer pinned at the floor', s.v, 17);
+      eq('so it is not reported as floored', s.vFloored, false);
+    }
+    {
+      // A feed value always wins over the computed one: it is the more current.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: { pe: 20, peg: 1.0 } }), { pe: 99, peg: 9 });
+      eq('the feed P/E is preferred', s.vInputs.pe, 20);
+      eq('and the feed PEG', s.vInputs.peg, 1.0);
+    }
+    {
+      // Ratios reached through analysisResult, which is how the app supplies
+      // them once the statements land.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: cupidFeed, ratios: { peg: 1.61 } }));
+      ok('ratios on the result are used too', s.vUsed.indexOf('PEG') >= 0, s.vUsed.join('+'));
+    }
+    {
+      // Nothing anywhere: the technical proxy, honestly labelled.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: null }));
+      eq('with no valuation inputs it falls back to the proxy', s.vSource, 'technical');
+      eq('and claims no fundamental inputs', s.vUsed.length, 0);
+    }
+    {
+      // A zero or negative ratio is not a valuation input.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: { pe: 0, pb: -3 } }));
+      eq('a non-positive ratio is ignored, not scored', s.vSource, 'technical');
+    }
+    {
+      // Genuinely cheap: the scale still works at the other end.
+      const s = computeDVM(Object.assign({}, base, { fundamentals: { pe: 8, peg: 0.8, pb: 1 } }));
+      eq('a cheap stock scores at the top', s.v, 100);
+      eq('and is not reported as floored', s.vFloored, false);
+    }
+  }
+  // The floor and a measured zero are different claims, and the badge says so.
+  ok('a floored score explains that it is the end of the scale',
+     /this is the floor of the range rather than a measured zero/.test(SRC), 'floor unexplained');
+  ok('and that it means expensive, not worthless',
+     /means "expensive on all of these", not "worth nothing"/.test(SRC), 'reads as worthless');
+  ok('a partial reading says inputs were missing',
+     /The remaining inputs were not reported by the data source/.test(SRC), 'partial reading unmarked');
+  ok('the badge names the inputs it actually used',
+     /\(s\.vUsed\|\|\[\]\)\.join\('\+'\)/.test(SRC), 'inputs not named');
+  ok('the badge is redrawn once the ratios arrive',
+     /if\(typeof renderDVMBadges === 'function'\) renderDVMBadges\(\);/.test(SRC), 'stale badge kept');
+  ok('and the ratios are stored where the badge can read them',
+     /ar\.ratios = computeRatios\(t, ar\.fundamentals, price\);/.test(SRC), 'ratios not shared');
 }
 
 // ── Trend vs range classifier ──────────────────────────────────────────────
