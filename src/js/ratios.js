@@ -20,6 +20,29 @@
 
 const RT_EPS = 1e-9;
 
+// ── Shared number formatting ───────────────────────────────────────────────
+// Indian grouping puts separators at 1,00,00,000 rather than 10,000,000, so a
+// crore figure reads the way it is spoken. Both statement figures and ratios
+// go through here, so the two tables never disagree on how a number looks.
+function _finGroup(n, dp, isIndia){
+  if(n == null || !isFinite(n)) return '';
+  return n.toLocaleString(isIndia ? 'en-IN' : 'en-US',
+    { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+// Short forms are unavoidable on a statement - the full numbers do not fit -
+// but they are jargon to anyone outside finance, so each carries what it means.
+const FIN_ABBR = {
+  'Cr': 'Crore — 1,00,00,000, i.e. ten million',
+  'L':  'Lakh — 1,00,000, i.e. one hundred thousand',
+  'B':  'Billion — 1,000,000,000',
+  'M':  'Million — 1,000,000',
+  '×':  'Times — a multiple, not a percentage. 2× means twice.',
+};
+function _finUnit(u){
+  const tip = FIN_ABBR[u];
+  return tip ? `<abbr class="fin-abbr" title="${tip}">${u}</abbr>` : u;
+}
+
 // Latest reported value for a line, and the period it came from. Lines are not
 // all published on the same date - a balance sheet can lag an income statement
 // - so each line is read at its own newest date rather than forced onto one.
@@ -246,9 +269,9 @@ function isLender(fund){
 // ── Display ────────────────────────────────────────────────────────────────
 const RT_DASH = '<span class="rt-na">—</span>';
 function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
-function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + '×'; }
-function _rtRaw(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp); }
-function _rtDays(v){ return v == null ? RT_DASH : Math.round(v) + ' days'; }
+function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + _finUnit('×'); }
+function _rtRaw(v, dp){ return v == null ? RT_DASH : _finGroup(v, dp == null ? 2 : dp, true); }
+function _rtDays(v){ return v == null ? RT_DASH : _finGroup(Math.round(v), 0, true) + ' days'; }
 
 // label, key, formatter, what it actually tells you
 const RT_GROUPS = [

@@ -2250,6 +2250,161 @@ group('valuation feed');
   ok('with no Worker configured the relays are still tried', /\.\.\.\(_sp \? \[/.test(SRC), 'hard dependency on the Worker');
 }
 
+// ── Insights: Python bridge + AI provider layer ────────────────────────────
+group('insights');
+{
+  // Load the real ratio engine alongside, rather than stubbing it. A stub here
+  // would only prove the test agrees with itself - the point is that the
+  // payload carries what computeRatios actually produced.
+  const src = slice('const RT_EPS = 1e-9;', '\n// ── UI ──', 'ins');
+  const { AI_PROVIDERS, insightPayload, aiPrompt, aiExtractText, aiRender } =
+    load(src, ['AI_PROVIDERS','insightPayload','aiPrompt','aiExtractText','aiRender'],
+    { Math, Object, Array, JSON, isFinite, Number, String, encodeURIComponent,
+      document: { createElement: () => ({}), head: { appendChild(){} } },
+      AbortController, setTimeout, clearTimeout, fetch: async () => { throw new Error('no network in tests'); },
+      localStorage: (() => { const st = {}; return {
+        getItem: k => (k in st ? st[k] : null), setItem: (k,v) => { st[k] = String(v); },
+        removeItem: k => { delete st[k]; } }; })(),
+    });
+  const stmt = (byDate) => {
+    const line = {}, dates = Object.keys(byDate).sort().reverse();
+    for(const d of dates) for(const k of Object.keys(byDate[d])) (line[k] || (line[k] = {}))[d] = byDate[d][k];
+    return { line, periodsAll: dates };
+  };
+  const REAL = stmt({ '2025-03-31': { EBIT: 400, TotalAssets: 2000, CurrentLiabilities: 400,
+                                      TotalRevenue: 1000, NetIncome: 150 } });
+
+  // ── the embedded Python must be the file on disk, byte for byte ──
+  {
+    const fs = require('fs'), path = require('path');
+    const mm = SRC.match(/const PY_INTERPRET = ("(?:[^"\\]|\\.)*");/);
+    ok('the Python source is embedded in the page', !!mm, 'PY_INTERPRET missing');
+    if(mm){
+      const embedded = JSON.parse(mm[1]);
+      const disk = fs.readFileSync(path.join(__dirname,'..','src','py','interpret.py'),'utf8').replace(/\r\n/g,'\n');
+      // If these drift, the browser runs different Python from the one the
+      // Python test suite proved correct.
+      eq('and is identical to src/py/interpret.py', embedded, disk);
+      ok('it defines the bridge the page calls', /def interpret_json\(/.test(embedded), 'no interpret_json');
+      ok('it is embedded as JSON, so quotes cannot break out of the script',
+         /const PY_INTERPRET = "/.test(SRC), 'not a JSON string literal');
+    }
+  }
+
+  // ── what leaves the device ──
+  {
+    const p = insightPayload(REAL, { sector:'Technology' }, 100, 'TCS.NS');
+    eq('the payload names the symbol', p.symbol, 'TCS.NS');
+    eq('and the sector', p.sector, 'Technology');
+    eq('a tech company is not flagged as a lender', p.lender, false);
+    // ROCE = EBIT 400 / (assets 2000 - current liabilities 400) = 25%.
+    eq('it carries the ratios computeRatios actually produced', +p.ratios.roce.toFixed(2), 25);
+    eq('and the band that ratio fell into', p.bands.roce, 'good');
+    eq('a ratio with no inputs is null, not absent from the payload', p.ratios.currentRatio, null);
+    // This payload is the entire thing an external API can see. Anything about
+    // the user's holdings appearing here would be a leak, not a feature.
+    const flat = JSON.stringify(p).toLowerCase();
+    for(const forbidden of ['holding','portfolio','quantity','apikey','api_key','token','password','email'])
+      ok('the payload carries no ' + forbidden, flat.indexOf(forbidden) < 0, 'leaked: ' + forbidden);
+    eq('the payload has exactly the expected top-level keys',
+       Object.keys(p).sort().join(','), 'bands,depositRate,lender,ratios,sector,symbol');
+  }
+  {
+    const p = insightPayload(REAL, { sector:'Financial Services' }, 100, 'HDFCBANK.NS');
+    eq('a bank is flagged as a lender', p.lender, true);
+    const prompt = aiPrompt(p);
+    ok('and the prompt tells the model not to judge it on manufacturer ratios',
+       /do not judge it on those/.test(prompt), 'lender caveat missing');
+  }
+
+  // ── the prompt ──
+  {
+    const prompt = aiPrompt({ symbol:'X', ratios:{ roce: 20, pegBlocked: false }, bands:{} });
+    ok('it forbids buy/sell advice outright', /Do NOT give buy, sell or hold advice/.test(prompt), 'advice not forbidden');
+    ok('it forbids a price target', /price target/.test(prompt), 'targets not forbidden');
+    ok('it forbids inventing figures', /Never invent a figure not listed above/.test(prompt), 'invention not forbidden');
+    ok('it asks for plain English', /Plain English/.test(prompt), 'jargon not discouraged');
+    ok('booleans are not passed off as figures', !/pegBlocked/.test(prompt), 'flag sent as a number');
+  }
+
+  // ── provider responses ──
+  eq('gemini text is extracted', aiExtractText('gemini',
+     { candidates:[{ content:{ parts:[{ text:'hello ' },{ text:'world' }] } }] }), 'hello world');
+  eq('anthropic text is extracted', aiExtractText('anthropic',
+     { content:[{ type:'text', text:'hi' },{ type:'tool_use' }] }), 'hi');
+  eq('openai text is extracted', aiExtractText('openai',
+     { choices:[{ message:{ content:'hi' } }] }), 'hi');
+  eq('an empty reply is null, not an empty panel', aiExtractText('openai',
+     { choices:[{ message:{ content:'   ' } }] }), null);
+  eq('a malformed reply is null', aiExtractText('gemini', {}), null);
+  eq('a null reply is null', aiExtractText('gemini', null), null);
+
+  // ── model output is untrusted ──
+  {
+    const html = aiRender('<img src=x onerror=alert(1)> **bold** & <b>tags</b>');
+    ok('script-ish markup from the model is escaped', html.indexOf('<img') < 0, html);
+    ok('so are raw tags', html.indexOf('<b>tags</b>') < 0, html);
+    ok('ampersands are escaped', /&amp;/.test(html), html);
+    ok('but its own bold markup is honoured', /<b>bold<\/b>/.test(html), html);
+  }
+
+  // ── provider config ──
+  for(const k of Object.keys(AI_PROVIDERS)){
+    const c = AI_PROVIDERS[k];
+    ok(k + ' has a default model', !!c.model, 'no model');
+    ok(k + ' says what it costs', !!c.cost, 'no cost note');
+    ok(k + ' links its key page over https', /^https:\/\//.test(c.keyUrl), 'bad key url');
+    ok(k + ' has step-by-step key instructions', Array.isArray(c.steps) && c.steps.length >= 3, 'too few steps');
+  }
+  ok('the free-tier option is named as such', /genuinely free tier/.test(SRC), 'free tier not identified');
+  ok('the paid ones are not passed off as free', /Paid\. Needs credit/.test(SRC), 'cost not stated');
+
+  // ── wiring & honesty ──
+  ok('the built-in reading runs Python, not a JS rewrite of it',
+     /py\.runPython\(PY_INTERPRET\)/.test(SRC), 'Python not executed');
+  ok('the runtime is fetched only when asked for', /function _loadPyodide/.test(SRC) && !/loadPyodide\(\);\s*<\/script>/.test(SRC), 'eager load');
+  ok('a failed load does not poison later attempts', /_pyPromise\.catch\(\(\) => \{ _pyPromise = null; \}\)/.test(SRC), 'permanent failure');
+  ok('a Python failure says the tables are unaffected', /ratio tables above are unaffected/.test(SRC), 'implies total failure');
+  ok('the AI path requires explicit consent', /if\(!consent \|\| !consent\.checked\)/.test(SRC), 'sends without consent');
+  ok('and says plainly that data leaves the device', /sends the figures off your device/.test(SRC), 'consent not informed');
+  ok('the key is described as local-only', /stored in this browser only/.test(SRC), 'key handling unstated');
+  ok('the provider error is relayed verbatim, not flattened', /j\.error\.message \|\| j\.error\.status/.test(SRC), 'error swallowed');
+  ok('AI output is labelled as possibly wrong', /can be confidently wrong/.test(SRC), 'model output presented as fact');
+  ok('neither reading is presented as advice', /not advice, not a recommendation/.test(SRC), 'reads as advice');
+  ok('Anthropic gets the header its API needs from a browser',
+     /anthropic-dangerous-direct-browser-access/.test(SRC), 'call would be blocked by CORS');
+  ok('requests cannot hang forever', /setTimeout\(\(\) => ctrl\.abort\(\), 60000\)/.test(SRC), 'no timeout');
+}
+
+// ── Numbers are readable ───────────────────────────────────────────────────
+group('number formatting');
+{
+  const src = slice('function _finGroup(', '\n// ── The ratios', 'fmt');
+  const { _finGroup, _finUnit, FIN_ABBR } =
+    load(src, ['_finGroup','_finUnit','FIN_ABBR'], { Math, Object, isFinite, Number, RT_EPS: 1e-9 });
+  // Indian grouping: 1,92,566 not 192,566. A statement read at a glance is
+  // misread without it.
+  eq('indian grouping is used for rupee figures', _finGroup(192566.78, 2, true), '1,92,566.78');
+  eq('western grouping for dollar figures', _finGroup(192566.78, 2, false), '192,566.78');
+  eq('zero decimals when asked', _finGroup(1234567, 0, true), '12,34,567');
+  eq('a missing number formats to nothing', _finGroup(null, 2, true), '');
+  eq('infinity formats to nothing', _finGroup(Infinity, 2, true), '');
+  // Every short form carries its meaning; that is the point of the helper.
+  for(const u of ['Cr','L','B','M','×']){
+    ok(u + ' is explained on hover', /title="/.test(_finUnit(u)), 'no tooltip for ' + u);
+    ok(u + ' is marked as explainable', /class="fin-abbr"/.test(_finUnit(u)), 'not marked');
+  }
+  eq('an unknown unit is passed through untouched', _finUnit('zz'), 'zz');
+  ok('crore is spelled out in figures', /1,00,00,000/.test(FIN_ABBR['Cr']), 'crore not quantified');
+  ok('lakh is spelled out in figures', /1,00,000/.test(FIN_ABBR['L']), 'lakh not quantified');
+  ok('the multiplication sign is distinguished from a percentage',
+     /not a percentage/.test(FIN_ABBR['×']), 'x could be read as %');
+  ok('a legend explains the short forms in place', /Reading the short forms/.test(SRC), 'no legend');
+  ok('the legend says what a dash means', /the source did not report it/.test(SRC), 'dash unexplained');
+  ok('and what n\\/a means', /does not describe this kind of business/.test(SRC), 'n/a unexplained');
+  ok('statement figures go through the grouping helper', /_finGroup\(n, dp, isIndia\)/.test(SRC), 'ungrouped');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

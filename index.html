@@ -112,6 +112,45 @@
   border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:9px 13px;margin-bottom:12px}
 .rt-foot{font-size:11px;line-height:1.6;color:var(--text3);background:var(--surface2);
   border-radius:8px;padding:9px 13px;margin-top:12px}
+/* Short forms are unavoidable on a statement; a dotted underline marks each one
+   as explaining itself on hover rather than as something to already know. */
+.fin-abbr{text-decoration:underline dotted;text-underline-offset:2px;cursor:help;font-weight:inherit}
+.fin-legend{font-size:11.5px;line-height:1.8;color:var(--text2);background:var(--surface2);
+  border:1px solid var(--border);border-radius:8px;padding:9px 13px;margin:14px 0}
+/* ── Insights ── */
+.ins-wrap{margin:18px 0}
+.ins-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.ins-tab{padding:7px 14px;border:1px solid var(--border);border-radius:20px;background:var(--surface);
+  color:var(--text3);font-family:var(--font);font-size:12.5px;font-weight:700;cursor:pointer;transition:all .15s}
+.ins-tab-on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ins-note,.ins-warn,.ins-cost,.ins-ok,.ins-err,.ins-busy,.ins-cov,.ins-foot{
+  font-size:12px;line-height:1.6;border-radius:8px;padding:9px 13px}
+.ins-note{color:var(--text2);background:var(--surface2);border:1px solid var(--border);margin-bottom:11px}
+.ins-warn{color:var(--text2);background:var(--surface2);border:1px solid var(--border);
+  border-left:3px solid var(--accent);margin-bottom:11px}
+.ins-cost{color:var(--text3);padding:0 2px 9px}
+.ins-ok{color:var(--green);background:var(--surface2)}
+.ins-err{color:var(--red);background:var(--surface2);border:1px solid var(--border)}
+.ins-busy{color:var(--text3);background:var(--surface2)}
+.ins-row{display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+.ins-lbl{font-size:11.5px;font-weight:700;color:var(--text3);min-width:72px;text-transform:none;letter-spacing:0}
+.ins-help{margin:4px 0 11px;font-size:12.5px;color:var(--text2)}
+.ins-help summary{cursor:pointer;font-weight:700;padding:7px 0}
+.ins-consent{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text2);
+  margin:4px 0 11px;cursor:pointer;line-height:1.5}
+.ins-sum{font-size:13.5px;font-weight:700;color:var(--text);background:var(--surface2);
+  border:1px solid var(--border2);border-radius:8px;padding:11px 13px;margin-bottom:10px;line-height:1.55}
+.ins-find{border:1px solid var(--border);border-left:3px solid var(--border2);border-radius:8px;
+  padding:9px 13px;margin-bottom:8px;background:var(--surface)}
+.ins-find-h{font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:3px}
+.ins-find-t{font-size:12.5px;line-height:1.6;color:var(--text2)}
+.ins-good{border-left-color:var(--green)}
+.ins-weak{border-left-color:var(--red)}
+.ins-info{border-left-color:var(--accent)}
+.ins-cov{color:var(--text3);background:var(--surface2);margin-top:10px}
+.ins-foot{color:var(--text3);background:var(--surface2);margin-top:10px}
+.ins-ai-body{font-size:13px;line-height:1.65;color:var(--text2);background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:12px 14px}
 body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;transition:background .3s,color .3s;}
 /* SCROLLBAR */
 ::-webkit-scrollbar{width:6px;height:6px;}
@@ -11786,6 +11825,29 @@ function taxPeriodToggle(){
 
 const RT_EPS = 1e-9;
 
+// ── Shared number formatting ───────────────────────────────────────────────
+// Indian grouping puts separators at 1,00,00,000 rather than 10,000,000, so a
+// crore figure reads the way it is spoken. Both statement figures and ratios
+// go through here, so the two tables never disagree on how a number looks.
+function _finGroup(n, dp, isIndia){
+  if(n == null || !isFinite(n)) return '';
+  return n.toLocaleString(isIndia ? 'en-IN' : 'en-US',
+    { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+// Short forms are unavoidable on a statement - the full numbers do not fit -
+// but they are jargon to anyone outside finance, so each carries what it means.
+const FIN_ABBR = {
+  'Cr': 'Crore — 1,00,00,000, i.e. ten million',
+  'L':  'Lakh — 1,00,000, i.e. one hundred thousand',
+  'B':  'Billion — 1,000,000,000',
+  'M':  'Million — 1,000,000',
+  '×':  'Times — a multiple, not a percentage. 2× means twice.',
+};
+function _finUnit(u){
+  const tip = FIN_ABBR[u];
+  return tip ? `<abbr class="fin-abbr" title="${tip}">${u}</abbr>` : u;
+}
+
 // Latest reported value for a line, and the period it came from. Lines are not
 // all published on the same date - a balance sheet can lag an income statement
 // - so each line is read at its own newest date rather than forced onto one.
@@ -12012,9 +12074,9 @@ function isLender(fund){
 // ── Display ────────────────────────────────────────────────────────────────
 const RT_DASH = '<span class="rt-na">—</span>';
 function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
-function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + '×'; }
-function _rtRaw(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp); }
-function _rtDays(v){ return v == null ? RT_DASH : Math.round(v) + ' days'; }
+function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + _finUnit('×'); }
+function _rtRaw(v, dp){ return v == null ? RT_DASH : _finGroup(v, dp == null ? 2 : dp, true); }
+function _rtDays(v){ return v == null ? RT_DASH : _finGroup(Math.round(v), 0, true) + ' days'; }
 
 // label, key, formatter, what it actually tells you
 const RT_GROUPS = [
@@ -12097,6 +12159,352 @@ function ratiosHtml(t, fund, price){
       Colours are broad rules of thumb across ordinary businesses; a capital-heavy company and an asset-light one are not judged on the same numbers.
       Hover any label for what it measures.</div>
   </div>`;
+}
+const PY_INTERPRET = "\"\"\"Reads a set of computed ratios and says, in plain English, what they show.\n\nWhy this is Python and the rest of the app is not\n------------------------------------------------\nThe ratios themselves are computed in JavaScript and arrive here already\nworked out, along with the band (good / fair / weak) each one fell into. That\nsplit is deliberate: thresholds live in exactly one place, so this file cannot\ndrift out of agreement with the numbers on screen. What Python does here is the\npart it is actually better at — reading across the ratios, weighing them\nagainst each other, and turning the result into sentences.\n\nIt runs in the browser through Pyodide (CPython compiled to WebAssembly), so\n\"no server\" still holds: the figures never leave the machine. The same file is\nimported directly by tests/test_interpret.py under normal CPython, which is\nwhat makes the logic here verified rather than merely present.\n\nTwo rules govern every sentence produced:\n\n  1. Nothing is said about a ratio that was not computed. A missing input\n     yields silence, never a guess and never a reassuring absence.\n  2. Nothing here is advice. Every finding describes what the reported numbers\n     show. What to do about it is the reader's judgement, and the caller is\n     expected to say so.\n\"\"\"\n\nimport json\n\nGOOD, FAIR, WEAK = \"good\", \"fair\", \"weak\"\n\n\ndef _f(x):\n    \"\"\"A finite float, or None. Guards against NaN and infinity arriving as JSON.\"\"\"\n    if x is None:\n        return None\n    try:\n        v = float(x)\n    except (TypeError, ValueError):\n        return None\n    if v != v or v in (float(\"inf\"), float(\"-inf\")):\n        return None\n    return v\n\n\ndef _pct(v, dp=1):\n    return \"{:.{dp}f}%\".format(v, dp=dp)\n\n\ndef _x(v, dp=2):\n    return \"{:.{dp}f}x\".format(v, dp=dp)\n\n\n# Each entry: key, tone by band, and the sentence template. Only ratios worth\n# narrating appear here - a list of every number would be a table, not a read.\ndef _profitability(r, b, lender, out):\n    roce, roe, nm, gm = r.get(\"roce\"), r.get(\"roe\"), r.get(\"netMargin\"), r.get(\"grossMargin\")\n\n    if roce is not None and not lender:\n        band = b.get(\"roce\")\n        if band == GOOD:\n            out.append((GOOD, \"Returns on capital\",\n                        \"ROCE of %s means the business earns well on the capital tied up in it. \"\n                        \"This is the number that is hardest to flatter with borrowing, so a high \"\n                        \"one is worth more than a high ROE.\" % _pct(roce)))\n        elif band == FAIR:\n            out.append((\"info\", \"Returns on capital\",\n                        \"ROCE of %s is moderate - the business earns its keep on the capital \"\n                        \"employed without standing out.\" % _pct(roce)))\n        elif band == WEAK:\n            out.append((WEAK, \"Returns on capital\",\n                        \"ROCE of %s is low. The business is not generating much from the capital \"\n                        \"tied up in it, which over time limits how fast it can grow without \"\n                        \"raising more money.\" % _pct(roce)))\n\n    if roe is not None:\n        band = b.get(\"roe\")\n        if roce is not None and not lender and roe - roce > 10:\n            out.append((\"info\", \"ROE flattered by debt\",\n                        \"ROE of %s sits well above ROCE of %s. That gap is usually borrowing: \"\n                        \"debt lifts the return to shareholders while adding risk that ROE alone \"\n                        \"does not show.\" % (_pct(roe), _pct(roce))))\n        elif band == GOOD:\n            out.append((GOOD, \"Return on equity\",\n                        \"ROE of %s is a strong return on shareholders' money.\" % _pct(roe)))\n        elif band == WEAK:\n            out.append((WEAK, \"Return on equity\",\n                        \"ROE of %s is a weak return on shareholders' money.\" % _pct(roe)))\n\n    if nm is not None:\n        band = b.get(\"netMargin\")\n        if band == GOOD:\n            out.append((GOOD, \"Margins\",\n                        \"Net margin of %s means the business keeps a healthy share of every \"\n                        \"rupee it sells.\" % _pct(nm)))\n        elif band == WEAK:\n            out.append((WEAK, \"Margins\",\n                        \"Net margin of %s is thin, so profit is sensitive to small moves in \"\n                        \"costs or pricing.\" % _pct(nm)))\n        if nm < 0:\n            out.append((WEAK, \"Loss-making\",\n                        \"Net margin is negative: the business lost money over this period. \"\n                        \"Several ratios below are withheld because they are meaningless \"\n                        \"against a loss.\"))\n\n    if gm is not None and nm is not None and gm > 0 and nm > 0 and gm - nm > 45:\n        out.append((\"info\", \"Costs below the gross line\",\n                    \"Gross margin is %s but net margin is only %s. Most of what the business \"\n                    \"earns on its product is spent before it reaches the bottom line - overheads, \"\n                    \"interest or tax.\" % (_pct(gm), _pct(nm))))\n\n\ndef _growth(r, b, out):\n    rev, ni, eps = r.get(\"revGrowth\"), r.get(\"niGrowth\"), r.get(\"epsGrowth\")\n\n    if rev is not None and ni is not None:\n        if ni < rev - 10:\n            out.append((WEAK, \"Profit lagging sales\",\n                        \"Revenue grew %s but net profit only %s. Sales are rising faster than \"\n                        \"profits, which means margins are compressing - growth is being bought \"\n                        \"rather than earned.\" % (_pct(rev), _pct(ni))))\n        elif ni > rev + 10:\n            out.append((GOOD, \"Profit outpacing sales\",\n                        \"Net profit grew %s against revenue growth of %s. The business is getting \"\n                        \"more profitable as it grows, not just bigger.\" % (_pct(ni), _pct(rev))))\n\n    if eps is not None and ni is not None and ni - eps > 5:\n        out.append((\"info\", \"Dilution\",\n                    \"Net profit grew %s but earnings per share only %s. The share count rose, so \"\n                    \"each existing share captured less of that growth than the headline suggests.\"\n                    % (_pct(ni), _pct(eps))))\n\n    if rev is not None and rev < 0:\n        out.append((WEAK, \"Shrinking\",\n                    \"Revenue fell %s against the previous period. The business sold less, not \"\n                    \"more.\" % _pct(abs(rev))))\n\n\ndef _solvency(r, b, lender, out):\n    if lender:\n        return\n    de, cover, nde = r.get(\"debtToEquity\"), r.get(\"interestCover\"), r.get(\"netDebtEbitda\")\n\n    if de is not None:\n        band = b.get(\"debtToEquity\")\n        if band == WEAK:\n            out.append((WEAK, \"Debt load\",\n                        \"Debt of %s times equity means the business leans more on lenders than on \"\n                        \"its owners. That magnifies both good years and bad ones.\" % _x(de)))\n        elif band == GOOD:\n            out.append((GOOD, \"Debt load\",\n                        \"Debt is %s times equity - a conservative balance sheet.\" % _x(de)))\n\n    if cover is not None:\n        if cover < 2:\n            out.append((WEAK, \"Interest burden\",\n                        \"Operating profit covers the interest bill only %s. There is little room \"\n                        \"for a bad year before interest becomes hard to service.\" % _x(cover, 1)))\n        elif b.get(\"interestCover\") == GOOD:\n            out.append((GOOD, \"Interest burden\",\n                        \"Operating profit covers interest %s over - comfortable.\" % _x(cover, 1)))\n\n    if nde is not None and nde <= 0:\n        out.append((GOOD, \"Net cash\",\n                    \"The business holds more cash than debt.\"))\n    elif nde is not None and b.get(\"netDebtEbitda\") == WEAK:\n        out.append((WEAK, \"Debt against earnings\",\n                    \"Net debt is %s years of operating earnings. Above about three, lenders and \"\n                    \"rating agencies start to take notice.\" % _x(nde, 1)))\n\n\ndef _liquidity(r, b, lender, out):\n    if lender:\n        return\n    cr, qr = r.get(\"currentRatio\"), r.get(\"quickRatio\")\n    if cr is not None and cr < 1:\n        out.append((WEAK, \"Short-term cover\",\n                    \"Current ratio of %s means short-term dues exceed short-term assets. The \"\n                    \"business depends on new cash coming in to meet bills already due.\" % _x(cr)))\n    elif cr is not None and qr is not None and cr >= 1.5 and qr < 1:\n        out.append((\"info\", \"Cover depends on inventory\",\n                    \"Current ratio looks comfortable at %s, but stripping out inventory drops it \"\n                    \"to %s. The cushion is stock that still has to be sold.\" % (_x(cr), _x(qr))))\n\n\ndef _cash(r, b, out):\n    cc, fcfm = r.get(\"cashConversion\"), r.get(\"fcfMargin\")\n    if cc is not None:\n        if cc < 0.6:\n            out.append((WEAK, \"Profits not becoming cash\",\n                        \"Only %s of net profit came through as operating cash. Reported profit is \"\n                        \"running ahead of money actually collected - worth checking receivables \"\n                        \"and inventory.\" % _x(cc)))\n        elif cc >= 1:\n            out.append((GOOD, \"Profits backed by cash\",\n                        \"Operating cash flow is %s of net profit, so the earnings are real cash \"\n                        \"rather than accounting entries.\" % _x(cc)))\n    if fcfm is not None and fcfm < 0:\n        out.append((WEAK, \"Cash consumed\",\n                    \"Free cash flow is negative: after capital spending, the business used more \"\n                    \"cash than it produced. That is normal while building capacity and a problem \"\n                    \"when it is not.\"))\n    elif fcfm is not None and b.get(\"fcfMargin\") == GOOD:\n        out.append((GOOD, \"Cash generative\",\n                    \"Free cash flow is %s of revenue - real money left after running and \"\n                    \"maintaining the business.\" % _pct(fcfm)))\n\n\ndef _valuation(r, b, out, deposit_rate=7.0):\n    pe, peg, ey, basis = r.get(\"pe\"), r.get(\"peg\"), r.get(\"earningsYield\"), r.get(\"pegBasis\")\n\n    if peg is not None:\n        if peg < 1:\n            out.append((GOOD, \"Price against growth\",\n                        \"PEG of %s: the price is below what the growth rate alone would justify, \"\n                        \"measured against %s.\" % (\"{:.2f}\".format(peg), basis or \"reported growth\")))\n        elif peg > 2:\n            out.append((WEAK, \"Price against growth\",\n                        \"PEG of %s: the price is well ahead of the growth being delivered. That \"\n                        \"only works out if growth accelerates.\" % \"{:.2f}\".format(peg)))\n    elif r.get(\"pegBlocked\"):\n        out.append((\"info\", \"PEG not meaningful\",\n                    \"Earnings are flat or shrinking, so PEG has no meaning here - dividing a \"\n                    \"price by negative growth produces a number that looks cheap and is not.\"))\n\n    if ey is not None:\n        if ey < deposit_rate - 2:\n            out.append((\"info\", \"Against a deposit\",\n                        \"The earnings yield is %s. A fixed deposit pays roughly %s with no \"\n                        \"business risk, so the case for holding this rests on growth rather than \"\n                        \"current earnings.\" % (_pct(ey), _pct(deposit_rate, 0))))\n        elif ey > deposit_rate + 3:\n            out.append((GOOD, \"Against a deposit\",\n                        \"The earnings yield is %s, comfortably above a deposit rate of about %s.\"\n                        % (_pct(ey), _pct(deposit_rate, 0))))\n\n    if pe is not None and pe > 60:\n        out.append((\"info\", \"High multiple\",\n                    \"A P/E of %s prices in a great deal of future growth. It is not wrong on its \"\n                    \"own, but it leaves little margin for disappointment.\"\n                    % \"{:.1f}\".format(pe)))\n\n\n# Ratios worth reporting coverage against. A read built on four numbers is a\n# different thing from one built on twenty, and the reader should be told which.\n_TRACKED = [\n    \"grossMargin\", \"opMargin\", \"netMargin\", \"roe\", \"roce\", \"roic\", \"roa\",\n    \"revGrowth\", \"niGrowth\", \"epsGrowth\", \"debtToEquity\", \"netDebtEbitda\",\n    \"interestCover\", \"currentRatio\", \"quickRatio\", \"assetTurnover\",\n    \"invTurnover\", \"receivableDays\", \"fcfMargin\", \"cashConversion\",\n    \"pe\", \"peg\", \"pb\", \"ps\", \"evEbitda\", \"earningsYield\", \"divYield\",\n]\n\n\ndef interpret(payload):\n    \"\"\"payload: {ratios, bands, lender, symbol, depositRate}. Returns a dict.\"\"\"\n    payload = payload or {}\n    raw = payload.get(\"ratios\") or {}\n    ratios = {}\n    for k in raw:\n        v = _f(raw[k])\n        if v is not None:\n            ratios[k] = v\n    # pegBasis is text and pegBlocked is a flag; neither survives the float pass.\n    if raw.get(\"pegBasis\"):\n        ratios[\"pegBasis\"] = raw[\"pegBasis\"]\n    ratios[\"pegBlocked\"] = bool(raw.get(\"pegBlocked\"))\n\n    bands = payload.get(\"bands\") or {}\n    lender = bool(payload.get(\"lender\"))\n    deposit = _f(payload.get(\"depositRate\"))\n    if deposit is None:\n        deposit = 7.0\n\n    out = []\n    _profitability(ratios, bands, lender, out)\n    _growth(ratios, bands, out)\n    _solvency(ratios, bands, lender, out)\n    _liquidity(ratios, bands, lender, out)\n    _cash(ratios, bands, out)\n    _valuation(ratios, bands, out, deposit)\n\n    findings = [{\"tone\": t, \"label\": l, \"text\": s} for (t, l, s) in out]\n    have = [k for k in _TRACKED if k in ratios]\n    coverage = {\"available\": len(have), \"tracked\": len(_TRACKED)}\n\n    strengths = len([f for f in findings if f[\"tone\"] == GOOD])\n    concerns = len([f for f in findings if f[\"tone\"] == WEAK])\n\n    if not findings:\n        summary = (\"Not enough of the statements came through to say anything useful. \"\n                   \"%d of %d ratios could be computed.\" % (coverage[\"available\"], coverage[\"tracked\"]))\n    elif concerns == 0 and strengths:\n        summary = (\"The reported numbers read well: %d point%s in favour and nothing that stands \"\n                   \"out as a concern, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    elif strengths == 0 and concerns:\n        summary = (\"The reported numbers read poorly: %d concern%s and nothing that stands out in \"\n                   \"favour, from %d of %d ratios.\"\n                   % (concerns, \"\" if concerns == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    else:\n        summary = (\"A mixed picture: %d point%s in favour, %d concern%s, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\",\n                      concerns, \"\" if concerns == 1 else \"s\",\n                      coverage[\"available\"], coverage[\"tracked\"]))\n\n    if lender:\n        summary += (\" Ratios that describe manufacturers rather than lenders have been left out \"\n                    \"of this reading.\")\n\n    return {\"summary\": summary, \"findings\": findings, \"coverage\": coverage,\n            \"strengths\": strengths, \"concerns\": concerns}\n\n\ndef interpret_json(s):\n    \"\"\"String in, string out - the shape Pyodide passes across cleanly.\"\"\"\n    return json.dumps(interpret(json.loads(s)))\n";
+// ══════════════════════ INSIGHTS ══════════════════════
+// Two readings of the same numbers, and they are not equivalent.
+//
+//  Built-in — src/py/interpret.py, real CPython running in this tab through
+//  Pyodide (WebAssembly). Free, deterministic, and nothing leaves the device.
+//  The Python is unit-tested in tests/test_interpret.py, so what it says here
+//  is what the test suite proved it says.
+//
+//  AI model — your own API key, your own account, your own bill. This one DOES
+//  send the figures to the provider you pick, so it is opt-in per session and
+//  says so before it sends anything. The key is kept in this browser's
+//  localStorage and goes nowhere except that provider's API.
+
+const AI_PROVIDERS = {
+  gemini: {
+    label: 'Google Gemini',
+    cost: 'Has a genuinely free tier — the usual starting point.',
+    model: 'gemini-2.0-flash',
+    keyUrl: 'https://aistudio.google.com/app/apikey',
+    steps: [
+      'Open <b>aistudio.google.com/app/apikey</b> and sign in with a Google account.',
+      'Click <b>Create API key</b>, then pick a Google Cloud project (or let it make one).',
+      'Copy the key — it starts with <code>AIza</code> — and paste it below.',
+      'The free tier is rate-limited per minute, not billed. No card needed to start.',
+    ],
+  },
+  anthropic: {
+    label: 'Anthropic (Claude)',
+    cost: 'Paid. Needs credit on the account; a reading of one stock costs a fraction of a cent.',
+    model: 'claude-sonnet-5',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
+    steps: [
+      'Open <b>console.anthropic.com</b> and sign in.',
+      'Go to <b>Settings → API keys</b> and click <b>Create key</b>.',
+      'Add credit under <b>Billing</b> — there is no free tier, so a key with no credit will fail.',
+      'Copy the key — it starts with <code>sk-ant-</code> — and paste it below.',
+    ],
+  },
+  openai: {
+    label: 'OpenAI',
+    cost: 'Paid. Needs credit on the account.',
+    model: 'gpt-4o-mini',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    steps: [
+      'Open <b>platform.openai.com/api-keys</b> and sign in.',
+      'Click <b>Create new secret key</b> and copy it immediately — it is shown once.',
+      'Add credit under <b>Billing</b>; a key on an account with no credit returns a quota error.',
+      'The key starts with <code>sk-</code>.',
+    ],
+  },
+};
+
+const AI_KEY_PREFIX = 'ai_key_';
+const AI_MODEL_PREFIX = 'ai_model_';
+const AI_PROVIDER_KEY = 'ai_provider';
+
+function _aiGet(k, dflt){ try { return localStorage.getItem(k) || dflt || ''; } catch(e){ return dflt || ''; } }
+function _aiSet(k, v){ try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch(e){} }
+function _aiProvider(){ const p = _aiGet(AI_PROVIDER_KEY, 'gemini'); return AI_PROVIDERS[p] ? p : 'gemini'; }
+
+// Everything the API sees. Built explicitly rather than by serialising whatever
+// happens to be in scope, so it is auditable: figures and identifiers only, no
+// holdings, no portfolio, no key material.
+function insightPayload(t, fund, price, symbol){
+  const r = computeRatios(t, fund, price);
+  const bands = {};
+  for(const k of Object.keys(r)) { const b = ratioBand(k, r[k]); if(b) bands[k] = b; }
+  return {
+    symbol: symbol || null,
+    sector: (fund && (fund.sector || fund.industry)) || null,
+    lender: isLender(fund),
+    depositRate: 7.0,
+    ratios: r,
+    bands: bands,
+  };
+}
+
+// ── Built-in reading: Python via Pyodide ───────────────────────────────────
+const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+let _pyPromise = null;
+
+async function _loadPyodide(onStatus){
+  if(_pyPromise) return _pyPromise;
+  _pyPromise = (async () => {
+    if(typeof loadPyodide !== 'function'){
+      if(onStatus) onStatus('Fetching the Python runtime (about 10 MB, once per visit)…');
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = PYODIDE_URL;
+        s.onload = res;
+        s.onerror = () => rej(new Error('could not fetch the Python runtime'));
+        document.head.appendChild(s);
+      });
+    }
+    if(onStatus) onStatus('Starting Python…');
+    const py = await loadPyodide();
+    py.runPython(PY_INTERPRET);
+    return py;
+  })();
+  // A failed load must not poison every later attempt.
+  _pyPromise.catch(() => { _pyPromise = null; });
+  return _pyPromise;
+}
+
+async function runBuiltinInsight(payload, onStatus){
+  const py = await _loadPyodide(onStatus);
+  if(onStatus) onStatus('Reading the numbers…');
+  const fn = py.globals.get('interpret_json');
+  try {
+    return JSON.parse(fn(JSON.stringify(payload)));
+  } finally {
+    if(fn && typeof fn.destroy === 'function') fn.destroy();
+  }
+}
+
+// ── AI reading: the user's own key ─────────────────────────────────────────
+function aiPrompt(payload){
+  const lines = [];
+  lines.push('You are explaining a company’s reported financials to a private investor with no finance background.');
+  lines.push('');
+  lines.push('Symbol: ' + (payload.symbol || 'unknown'));
+  if(payload.sector) lines.push('Sector: ' + payload.sector);
+  if(payload.lender) lines.push('This is a bank or financial company. Ratios built for manufacturers (current ratio, inventory turnover, debt/equity) do not describe it; do not judge it on those.');
+  lines.push('');
+  lines.push('Ratios actually reported (anything absent was not available — say so rather than guessing):');
+  for(const k of Object.keys(payload.ratios)){
+    const v = payload.ratios[k];
+    if(v == null || typeof v === 'boolean') continue;
+    lines.push('  ' + k + ': ' + (typeof v === 'number' ? v.toFixed(4) : v));
+  }
+  lines.push('');
+  lines.push('Write at most 250 words. Rules:');
+  lines.push('- Plain English. Explain any term you use.');
+  lines.push('- Say what the numbers show, and what is missing. Never invent a figure not listed above.');
+  lines.push('- Do NOT give buy, sell or hold advice, a price target, or a recommendation of any kind.');
+  lines.push('- Lead with what stands out, good or bad. Be direct about weaknesses.');
+  return lines.join('\n');
+}
+
+async function callAiProvider(provider, model, key, prompt){
+  const cfg = AI_PROVIDERS[provider];
+  if(!cfg) throw new Error('Unknown provider');
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    let url, opts;
+    if(provider === 'gemini'){
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      opts = { method:'POST', headers:{'Content-Type':'application/json'},
+               body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] }), signal: ctrl.signal };
+    } else if(provider === 'anthropic'){
+      url = 'https://api.anthropic.com/v1/messages';
+      opts = { method:'POST', headers:{
+                 'Content-Type':'application/json', 'x-api-key': key,
+                 'anthropic-version':'2023-06-01',
+                 // Anthropic blocks browser calls unless this opt-in is present.
+                 'anthropic-dangerous-direct-browser-access':'true' },
+               body: JSON.stringify({ model, max_tokens: 700, messages:[{ role:'user', content: prompt }] }),
+               signal: ctrl.signal };
+    } else {
+      url = 'https://api.openai.com/v1/chat/completions';
+      opts = { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+               body: JSON.stringify({ model, max_tokens: 700, messages:[{ role:'user', content: prompt }] }),
+               signal: ctrl.signal };
+    }
+    const r = await fetch(url, opts);
+    const txt = await r.text();
+    let j = null;
+    try { j = JSON.parse(txt); } catch(e) {}
+    if(!r.ok){
+      // Relay the provider's own words: "insufficient quota" and "invalid key"
+      // are different problems and the user can only fix the one they are told.
+      const msg = (j && j.error && (j.error.message || j.error.status)) || txt.slice(0, 300) || ('HTTP ' + r.status);
+      throw new Error(msg);
+    }
+    return aiExtractText(provider, j);
+  } finally { clearTimeout(tid); }
+}
+
+function aiExtractText(provider, j){
+  if(!j) return null;
+  let out = null;
+  if(provider === 'gemini'){
+    const c = j.candidates && j.candidates[0];
+    const parts = c && c.content && c.content.parts;
+    if(Array.isArray(parts)) out = parts.map(p => p && p.text).filter(Boolean).join('');
+  } else if(provider === 'anthropic'){
+    if(Array.isArray(j.content)) out = j.content.map(p => p && p.type === 'text' ? p.text : '').filter(Boolean).join('');
+  } else {
+    const c = j.choices && j.choices[0];
+    out = c && c.message && c.message.content;
+  }
+  return (out && out.trim()) ? out.trim() : null;
+}
+
+// The model's output is untrusted text. Escape first, then allow only the two
+// bits of formatting it tends to use.
+function aiRender(text){
+  const esc = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+            .split(/\n{2,}/).map(p => `<p style="margin:0 0 9px">${p.replace(/\n/g,'<br>')}</p>`).join('');
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+let _insPayload = null;          // set by the Financials tab on each render
+
+function insightsHtml(){
+  const pv = _aiProvider(), cfg = AI_PROVIDERS[pv];
+  const key = _aiGet(AI_KEY_PREFIX + pv, '');
+  const model = _aiGet(AI_MODEL_PREFIX + pv, cfg.model);
+  const opts = Object.keys(AI_PROVIDERS).map(k =>
+    `<option value="${k}"${k === pv ? ' selected' : ''}>${AI_PROVIDERS[k].label}</option>`).join('');
+  const steps = cfg.steps.map(s => `<li style="margin-bottom:5px">${s}</li>`).join('');
+  return `<div class="ins-wrap">
+    <div class="rt-h">🧠 Insights</div>
+    <div class="ins-tabs">
+      <button class="ins-tab ins-tab-on" id="ins-tab-free" onclick="insSwitch('free')">Built-in reading · free</button>
+      <button class="ins-tab" id="ins-tab-ai" onclick="insSwitch('ai')">AI model · your key</button>
+    </div>
+
+    <div id="ins-pane-free">
+      <div class="ins-note">Runs <b>Python on your device</b> — the same <code>interpret.py</code> the test suite checks — reading the ratios above.
+        Nothing is sent anywhere. The runtime is about 10 MB and is fetched once per visit, so the first run is the slow one.</div>
+      <button class="btn btn-sec btn-sm" onclick="insRunBuiltin()">▶ Read the numbers</button>
+      <div id="ins-free-out" style="margin-top:12px"></div>
+    </div>
+
+    <div id="ins-pane-ai" style="display:none">
+      <div class="ins-warn">⚠️ This one <b>sends the ratios above to ${cfg.label}</b> — figures and the ticker, never your holdings or portfolio.
+        Your key is stored in this browser only and is sent to that provider and nowhere else. It is your account and your bill.</div>
+      <div class="ins-row">
+        <label class="ins-lbl">Provider</label>
+        <select class="form-input" id="ins-provider" onchange="insProviderChange()" style="flex:1">${opts}</select>
+      </div>
+      <div class="ins-cost">${cfg.cost}</div>
+      <div class="ins-row">
+        <label class="ins-lbl">Model</label>
+        <input class="form-input" id="ins-model" value="${model}" placeholder="${cfg.model}" style="flex:1">
+      </div>
+      <div class="ins-row">
+        <label class="ins-lbl">API key</label>
+        <input class="form-input" id="ins-key" type="password" value="${key}" placeholder="paste your key" style="flex:1" autocomplete="off">
+        <button class="btn btn-sec btn-sm" onclick="insSaveKey()">Save</button>
+        <button class="btn btn-sec btn-sm" onclick="insClearKey()">Clear</button>
+      </div>
+      <details class="ins-help">
+        <summary>How do I get a ${cfg.label} key?</summary>
+        <ol style="margin:9px 0 0 18px;font-size:12px;line-height:1.65;color:var(--text2)">${steps}</ol>
+        <div style="margin-top:8px;font-size:12px"><a href="${cfg.keyUrl}" target="_blank" rel="noopener">Open the ${cfg.label} key page ↗</a></div>
+      </details>
+      <label class="ins-consent"><input type="checkbox" id="ins-consent"> I understand these figures will be sent to ${cfg.label}.</label>
+      <button class="btn btn-sec btn-sm" onclick="insRunAi()">▶ Ask the model</button>
+      <div id="ins-ai-out" style="margin-top:12px"></div>
+    </div>
+  </div>`;
+}
+
+function insSwitch(which){
+  const f = document.getElementById('ins-pane-free'), a = document.getElementById('ins-pane-ai');
+  const tf = document.getElementById('ins-tab-free'), ta = document.getElementById('ins-tab-ai');
+  if(!f || !a) return;
+  const free = which === 'free';
+  f.style.display = free ? '' : 'none';
+  a.style.display = free ? 'none' : '';
+  if(tf) tf.className = 'ins-tab' + (free ? ' ins-tab-on' : '');
+  if(ta) ta.className = 'ins-tab' + (free ? '' : ' ins-tab-on');
+}
+function insProviderChange(){
+  const sel = document.getElementById('ins-provider');
+  if(!sel) return;
+  _aiSet(AI_PROVIDER_KEY, sel.value);
+  const el = document.getElementById('ins-body');
+  if(el){ el.innerHTML = insightsHtml(); insSwitch('ai'); }
+}
+function insSaveKey(){
+  const pv = _aiProvider();
+  const k = document.getElementById('ins-key'), m = document.getElementById('ins-model');
+  if(k) _aiSet(AI_KEY_PREFIX + pv, k.value.trim());
+  if(m) _aiSet(AI_MODEL_PREFIX + pv, m.value.trim());
+  const out = document.getElementById('ins-ai-out');
+  if(out) out.innerHTML = `<div class="ins-ok">Saved in this browser only.</div>`;
+}
+function insClearKey(){
+  const pv = _aiProvider();
+  _aiSet(AI_KEY_PREFIX + pv, '');
+  const k = document.getElementById('ins-key');
+  if(k) k.value = '';
+  const out = document.getElementById('ins-ai-out');
+  if(out) out.innerHTML = `<div class="ins-ok">Key removed from this browser.</div>`;
+}
+
+function _insToneIcon(t){ return t === 'good' ? '✅' : t === 'weak' ? '⚠️' : 'ℹ️'; }
+function insFindingsHtml(res){
+  if(!res) return '';
+  const rows = (res.findings || []).map(f =>
+    `<div class="ins-find ins-${f.tone}"><div class="ins-find-h">${_insToneIcon(f.tone)} ${f.label}</div>
+      <div class="ins-find-t">${f.text}</div></div>`).join('');
+  const cov = res.coverage
+    ? `<div class="ins-cov">Read from <b>${res.coverage.available}</b> of ${res.coverage.tracked} ratios. The rest were not reported by the source, so nothing is claimed about them.</div>`
+    : '';
+  return `<div class="ins-sum">${res.summary || ''}</div>${rows}${cov}
+    <div class="ins-foot">A description of what the reported numbers show — not advice, not a recommendation, and no substitute for the company's own filings.</div>`;
+}
+
+async function insRunBuiltin(){
+  const out = document.getElementById('ins-free-out');
+  if(!out) return;
+  if(!_insPayload){ out.innerHTML = `<div class="ins-err">Analyse a stock first.</div>`; return; }
+  const say = m => { out.innerHTML = `<div class="ins-busy">${m}</div>`; };
+  say('Starting…');
+  try {
+    const res = await runBuiltinInsight(_insPayload, say);
+    out.innerHTML = insFindingsHtml(res);
+  } catch(e){
+    out.innerHTML = `<div class="ins-err">The Python runtime could not start: ${String(e && e.message || e)}.
+      It is fetched from a public CDN, so a blocked network or an offline device will stop it.
+      The ratio tables above are unaffected — they are computed without it.</div>`;
+  }
+}
+
+async function insRunAi(){
+  const out = document.getElementById('ins-ai-out');
+  if(!out) return;
+  if(!_insPayload){ out.innerHTML = `<div class="ins-err">Analyse a stock first.</div>`; return; }
+  const pv = _aiProvider(), cfg = AI_PROVIDERS[pv];
+  const consent = document.getElementById('ins-consent');
+  if(!consent || !consent.checked){
+    out.innerHTML = `<div class="ins-err">Tick the box first. This step sends the figures off your device, so it does not happen without you saying so.</div>`;
+    return;
+  }
+  const keyEl = document.getElementById('ins-key'), modelEl = document.getElementById('ins-model');
+  const key = (keyEl && keyEl.value.trim()) || _aiGet(AI_KEY_PREFIX + pv, '');
+  const model = (modelEl && modelEl.value.trim()) || _aiGet(AI_MODEL_PREFIX + pv, cfg.model);
+  if(!key){ out.innerHTML = `<div class="ins-err">No ${cfg.label} key yet — see “How do I get a key?” above.</div>`; return; }
+  out.innerHTML = `<div class="ins-busy">Asking ${cfg.label}…</div>`;
+  try {
+    const text = await callAiProvider(pv, model, key, aiPrompt(_insPayload));
+    out.innerHTML = text
+      ? `<div class="ins-ai-body">${aiRender(text)}</div>
+         <div class="ins-foot">Written by ${cfg.label} (${model}) from the ratios above. A language model can be confidently wrong; check anything that matters against the filings. Not advice.</div>`
+      : `<div class="ins-err">${cfg.label} replied, but with no text in it.</div>`;
+  } catch(e){
+    out.innerHTML = `<div class="ins-err">${cfg.label} refused the request: ${String(e && e.message || e).replace(/</g,'&lt;')}</div>`;
+  }
 }
 // ══════════ FINANCIAL STATEMENTS: BALANCE SHEET / P&L / CASH FLOW ══════════
 // Ratios like P/E tell you what the market thinks. The statements tell you what
@@ -12347,14 +12755,16 @@ function _stFmt(v, isIndia){
   if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
+  // Grouped, always. A bare 192566.78 is read wrong at a glance far too easily.
+  const g = (n, dp) => _finGroup(n, dp, isIndia);
   if(isIndia){
-    if(a >= 1e7)  return sign + unit + (a/1e7).toFixed(2) + ' Cr';
-    if(a >= 1e5)  return sign + unit + (a/1e5).toFixed(2) + ' L';
+    if(a >= 1e7)  return sign + unit + g(a/1e7, 2) + ' ' + _finUnit('Cr');
+    if(a >= 1e5)  return sign + unit + g(a/1e5, 2) + ' ' + _finUnit('L');
   } else {
-    if(a >= 1e9)  return sign + unit + (a/1e9).toFixed(2) + 'B';
-    if(a >= 1e6)  return sign + unit + (a/1e6).toFixed(2) + 'M';
+    if(a >= 1e9)  return sign + unit + g(a/1e9, 2) + _finUnit('B');
+    if(a >= 1e6)  return sign + unit + g(a/1e6, 2) + _finUnit('M');
   }
-  return sign + unit + a.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  return sign + unit + g(a, 0);
 }
 
 const ST_TOTAL_ROWS = ['NetIncome', 'StockholdersEquity', 'FreeCashFlow'];
@@ -12401,6 +12811,13 @@ async function renderStatements(){
   }
   const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
   const ratios = (typeof ratiosHtml === 'function') ? ratiosHtml(t, ar.fundamentals, price) : '';
+  // The Insights panel reads exactly the ratios shown above - one computation,
+  // so the narrative can never describe numbers the table does not display.
+  let insights = '';
+  if(typeof insightsHtml === 'function'){
+    _insPayload = insightPayload(t, ar.fundamentals, price, sym);
+    insights = `<div id="ins-body">${insightsHtml()}</div>`;
+  }
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
     : '';
@@ -12408,6 +12825,14 @@ async function renderStatements(){
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)
+    + `<div class="fin-legend"><b>Reading the short forms:</b>
+        <abbr class="fin-abbr" title="Crore — 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
+        <abbr class="fin-abbr" title="Lakh — 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
+        <abbr class="fin-abbr" title="Times — a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
+        <b>—</b> = the source did not report it ·
+        <b>n/a</b> = the ratio does not describe this kind of business.
+        Hover any underlined term.</div>`
+    + insights
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:8px 12px;background:var(--surface2);border-radius:8px">
         Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.${fallbackNote}
         Statement data can lag the latest filing; check the company's own filing before relying on it.

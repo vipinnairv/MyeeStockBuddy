@@ -247,14 +247,16 @@ function _stFmt(v, isIndia){
   if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
+  // Grouped, always. A bare 192566.78 is read wrong at a glance far too easily.
+  const g = (n, dp) => _finGroup(n, dp, isIndia);
   if(isIndia){
-    if(a >= 1e7)  return sign + unit + (a/1e7).toFixed(2) + ' Cr';
-    if(a >= 1e5)  return sign + unit + (a/1e5).toFixed(2) + ' L';
+    if(a >= 1e7)  return sign + unit + g(a/1e7, 2) + ' ' + _finUnit('Cr');
+    if(a >= 1e5)  return sign + unit + g(a/1e5, 2) + ' ' + _finUnit('L');
   } else {
-    if(a >= 1e9)  return sign + unit + (a/1e9).toFixed(2) + 'B';
-    if(a >= 1e6)  return sign + unit + (a/1e6).toFixed(2) + 'M';
+    if(a >= 1e9)  return sign + unit + g(a/1e9, 2) + _finUnit('B');
+    if(a >= 1e6)  return sign + unit + g(a/1e6, 2) + _finUnit('M');
   }
-  return sign + unit + a.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  return sign + unit + g(a, 0);
 }
 
 const ST_TOTAL_ROWS = ['NetIncome', 'StockholdersEquity', 'FreeCashFlow'];
@@ -301,6 +303,13 @@ async function renderStatements(){
   }
   const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
   const ratios = (typeof ratiosHtml === 'function') ? ratiosHtml(t, ar.fundamentals, price) : '';
+  // The Insights panel reads exactly the ratios shown above - one computation,
+  // so the narrative can never describe numbers the table does not display.
+  let insights = '';
+  if(typeof insightsHtml === 'function'){
+    _insPayload = insightPayload(t, ar.fundamentals, price, sym);
+    insights = `<div id="ins-body">${insightsHtml()}</div>`;
+  }
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
     : '';
@@ -308,6 +317,14 @@ async function renderStatements(){
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)
+    + `<div class="fin-legend"><b>Reading the short forms:</b>
+        <abbr class="fin-abbr" title="Crore — 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
+        <abbr class="fin-abbr" title="Lakh — 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
+        <abbr class="fin-abbr" title="Times — a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
+        <b>—</b> = the source did not report it ·
+        <b>n/a</b> = the ratio does not describe this kind of business.
+        Hover any underlined term.</div>`
+    + insights
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:8px 12px;background:var(--surface2);border-radius:8px">
         Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.${fallbackNote}
         Statement data can lag the latest filing; check the company's own filing before relying on it.
