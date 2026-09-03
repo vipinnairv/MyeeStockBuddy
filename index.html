@@ -4920,6 +4920,10 @@ function calcEMACross(closes, fast=9, slow=21) {
 // ============================================================
 function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, idx, extras) {
   const c     = closes[idx];
+  // The live/entered price when there is one, else the last close. Only used
+  // for figures presented to the reader as the current price.
+  const _pxIn = extras && extras.currentPrice;
+  const _px   = (typeof _pxIn === 'number' && isFinite(_pxIn) && _pxIn > 0) ? _pxIn : c;
   const rsiV  = rsi[idx] ?? 50;
   const macdV = macd.macdLine[idx] ?? 0;
   const sigV  = macd.signalLine[idx] ?? 0;
@@ -5152,7 +5156,10 @@ function generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, b
     sarV: f2(sarV), sarTrend, stV, stLine: f2(stLine),
     willRV: willRV.toFixed(1), mfiV: mfiV.toFixed(1),
     emaBull, emaCrossUp, emaCrossDown, rsiDiv,
-    entryIdeal: f2(c), entryAggressive: f2(c * 1.005), entryConservative: f2(c * 0.99),
+    // The entry ladder is quoted to the reader as "current price", so it must
+    // be the canonical price, not the last bar's close. The indicator maths
+    // above stays on `c`: those readings belong to the series they came from.
+    entryIdeal: f2(_px), entryAggressive: f2(_px * 1.005), entryConservative: f2(_px * 0.99),
   };
 }
 
@@ -7721,7 +7728,27 @@ async function runAnalysis() {
     const rsiDiv     = detectRSIDivergence(closes, rsi, 20);
 
     const extras  = { stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv };
-    const signals  = generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, last, extras);
+    // ── Single source of truth for "current price" ──────────────────────
+    // This used to be resolved AFTER the signals and patterns were built, so
+    // those components fell back to closes[last] (the last completed daily bar)
+    // while the header and every valuation ratio used the live/entered price.
+    // The report then showed 279.95 in the Executive Summary and 280.46 beside
+    // the words "Current price" in the levels table: two different numbers, one
+    // of them mislabelled. Resolving it first and passing it down means every
+    // component reads the same value.
+    //
+    // The bar close is still used for the indicator maths, which must run on
+    // the same series the indicators were computed from. Only figures that
+    // claim to be "the current price" use this.
+    const _lastClose   = closes[last];
+    const _enteredLtp  = parseFloat(document.getElementById('currentPrice').value);
+    const currentPrice = (isFinite(_enteredLtp) && _enteredLtp > 0) ? _enteredLtp : _lastClose;
+    const prevClose    = closes[last-1] || _lastClose;
+    const priceChg     = currentPrice - prevClose;
+    const pricePct     = prevClose > 0 ? ((priceChg/prevClose)*100).toFixed(2) : '0.00';
+
+    const signals  = generateSignals(closes, highs, lows, rsi, macd, sma20, sma50, sma200, bb, atr, last,
+                                     Object.assign({}, extras, { currentPrice }));
     const patterns = detectPatterns(data, last);
     const breakout = analyzeBreakout(data, 20, 0.10, atr[last]);   // share the canonical Wilder ATR
     const vcp = detectVCP(data);
@@ -7780,18 +7807,35 @@ async function runAnalysis() {
             // same part of the range (ratio ~0). Comparing drift to height alone
             // fails here, because in a trend the height IS the trend.
             const _travel = (hi > lo) ? Math.abs(_first - price) / (hi - lo) : 0;
-            const _trending = Math.abs(_driftPct) > 15 && _travel > 0.55;
+            // The 90-bar drift and the ADX regime answer different questions,
+            // and the report was printing both answers as if they were one. A
+            // stock 151% higher over 90 bars whose ADX reads 15.1 is a stock
+            // that trended hard and is now consolidating: "Uptrend In Force"
+            // beside a verdict of "Sideways - no clear trend" is a contradiction
+            // the reader has to resolve, and cannot.
+            //
+            // The macro regime wins on what is happening NOW; the drift is kept
+            // as context for how the stock got here. Neither fact is discarded.
+            const _adxNow    = signals && signals.adxV != null ? parseFloat(signals.adxV) : null;
+            const _chopNow   = !!(signals && signals.isChop);
+            const _drifted   = Math.abs(_driftPct) > 15 && _travel > 0.55;
+            const _trending  = _drifted && !_chopNow;
+            const _consolidating = _drifted && _chopNow;
             const _dir = _driftPct < 0 ? 'down' : 'up';
             if (hi > lo) {
               const pos = (price - lo) / (hi - lo) * 100;
               const near = _trending ? (_dir === 'down' ? 'Downtrend In Force' : 'Uptrend In Force')
+                         : _consolidating ? 'Consolidating After A Move'
                          : pos >= 66 ? 'Near Resistance' : pos <= 34 ? 'Near Support' : 'Mid-Range';
               chartPatterns = [{
-                pattern: _trending ? (_dir === 'down' ? 'Downtrend' : 'Uptrend') : 'Sideways Range',
+                pattern: _trending ? (_dir === 'down' ? 'Downtrend' : 'Uptrend')
+                       : _consolidating ? 'Consolidation' : 'Sideways Range',
                 signal:near, bias: _trending ? (_dir === 'down' ? 'bearish' : 'bullish') : 'neutral',
                 stage:'anticipatory',
                 timeframe:'1 day', confidence:42, _developing:true, symbol:_sym, triggerTs:(_bars.length?_bars[_bars.length-1].time:Math.floor(Date.now()/1000)),
-                narrative: _trending
+                narrative: _consolidating
+                  ? `${_sym} rose ${Math.abs(_driftPct).toFixed(0)}% over the last ${d.length} bars, but it is not trending now: ADX is ${_adxNow != null ? _adxNow.toFixed(1) : 'below 20'}, which reads as a consolidation rather than a trend in force. The ${CUR()}${lo.toFixed(2)}-${CUR()}${hi.toFixed(2)} band is where that move has since been digested. The prior direction is context, not a signal - a consolidation resolves either way, and the trend indicators cannot tell you which until ADX clears 20 to 25.`
+                  : _trending
                   ? `${_sym} has no completed breakout pattern - it is in a ${_dir}trend, ${Math.abs(_driftPct).toFixed(0)}% ${_dir} over the last ${d.length} bars. The ${CUR()}${lo.toFixed(2)}-${CUR()}${hi.toFixed(2)} band below is where it has recently traded, not a range it is holding. In a trend this strong, ${_dir === 'down' ? 'bounces tend to be sold - wait for the downtrend to actually break before treating support as a floor' : 'dips tend to be bought, but chasing an extended move carries the worst risk:reward'}.`
                   : `${_sym} has no active breakout pattern - it is moving sideways between support ${CUR()}${lo.toFixed(2)} and resistance ${CUR()}${hi.toFixed(2)}, currently at ${pos.toFixed(0)}% of the range. Watch for a decisive close beyond either boundary to trigger the next move.`,
                 levels:{ resistance:+hi.toFixed(2), support:+lo.toFixed(2), close:+price.toFixed(2), position:+pos.toFixed(0) },
@@ -7829,14 +7873,10 @@ async function runAnalysis() {
       synthesis = { active, prior, pending: shard.pending, justResolved: resolved, stats: shard.stats };
     } catch(e) { synthesis = null; console.warn('synthesis failed', e); }
 
-    const currentPrice = parseFloat(document.getElementById('currentPrice').value) || closes[last];
-    const prevClose    = closes[last-1] || closes[last];
-    const priceChg     = currentPrice - prevClose;
-    const pricePct     = prevClose > 0 ? ((priceChg/prevClose)*100).toFixed(2) : '0.00';
-
     analysisResult = { data, closes, highs, lows, volumes, sma20, sma50, sma200, ema9, rsi, macd, bb, atr,
       stoch, cci, adxData, psar, obv, supertrend, willR, mfi, emaCross, rsiDiv,
-      signals, patterns, breakout, backtest, chartPatterns, synthesis, vcp, stage, risk, currentPrice, prevClose, priceChg, pricePct,
+      signals, patterns, breakout, backtest, chartPatterns, synthesis, vcp, stage, risk,
+      currentPrice, lastClose: _lastClose, prevClose, priceChg, pricePct,
       symbol:  document.getElementById('stockSymbol').value.trim() || 'STOCK',
       company: document.getElementById('companyName').value.trim() || 'Company',
       market:  document.getElementById('marketSelect').value || 'NSE',
@@ -12081,8 +12121,43 @@ function computeRatios(t, fund, price){
   const ebitdaV = _rtVal(t, 'EBITDA');
   let eps = null;
   if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
-  r.eps = eps;
-  r.pe  = (f.pe != null && isFinite(f.pe) && f.pe > 0) ? f.pe : (p != null && eps != null && eps > 0 ? _rtDiv(p, eps) : null);
+  // P/E and EPS must come from the same basis, or the pair the reader sees does
+  // not tie: the report showed EPS 0.79 beside a P/E of 277.2 at a price of
+  // ~280, and 0.79 x 277.2 is 219. The P/E was the feed's trailing figure while
+  // the EPS was the latest annual statement - two different periods printed as
+  // though they were one calculation. Whatever basis is used, price / EPS now
+  // equals the P/E shown.
+  const feedEps = (f.eps != null && isFinite(f.eps) && f.eps > 0) ? f.eps : null;
+  const feedPe  = (f.pe  != null && isFinite(f.pe)  && f.pe  > 0) ? f.pe  : null;
+  if(feedEps != null && feedPe != null){
+    // Both from the feed, same trailing twelve months. Use the pair as given
+    // unless they disagree with the price by more than rounding, which would
+    // mean the feed itself is internally inconsistent.
+    const implied = _rtDiv(p, feedEps);
+    if(p == null || implied == null || Math.abs(implied - feedPe) / feedPe < 0.05){
+      r.eps = feedEps; r.pe = feedPe; r.peBasis = 'trailing twelve months, from the data feed';
+    } else {
+      r.eps = feedEps; r.pe = implied;
+      r.peBasis = 'price divided by the feed\u2019s trailing EPS (the feed\u2019s own P/E disagreed with its EPS)';
+    }
+  } else if(feedPe != null){
+    // A P/E with no EPS beside it. With a price, the EPS it implies can be
+    // derived and the two will tie. Without one, the P/E still stands on its
+    // own - but the statement EPS is withheld rather than printed next to it,
+    // because the two would come from different periods and would not tie.
+    r.pe = feedPe;
+    r.eps = (p != null) ? _rtDiv(p, feedPe) : null;
+    r.peBasis = (p != null)
+      ? 'trailing twelve months, EPS implied by the feed\u2019s P/E'
+      : 'trailing twelve months, from the data feed';
+  } else if(p != null && eps != null && eps > 0){
+    // No feed valuation at all: compute both from the statements and the price.
+    r.eps = eps; r.pe = _rtDiv(p, eps);
+    r.peBasis = 'price divided by the latest reported EPS';
+  } else {
+    r.eps = eps; r.pe = null;
+    r.peBasis = null;
+  }
   r.pb  = (f.pb != null && isFinite(f.pb) && f.pb > 0) ? f.pb
         : ((p != null && eq != null && shares != null) ? _rtDiv(p, _rtDiv(eq, shares)) : null);
   r.ps  = (f.ps != null && isFinite(f.ps) && f.ps > 0) ? f.ps
@@ -12255,6 +12330,9 @@ function ratiosHtml(t, fund, price){
         g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
     }
     let note = '', display = shown;
+    if(key === 'pe' && v != null && r.peBasis){
+      note = `<div class="rt-note">${r.peBasis}</div>`;
+    }
     if(key === 'peg'){
       if(v != null && r.pegBasis){
         note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ', ' + r.pegSpan : ''}</div>`;

@@ -222,8 +222,43 @@ function computeRatios(t, fund, price){
   const ebitdaV = _rtVal(t, 'EBITDA');
   let eps = null;
   if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
-  r.eps = eps;
-  r.pe  = (f.pe != null && isFinite(f.pe) && f.pe > 0) ? f.pe : (p != null && eps != null && eps > 0 ? _rtDiv(p, eps) : null);
+  // P/E and EPS must come from the same basis, or the pair the reader sees does
+  // not tie: the report showed EPS 0.79 beside a P/E of 277.2 at a price of
+  // ~280, and 0.79 x 277.2 is 219. The P/E was the feed's trailing figure while
+  // the EPS was the latest annual statement - two different periods printed as
+  // though they were one calculation. Whatever basis is used, price / EPS now
+  // equals the P/E shown.
+  const feedEps = (f.eps != null && isFinite(f.eps) && f.eps > 0) ? f.eps : null;
+  const feedPe  = (f.pe  != null && isFinite(f.pe)  && f.pe  > 0) ? f.pe  : null;
+  if(feedEps != null && feedPe != null){
+    // Both from the feed, same trailing twelve months. Use the pair as given
+    // unless they disagree with the price by more than rounding, which would
+    // mean the feed itself is internally inconsistent.
+    const implied = _rtDiv(p, feedEps);
+    if(p == null || implied == null || Math.abs(implied - feedPe) / feedPe < 0.05){
+      r.eps = feedEps; r.pe = feedPe; r.peBasis = 'trailing twelve months, from the data feed';
+    } else {
+      r.eps = feedEps; r.pe = implied;
+      r.peBasis = 'price divided by the feed\u2019s trailing EPS (the feed\u2019s own P/E disagreed with its EPS)';
+    }
+  } else if(feedPe != null){
+    // A P/E with no EPS beside it. With a price, the EPS it implies can be
+    // derived and the two will tie. Without one, the P/E still stands on its
+    // own - but the statement EPS is withheld rather than printed next to it,
+    // because the two would come from different periods and would not tie.
+    r.pe = feedPe;
+    r.eps = (p != null) ? _rtDiv(p, feedPe) : null;
+    r.peBasis = (p != null)
+      ? 'trailing twelve months, EPS implied by the feed\u2019s P/E'
+      : 'trailing twelve months, from the data feed';
+  } else if(p != null && eps != null && eps > 0){
+    // No feed valuation at all: compute both from the statements and the price.
+    r.eps = eps; r.pe = _rtDiv(p, eps);
+    r.peBasis = 'price divided by the latest reported EPS';
+  } else {
+    r.eps = eps; r.pe = null;
+    r.peBasis = null;
+  }
   r.pb  = (f.pb != null && isFinite(f.pb) && f.pb > 0) ? f.pb
         : ((p != null && eq != null && shares != null) ? _rtDiv(p, _rtDiv(eq, shares)) : null);
   r.ps  = (f.ps != null && isFinite(f.ps) && f.ps > 0) ? f.ps
@@ -396,6 +431,9 @@ function ratiosHtml(t, fund, price){
         g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
     }
     let note = '', display = shown;
+    if(key === 'pe' && v != null && r.peBasis){
+      note = `<div class="rt-note">${r.peBasis}</div>`;
+    }
     if(key === 'peg'){
       if(v != null && r.pegBasis){
         note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ', ' + r.pegSpan : ''}</div>`;
