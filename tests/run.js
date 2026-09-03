@@ -2125,6 +2125,59 @@ group('key ratios');
     ok('but is not reported as shrinking earnings', !r.pegBlocked, 'claims a verdict it cannot support');
     eq('and names no basis', r.pegBasis, null);
   }
+  // ── a withheld PEG must show its working ──
+  {
+    // Every measured growth rate is exposed, so a dash can be argued with.
+    const t = mk({ '2025-03-31': { DilutedEPS: 8, NetIncome: 80 },
+                   '2024-03-31': { DilutedEPS: 10, NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20, earnGrowth: -5 }, null);
+    // Read through a guard: a regression that empties this must fail the
+    // assertion, not throw and take every later test down with it.
+    const g0 = (r.pegGrowths && r.pegGrowths[0]) || {};
+    eq('all three measures are reported back', (r.pegGrowths || []).length, 3);
+    eq('the annual EPS figure is among them', fx(g0.value, 1), -20);
+    eq('and carries the periods it spans', g0.span || null, '2024-03-31 → 2025-03-31');
+    eq('the blocking measure is named', (r.pegBlockedBy || {}).label || null, 'annual EPS growth');
+    eq('and it is an annual one, so the verdict stands', r.pegBlockedOnAnnual, true);
+  }
+  {
+    // The distinction that matters: the feed's earningsGrowth is ONE quarter
+    // against the same quarter a year earlier. A weak quarter is not evidence
+    // that a company has stopped growing, so PEG is withheld without the app
+    // asserting the stronger claim.
+    const t = mk({ '2025-03-31': { TotalRevenue: 100 } });   // no annual measure at all
+    const r = computeRatios(t, { pe: 20, earnGrowth: -8 }, null);
+    eq('PEG is still withheld', r.peg, null);
+    eq('and the block is recorded', r.pegBlocked, true);
+    eq('but it is NOT presented as an annual verdict', r.pegBlockedOnAnnual, false);
+    eq('the quarterly figure is named as the reason', (r.pegBlockedBy || {}).label || null, 'the feed’s earnings growth');
+  }
+  {
+    // An annual measure that is negative outranks a positive-looking quarter
+    // for the purposes of the verdict...
+    const t = mk({ '2025-03-31': { NetIncome: 80 }, '2024-03-31': { NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20, earnGrowth: -3 }, null);
+    eq('the annual measure is what the verdict rests on', (r.pegBlockedBy || {}).label || null, 'net income growth');
+    eq('and is marked as annual', r.pegBlockedOnAnnual, true);
+  }
+  {
+    // ...but a positive annual measure still produces a PEG even when the
+    // quarter was poor. This is the bug that hid PEG in the first place.
+    const t = mk({ '2025-03-31': { DilutedEPS: 12 }, '2024-03-31': { DilutedEPS: 10 } });
+    const r = computeRatios(t, { pe: 30, earnGrowth: -8 }, null);
+    eq('PEG computes on the annual figure', fx(r.peg, 2), 1.5);
+    eq('and reports the span it used', r.pegSpan, '2024-03-31 → 2025-03-31');
+    eq('nothing is blocked', r.pegBlocked, false);
+  }
+  {
+    // Growth is measured between the two periods the series actually has. If
+    // the source skipped a year, the span says so rather than presenting a
+    // two-year change as an annual rate.
+    const t = mk({ '2026-03-31': { NetIncome: 120 }, '2024-03-31': { NetIncome: 100 } });
+    const r = computeRatios(t, null, null);
+    eq('the gap is visible in the span', r.niSpan, '2024-03-31 → 2026-03-31');
+  }
+
   ok('EPS is shown so the PEG inputs are visible', /'EPS',\s+'eps'/.test(SRC), 'EPS row missing');
   ok('a computed PEG states which growth it used', /vs \$\{r\.pegBasis\}/.test(SRC), 'basis not shown');
 
@@ -2151,7 +2204,8 @@ group('key ratios');
   ok('the ratio panel is rendered into the Financials tab', /ratiosHtml\(t, ar\.fundamentals, price\)/.test(SRC), 'not wired');
   ok('ROCE is shown', /'ROCE',\s+'roce'/.test(SRC), 'no ROCE row');
   ok('PEG is shown', /'PEG',\s+'peg'/.test(SRC), 'no PEG row');
-  ok('a withheld PEG says why rather than showing blank', /no growth to price/.test(SRC), 'silent');
+  ok('a withheld PEG names the figure that withheld it', /earnings \$\{fig\}/.test(SRC), 'silent');
+  ok('and every measured growth rate is inspectable in the tooltip', /Growth measured: /.test(SRC), 'not inspectable');
   ok('the UI states a dash means missing inputs, not an estimate', /the ratio is not shown rather than estimated/.test(SRC), 'ambiguous dash');
   ok('the UI warns bank ratios differ', /deposits are raw material/.test(SRC), 'no lender warning');
   ok('the UI says the bands are rules of thumb', /broad rules of thumb/.test(SRC), 'bands look authoritative');

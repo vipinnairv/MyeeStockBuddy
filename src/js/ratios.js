@@ -60,12 +60,7 @@ function _rtVal(t, key){
 // The two most recent values of a line, for a growth rate. Both must be real
 // reported numbers - a single period cannot produce a growth rate.
 function _rtPair(t, key){
-  if(!t || !t.line || !t.periodsAll) return null;
-  const m = t.line[key];
-  if(!m) return null;
-  const got = [];
-  for(const d of t.periodsAll){ if(m[d] != null) got.push(m[d]); if(got.length === 2) break; }
-  return got.length === 2 ? { now: got[0], prev: got[1] } : null;
+  return _rtPairFrom(t && t.line ? t.line[key] : null, t && t.periodsAll);
 }
 // Division that refuses to produce a number it cannot stand behind.
 function _rtDiv(a, b){
@@ -97,12 +92,18 @@ function _rtEpsSeries(t){
   }
   return Object.keys(out).length ? out : null;
 }
-// The two most recent values of an already-built series, newest first.
+// The two most recent values of a series, newest first, with the periods they
+// came from. A growth rate is only interpretable alongside the span it covers:
+// where a year is missing from the source, "growth" is really two years of it.
 function _rtPairFrom(map, periodsAll){
   if(!map || !periodsAll) return null;
   const got = [];
-  for(const d of periodsAll){ if(map[d] != null) got.push(map[d]); if(got.length === 2) break; }
-  return got.length === 2 ? { now: got[0], prev: got[1] } : null;
+  for(const d of periodsAll){ if(map[d] != null) got.push([d, map[d]]); if(got.length === 2) break; }
+  if(got.length !== 2) return null;
+  return { now: got[0][1], prev: got[1][1], nowDate: got[0][0], prevDate: got[1][0] };
+}
+function _rtSpan(pair){
+  return (pair && pair.nowDate && pair.prevDate) ? pair.prevDate + ' → ' + pair.nowDate : null;
 }
 
 // First of several lines that is actually reported. Used where the source may
@@ -160,10 +161,14 @@ function computeRatios(t, fund, price){
          ? pct(ebit * (1 - taxRate), invCap) : null;
 
   // Growth
-  r.revGrowth = _rtGrowth(_rtPair(t, 'TotalRevenue'));
-  r.niGrowth  = _rtGrowth(_rtPair(t, 'NetIncome'));
+  const revPair = _rtPair(t, 'TotalRevenue'), niPair = _rtPair(t, 'NetIncome');
+  r.revGrowth = _rtGrowth(revPair);
+  r.niGrowth  = _rtGrowth(niPair);
+  r.niSpan    = _rtSpan(niPair);
   const epsSeries = _rtEpsSeries(t);
-  r.epsGrowth = _rtGrowth(_rtPairFrom(epsSeries, t && t.periodsAll));
+  const epsPair = _rtPairFrom(epsSeries, t && t.periodsAll);
+  r.epsGrowth = _rtGrowth(epsPair);
+  r.epsSpan   = _rtSpan(epsPair);
 
   // Leverage
   r.debtToEquity = _rtDiv(debt, eq);
@@ -214,16 +219,26 @@ function computeRatios(t, fund, price){
   // earnings grew, and taking it unconditionally withheld PEG on the weaker
   // measure. Net income growth is the last resort: it ignores dilution.
   const pegCandidates = [
-    ['annual EPS growth', r.epsGrowth],
-    ['the feed\u2019s earnings growth', (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth : null],
-    ['net income growth', r.niGrowth],
-  ].filter(c => c[1] != null);
-  const pegOn = pegCandidates.find(c => c[1] > 0);
-  r.peg = (r.pe != null && pegOn) ? _rtDiv(r.pe, pegOn[1]) : null;
-  r.pegBasis = r.peg != null ? pegOn[0] : null;
-  // Only "no growth to price" when growth was actually measured and was not
-  // positive. Growth we simply do not have is a dash, not a verdict.
-  r.pegBlocked = (r.pe != null && pegCandidates.length > 0 && !pegOn);
+    { label: 'annual EPS growth', v: r.epsGrowth, span: r.epsSpan, annual: true },
+    { label: 'the feed\u2019s earnings growth', annual: false,
+      v: (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth : null, span: null },
+    { label: 'net income growth', v: r.niGrowth, span: r.niSpan, annual: true },
+  ].filter(c => c.v != null);
+  const pegOn = pegCandidates.find(c => c.v > 0);
+  r.peg = (r.pe != null && pegOn) ? _rtDiv(r.pe, pegOn.v) : null;
+  r.pegBasis = r.peg != null ? pegOn.label : null;
+  r.pegSpan  = r.peg != null ? pegOn.span : null;
+  // Everything that was measured, so the panel can show its working rather than
+  // leaving a dash the reader cannot argue with.
+  r.pegGrowths = pegCandidates.map(c => ({ label: c.label, value: c.v, span: c.span }));
+  // A verdict of "earnings are not growing" needs a full-year measure behind
+  // it. The feed's figure is a single quarter against the same quarter a year
+  // earlier; one weak quarter is not the same claim, so on its own it withholds
+  // PEG without asserting the company has stopped growing.
+  const blockingAnnual = pegCandidates.find(c => c.annual && c.v <= 0);
+  r.pegBlocked = !!(r.pe != null && pegCandidates.length > 0 && !pegOn);
+  r.pegBlockedOnAnnual = !!(r.pegBlocked && blockingAnnual);
+  r.pegBlockedBy = blockingAnnual || (r.pegBlocked ? pegCandidates[0] : null);
 
   return r;
 }
@@ -329,10 +344,22 @@ function ratiosHtml(t, fund, price){
     const shown = na && v != null
       ? `<span class="rt-na" title="This ratio does not describe a lender's balance sheet.">n/a</span>`
       : fmt(v);
+    // PEG's tooltip carries every growth rate that was measured. A withheld
+    // ratio the reader cannot inspect is indistinguishable from a broken one.
+    if(key === 'peg' && r.pegGrowths && r.pegGrowths.length){
+      tip += ' Growth measured: ' + r.pegGrowths.map(g =>
+        g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
+    }
     let note = '';
     if(key === 'peg'){
-      if(v == null && r.pegBlocked) note = `<div class="rt-note">no growth to price</div>`;
-      else if(v != null && r.pegBasis) note = `<div class="rt-note">vs ${r.pegBasis}</div>`;
+      if(v != null && r.pegBasis){
+        note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ' · ' + r.pegSpan : ''}</div>`;
+      } else if(v == null && r.pegBlocked && r.pegBlockedBy){
+        const b = r.pegBlockedBy;
+        const fig = b.value < 0 ? 'fell ' + Math.abs(b.value).toFixed(1) + '%' : 'flat';
+        note = `<div class="rt-note">earnings ${fig} (${b.label}${b.span ? ', ' + b.span : ''})` +
+               `${r.pegBlockedOnAnnual ? '' : ' — one quarter only'}</div>`;
+      }
     }
     return `<tr class="rt-row"><th scope="row" class="rt-lbl" title="${tip.replace(/"/g,'&quot;')}">${label}</th>
       <td class="rt-val ${band ? 'rt-'+band : ''}">${shown}${note}</td></tr>`;
