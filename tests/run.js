@@ -3054,6 +3054,82 @@ group('report consistency');
   }
 }
 
+// ── The Financials panel actually renders ──────────────────────────────────
+// Every other test here checks a function in isolation. This one runs
+// renderStatements end to end against a real fundamentals-timeseries payload,
+// through the app's own fetch and parse path, and reads what lands in the DOM.
+// Nothing else catches a panel that silently produces nothing.
+group('financials panel renders');
+{
+  let JSDOM = null;
+  try { JSDOM = require('jsdom').JSDOM; } catch (e) {}
+  if (!JSDOM) {
+    ok('jsdom present for the render test', false, 'install jsdom (npm install) to run this group');
+  } else {
+    const a = SRC.indexOf('const RT_EPS = 1e-9;');
+    const b = SRC.indexOf('async function renderStatements(){');
+    const m = SRC.slice(b, b + 9000).match(/\n\}\n/);
+    const e = b + (m ? m.index + 3 : 0);
+    ok('the render function was located in the page', a >= 0 && b > a && e > b, 'slice bounds');
+
+    const ts = (type, vals) => ({ meta:{ type:[type] },
+      [type]: vals.map(([d, v]) => ({ asOfDate: d, reportedValue: { raw: v } })) });
+    const payload = { timeseries: { result: [
+      ts('annualTotalRevenue',       [['2025-03-31', 1000], ['2024-03-31', 800]]),
+      ts('annualNetIncome',          [['2025-03-31', 100],  ['2024-03-31', 80]]),
+      ts('annualTotalAssets',        [['2025-03-31', 2000]]),
+      ts('annualStockholdersEquity', [['2025-03-31', 800]]),
+      ts('annualDilutedEPS',         [['2025-03-31', 1.01], ['2024-03-31', 0.9]]),
+    ]}};
+
+    const run = (opts) => {
+      const dom = new JSDOM('<div id="stmt-body"></div>');
+      let dvm = 0, shared = null;
+      const ar = { symbol:'CUPID', market:'NSE', currentPrice: 280.46,
+                   fundamentals: { pe: 277.2, pb: 83.39 } };
+      const mod = load(SRC.slice(a, b) + SRC.slice(b, e), ['renderStatements'], {
+        document: dom.window.document,
+        Math, Object, Array, JSON, isFinite, Number, String, Set, Date, encodeURIComponent,
+        AbortController, setTimeout, clearTimeout, console,
+        analysisResult: ar, marketMode: 'india',
+        _selfProxyUrl: () => (opts.noProxy ? '' : 'https://example.invalid'),
+        insightPayload: () => ({}), insRunBuiltin: () => {},
+        renderDVMBadges: () => { dvm++; shared = ar.ratios; },
+        fetch: async (url) => opts.empty
+          ? ({ ok: true, json: async () => ({}) })
+          : ({ ok: true, json: async () => (/timeseries=/.test(url) ? payload : {}) }),
+      });
+      return mod.renderStatements().then(() => ({
+        html: dom.window.document.getElementById('stmt-body').innerHTML, dvm, shared,
+      }));
+    };
+
+    pending.push(run({}).then(r => {
+      ok('the panel renders something substantial', r.html.length > 5000, r.html.length + ' bytes');
+      ok('the ratio panel is there', /Key Ratios/.test(r.html), r.html.slice(0, 200));
+      ok('the statements are there', /Profit/.test(r.html), 'no P&L');
+      ok('the marker legend is there', /Reading the short forms/.test(r.html), 'no legend');
+      // The regression this guards: a ratio panel that renders but shows nothing.
+      ok('and the ratios carry values, not only markers', /\d+\.\d+%/.test(r.html), 'all markers');
+      // The DVM hand-off added alongside the valuation-badge fix.
+      eq('the valuation badge is redrawn once the ratios exist', r.dvm, 1);
+      ok('and the ratios were shared before that redraw', r.shared && r.shared.netMargin != null,
+         JSON.stringify(r.shared && Object.keys(r.shared).slice(0, 4)));
+    }));
+
+    pending.push(run({ empty: true }).then(r => {
+      ok('an empty feed says so rather than rendering blank',
+         /No annual statements available/.test(r.html), r.html.slice(0, 200));
+      ok('and names it as a source gap', /gap in the source, not an error here/.test(r.html), 'blames the app');
+    }));
+
+    pending.push(run({ noProxy: true }).then(r => {
+      ok('with no Worker configured it says which step is missing',
+         /Financial statements come through the data proxy/.test(r.html), r.html.slice(0, 200));
+    }));
+  }
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
