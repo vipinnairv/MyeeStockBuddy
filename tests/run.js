@@ -2070,8 +2070,9 @@ group('key ratios');
     // rate, and therefore a PEG.
     const t = mk({ '2025-03-31': { NetIncome: 1000, OrdinarySharesNumber: 100 },
                    '2024-03-31': { NetIncome: 800,  OrdinarySharesNumber: 100 } });
-    const r = computeRatios(t, { pe: 20 }, null);
+    const r = computeRatios(t, { pe: 20 }, 200);
     eq('EPS is derived from net profit and share count', r.eps, 10);
+    eq('and price divided by it equals the P/E shown', +(200 / r.eps).toFixed(2), +r.pe.toFixed(2));
     eq('and gives an EPS growth rate', fx(r.epsGrowth, 2), 25);
     eq('which PEG is computed against', fx(r.peg, 2), 0.8);
     eq('and the panel says which growth it used', r.pegBasis, 'annual EPS growth');
@@ -2861,6 +2862,130 @@ group('combined read');
   ok('and the report header matches', /Complete Stock Market Analysis/.test(SRC), 'header not updated');
   ok('the mode button reflects that fundamentals are included',
      /🔬 Detailed analysis/.test(SRC) && !/🔬 Full technicals/.test(SRC), 'button still says technicals only');
+}
+
+// ── Report consistency: one price, a P/E that ties, one trend claim ────────
+// All three came out of an exported Cupid Ltd report.
+group('report consistency');
+{
+  // ── 1. one current price ──
+  // The Executive Summary read ₹279.95 while the levels table read ₹280.46
+  // beside the words "Current price", and the chart label agreed with the
+  // table. The price was resolved after the signals were built, so the signals
+  // fell back to the last bar close while the header used the entered price.
+  ok('the canonical price is resolved before the signals are built',
+     SRC.indexOf('const currentPrice = (isFinite(_enteredLtp)') < SRC.indexOf('const signals  = generateSignals('),
+     'price still resolved after the components that use it');
+  ok('and is passed into the signal generator',
+     /Object\.assign\(\{\}, extras, \{ currentPrice \}\)/.test(SRC), 'signals never see it');
+  ok('the entry ladder quotes that price, not the bar close',
+     /entryIdeal: f2\(_px\), entryAggressive: f2\(_px \* 1\.005\), entryConservative: f2\(_px \* 0\.99\)/.test(SRC),
+     'entry ladder still on closes[idx]');
+  ok('the bar close is still carried, so anything meaning "last bar" can say so',
+     /lastClose: _lastClose/.test(SRC), 'last close discarded');
+  ok('indicator maths still runs on the series it was computed from',
+     /const c     = closes\[idx\];/.test(SRC), 'indicators moved off the bar close');
+  {
+    // The resolver itself: an entered price wins, anything unusable falls back.
+    const src = slice('function generateSignals(', '\n  const rsiV', 'px');
+    const px = (entered, close) => {
+      const _pxIn = entered;
+      return (typeof _pxIn === 'number' && isFinite(_pxIn) && _pxIn > 0) ? _pxIn : close;
+    };
+    eq('a live price wins over the bar close', px(279.95, 280.46), 279.95);
+    eq('no live price falls back to the bar close', px(undefined, 280.46), 280.46);
+    eq('a zero price is not treated as a price', px(0, 280.46), 280.46);
+    eq('a negative price is not treated as a price', px(-5, 280.46), 280.46);
+    eq('NaN falls back rather than propagating', px(NaN, 280.46), 280.46);
+    ok('the guard matches the one in the source',
+       /typeof _pxIn === 'number' && isFinite\(_pxIn\) && _pxIn > 0/.test(SRC), 'guard differs');
+  }
+
+  // ── 2. P/E and EPS must tie against the price ──
+  {
+    const src = slice('const RT_EPS = 1e-9;', '\n// ── Display', 'petie');
+    const { computeRatios } = load(src, ['computeRatios'], { Math, Object, Array, isFinite, Number });
+    const mk = (byDate) => {
+      const line = {}, dates = Object.keys(byDate).sort().reverse();
+      for(const d of dates) for(const k of Object.keys(byDate[d])) (line[k] || (line[k] = {}))[d] = byDate[d][k];
+      return { line, periodsAll: dates };
+    };
+    const ties = (r, price) => (r.eps == null || r.pe == null) ? null
+      : Math.abs(price / r.eps - r.pe) / r.pe;
+    {
+      // The reported case: feed P/E 277.2 at ₹280.46, statement EPS 0.79.
+      // 0.79 x 277.2 = 219, not 280. The pair must never be printed like that.
+      const t = mk({ '2025-03-31': { NetIncome: 790, OrdinarySharesNumber: 1000 } });
+      const r = computeRatios(t, { pe: 277.2 }, 280.46);
+      ok('the displayed pair ties against the price', ties(r, 280.46) < 0.01,
+         'eps ' + r.eps + ' x pe ' + r.pe + ' = ' + (r.eps * r.pe));
+      ok('the mismatched statement EPS is not the one shown', Math.abs(r.eps - 0.79) > 0.01, String(r.eps));
+      ok('and the basis is stated', /implied by the feed/.test(r.peBasis || ''), r.peBasis);
+    }
+    {
+      // Feed gives both and they agree: use them as given.
+      const r = computeRatios(mk({ '2025-03-31': { NetIncome: 1 } }), { pe: 20, eps: 10 }, 200);
+      eq('a self-consistent feed pair is used as given', r.pe, 20);
+      eq('with its own EPS', r.eps, 10);
+      ok('the basis names the feed', /from the data feed/.test(r.peBasis || ''), r.peBasis);
+    }
+    {
+      // Feed gives both and they contradict the price: trust the price.
+      const r = computeRatios(mk({ '2025-03-31': { NetIncome: 1 } }), { pe: 500, eps: 10 }, 200);
+      eq('a feed pair that disagrees with the price is recomputed', r.pe, 20);
+      ok('and says the feed disagreed with itself', /disagreed with its EPS/.test(r.peBasis || ''), r.peBasis);
+    }
+    {
+      // No feed valuation: both from the statements and the price.
+      const t = mk({ '2025-03-31': { NetIncome: 1000, OrdinarySharesNumber: 100 } });
+      const r = computeRatios(t, null, 200);
+      eq('EPS comes from the statements', r.eps, 10);
+      eq('and the P/E from the price', r.pe, 20);
+      ok('the basis says so', /latest reported EPS/.test(r.peBasis || ''), r.peBasis);
+    }
+    {
+      // A P/E with no price to check it against: the statement EPS is withheld
+      // rather than printed beside a figure it cannot tie with.
+      const t = mk({ '2025-03-31': { NetIncome: 1000, OrdinarySharesNumber: 100 } });
+      const r = computeRatios(t, { pe: 277.2 }, null);
+      eq('the P/E still stands on its own', r.pe, 277.2);
+      eq('but no EPS is printed beside it', r.eps, null);
+    }
+    ok('the P/E cell states which basis produced it', /r\.peBasis/.test(SRC), 'basis not surfaced');
+  }
+
+  // ── 3. one claim about the trend ──
+  // "Uptrend In Force - 151% up over the last 90 bars" printed while ADX read
+  // 15.1 and the verdict read "Sideways - no clear trend".
+  ok('the pattern text reads the live regime, not only the 90-bar drift',
+     /const _chopNow   = !!\(signals && signals\.isChop\);/.test(SRC), 'regime ignored');
+  ok('a drifted-but-ranging stock is called a consolidation',
+     /_consolidating \? 'Consolidation'/.test(SRC), 'still labelled a trend');
+  ok('and its signal line says so too',
+     /_consolidating \? 'Consolidating After A Move'/.test(SRC), 'signal still says in force');
+  ok('"in force" is reserved for a stock actually trending now',
+     /const _trending  = _drifted && !_chopNow;/.test(SRC), 'in force can fire while ranging');
+  ok('the prior move is kept as context rather than deleted',
+     /The prior direction is context, not a signal/.test(SRC), 'history discarded');
+  ok('the narrative cites the ADX that overruled the drift',
+     /ADX is \$\{_adxNow != null \? _adxNow\.toFixed\(1\) : 'below 20'\}/.test(SRC), 'no ADX cited');
+  ok('and says what would make it a trend again',
+     /until ADX clears 20 to 25/.test(SRC), 'no route back');
+  {
+    // The classifier itself.
+    const cls = (driftPct, travel, chop) => {
+      const _drifted = Math.abs(driftPct) > 15 && travel > 0.55;
+      return { trending: _drifted && !chop, consolidating: _drifted && chop };
+    };
+    const cupid = cls(151, 0.9, true);
+    eq('Cupid: a 151% move with ADX 15.1 is not a trend in force', cupid.trending, false);
+    eq('it is a consolidation', cupid.consolidating, true);
+    const trending = cls(151, 0.9, false);
+    eq('the same move with a real ADX is a trend', trending.trending, true);
+    eq('and not a consolidation', trending.consolidating, false);
+    const flat = cls(3, 0.2, true);
+    eq('a stock that never moved is neither', flat.trending || flat.consolidating, false);
+  }
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────
