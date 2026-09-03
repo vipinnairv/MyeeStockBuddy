@@ -112,6 +112,38 @@ function _stTsTable(series, fields, prefix){
   }));
   return _stFinish(periods, rows);
 }
+// Every line the endpoint returned, keyed without the period prefix, plus the
+// union of every date seen. The ratio engine reads this: it needs line items
+// (EBIT, inventory, share count) that the three display tables do not show.
+function _stTsLines(series, prefix){
+  if(!series) return null;
+  const out = {};
+  for(const k of Object.keys(series)){
+    if(k.indexOf(prefix) !== 0) continue;
+    out[k.slice(prefix.length)] = series[k];
+  }
+  return out;
+}
+function _stPeriodsAll(line){
+  const dates = new Set();
+  for(const k of Object.keys(line || {})) Object.keys(line[k]).forEach(d => dates.add(d));
+  return Array.from(dates).sort().reverse();
+}
+// The fallback endpoint has no extra lines to offer, so its line map is just
+// what the display tables already hold - nothing is invented to fill the gap.
+function _stLinesFromTables(o){
+  const line = {};
+  for(const k of ['income','balance','cashflow']){
+    const t = o[k];
+    if(!t) continue;
+    for(const r of t.rows){
+      const m = line[r.key] || (line[r.key] = {});
+      t.periods.forEach((d, i) => { if(r.values[i] != null) m[d] = r.values[i]; });
+    }
+  }
+  return line;
+}
+
 function _stTsParse(json, quarterly){
   const series = _stTsSeries(json);
   if(!series) return null;
@@ -122,7 +154,10 @@ function _stTsParse(json, quarterly){
     balance:  _stTsTable(series, ST_BALANCE,  pre),
     cashflow: _stTsTable(series, ST_CASHFLOW, pre),
   };
-  return (out.income || out.balance || out.cashflow) ? out : null;
+  if(!(out.income || out.balance || out.cashflow)) return null;
+  out.line = _stTsLines(series, pre) || {};
+  out.periodsAll = _stPeriodsAll(out.line);
+  return out;
 }
 
 // ── quoteSummary history modules (fallback) ────────────────────────────────
@@ -154,7 +189,10 @@ function _stParse(json, quarterly){
     balance:  _stTable(pick('balanceSheetHistory'+q,      'balanceSheetStatements'),   ST_BALANCE),
     cashflow: _stTable(pick('cashflowStatementHistory'+q, 'cashflowStatements'),       ST_CASHFLOW),
   };
-  return (out.income || out.balance || out.cashflow) ? out : null;
+  if(!(out.income || out.balance || out.cashflow)) return null;
+  out.line = _stLinesFromTables(out);
+  out.periodsAll = _stPeriodsAll(out.line);
+  return out;
 }
 
 // How much of a parsed result is actually filled in. Used to decide whether the
@@ -166,34 +204,6 @@ function _stCells(t){
     if(t[k]) for(const r of t[k].rows) for(const v of r.values) if(v != null) n++;
   }
   return n;
-}
-
-// Derived figures the statements support and ratios alone do not.
-function _stDerived(t){
-  if(!t) return null;
-  const first = (tab, key) => {
-    if(!tab) return null;
-    const r = tab.rows.find(x => x.key === key);
-    return r ? r.values[0] : null;
-  };
-  const rev   = first(t.income, 'TotalRevenue');
-  const ni    = first(t.income, 'NetIncome');
-  const ocf   = first(t.cashflow, 'OperatingCashFlow');
-  const capex = first(t.cashflow, 'CapitalExpenditure');
-  const fcf   = first(t.cashflow, 'FreeCashFlow');
-  const eq    = first(t.balance, 'StockholdersEquity');
-  const debt  = first(t.balance, 'LongTermDebt');
-  const out = {};
-  if(rev != null && rev !== 0 && ni != null) out.netMargin = ni / rev * 100;
-  if(eq  != null && eq  !== 0 && ni != null) out.roe = ni / eq * 100;
-  if(eq  != null && eq  !== 0 && debt != null) out.debtToEquity = debt / eq;
-  // Prefer the reported figure; otherwise derive it. Capex comes back negative,
-  // so free cash flow is operating cash flow plus that negative number.
-  if(fcf != null) out.freeCashFlow = fcf;
-  else if(ocf != null && capex != null) out.freeCashFlow = ocf + capex;
-  // Earnings backed by cash, or by accounting? A ratio well under 1 is a flag.
-  if(ni != null && ni > 0 && ocf != null) out.cashConversion = ocf / ni;
-  return Object.keys(out).length ? out : null;
 }
 
 // ── Fetch + render ─────────────────────────────────────────────────────────
@@ -234,7 +244,7 @@ async function _stFetch(sym, quarterly){
 }
 
 function _stFmt(v, isIndia){
-  if(v == null) return '<span style="color:var(--text3)">—</span>';   // absent, not zero
+  if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
   if(isIndia){
@@ -247,15 +257,20 @@ function _stFmt(v, isIndia){
   return sign + unit + a.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
+const ST_TOTAL_ROWS = ['NetIncome', 'StockholdersEquity', 'FreeCashFlow'];
+
 function _stTableHtml(t, title, isIndia){
-  if(!t) return `<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:800;margin-bottom:6px">${title}</div>
+  if(!t) return `<div style="margin-bottom:18px"><div class="fin-h">${title}</div>
     <div style="font-size:12.5px;color:var(--text3)">Not available for this stock from the data source.</div></div>`;
-  const head = t.periods.map(p => `<th class="r" style="white-space:nowrap">${p}</th>`).join('');
-  const body = t.rows.map(r => `<tr><td class="tn">${r.label}</td>${
-      r.values.map(v => `<td class="r tm">${_stFmt(v, isIndia)}</td>`).join('')}</tr>`).join('');
+  const head = t.periods.map(p => `<th>${p}</th>`).join('');
+  const body = t.rows.map(r => {
+    const cls = ST_TOTAL_ROWS.indexOf(r.key) >= 0 ? ' class="fin-total"' : '';
+    return `<tr${cls}><th scope="row">${r.label}</th>${
+      r.values.map(v => `<td>${_stFmt(v, isIndia)}</td>`).join('')}</tr>`;
+  }).join('');
   return `<div style="margin-bottom:18px">
-    <div style="font-size:12px;font-weight:800;margin-bottom:6px">${title}</div>
-    <div class="ts"><table style="min-width:520px"><thead><tr><th>Line item</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="fin-h">${title}</div>
+    <div class="fin-scroll"><table class="fin-table"><thead><tr><th>Line item</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
   </div>`;
 }
 
@@ -284,19 +299,12 @@ async function renderStatements(){
       Yahoo's statement history is often thin or absent for smaller Indian listings — that is a gap in the source, not an error here.</div>`;
     return;
   }
-  const d = _stDerived(t);
-  const chip = (lbl,val,tip) => `<span title="${tip||''}" style="cursor:help;font-size:11.5px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:20px;margin:0 6px 6px 0;display:inline-block">${lbl}: <b>${val}</b></span>`;
-  const derived = d ? `<div style="margin-bottom:14px">
-      ${d.netMargin!=null?chip('Net margin', d.netMargin.toFixed(1)+'%','Net income as a share of revenue, from the latest period shown.'):''}
-      ${d.roe!=null?chip('ROE', d.roe.toFixed(1)+'%','Net income against shareholders equity.'):''}
-      ${d.debtToEquity!=null?chip('Debt/Equity', d.debtToEquity.toFixed(2),'Long-term debt against equity. Above ~1 means the business leans on borrowing.'):''}
-      ${d.freeCashFlow!=null?chip('Free cash flow', _stFmt(d.freeCashFlow, isIndia),'Operating cash flow after capital expenditure - what is actually left over.'):''}
-      ${d.cashConversion!=null?chip('Cash conversion', d.cashConversion.toFixed(2),'Operating cash flow divided by net income. Well below 1 means profits are not turning into cash.'):''}
-    </div>` : '';
+  const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
+  const ratios = (typeof ratiosHtml === 'function') ? ratiosHtml(t, ar.fundamentals, price) : '';
   const fallbackNote = t.source === 'quoteSummary'
     ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
     : '';
-  el.innerHTML = toggle + derived
+  el.innerHTML = toggle + ratios
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)

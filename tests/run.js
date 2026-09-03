@@ -1752,10 +1752,9 @@ group('tax period selection');
 group('financial statements');
 {
   const src = slice('function _stNum(o){', '\n// ── Fetch + render', 'stmt');
-  const { _stNum, _stDate, _stTable, _stParse, _stTsSeries, _stTsParse, _stCells, _stDerived,
-          ST_INCOME } =
+  const { _stNum, _stDate, _stTable, _stParse, _stTsSeries, _stTsParse, _stCells, ST_INCOME } =
     load(src, ['_stNum','_stDate','_stTable','_stParse','_stTsSeries','_stTsParse','_stCells',
-               '_stDerived','ST_INCOME'],
+               'ST_INCOME'],
          { Date, Math, Array, Object, Set, isFinite, Number });
 
   // Yahoo wraps values as {raw,fmt}; absent keys and empty objects both occur.
@@ -1794,8 +1793,9 @@ group('financial statements');
     // column - the older cell is unknown, not a repeat.
     const eqr = p.balance.rows.find(r => r.key === 'StockholdersEquity');
     eq('a short series fills only its own period', eqr.values[0], 400);
-    // The reported free cash flow wins over the derived one.
-    eq('reported free cash flow is used as reported', _stDerived(p).freeCashFlow, 25);
+    // The line map carries every field, including ones no table displays.
+    eq('the parse exposes a line map for the ratio engine', p.line.TotalRevenue['2025-03-31'], 200);
+    eq('and the union of every period seen', p.periodsAll[0], '2025-03-31');
   }
   eq('an empty timeseries yields null', _stTsParse({ timeseries: { result: [] } }, false), null);
   eq('a malformed timeseries yields null', _stTsParse({}, false), null);
@@ -1880,36 +1880,14 @@ group('financial statements');
     ok('balance parsed', !!p.balance, 'no balance');
     ok('cashflow parsed', !!p.cashflow, 'no cashflow');
     eq('filled cells are counted for the fallback decision', _stCells(p) > 0, true);
-
-    // ── derived figures ──
-    const d = _stDerived(p);
-    eq('net margin from revenue and net income', +d.netMargin.toFixed(4), 10);
-    eq('ROE from equity', +d.roe.toFixed(4), 5);
-    eq('debt to equity', +d.debtToEquity.toFixed(4), 0.5);
-    // capex arrives negative, so FCF is OCF plus it.
-    eq('free cash flow nets capex when none is reported', d.freeCashFlow, 100);
-    eq('cash conversion is OCF over net income', +d.cashConversion.toFixed(4), 1.5);
+    // The fallback has no extra lines to offer, so its map is exactly what the
+    // display tables hold - nothing is invented to fill the ratio engine.
+    eq('the fallback also exposes a line map', p.line.TotalRevenue['2025-01-01'], 1000);
+    ok('and invents no line it did not receive', p.line.EBIT === undefined, 'fabricated EBIT');
   }
   eq('an empty response yields null', _stParse({}, false), null);
   eq('a result with no statements yields null', _stParse({ quoteSummary:{ result:[{}] } }, false), null);
   eq('nothing parsed counts as zero cells', _stCells(null), 0);
-  {
-    // Division guards: zero revenue or zero equity must not produce Infinity.
-    // Both series carry a non-zero older period so the zero is a real reported
-    // zero rather than the all-zero artefact stripped above.
-    const json = { quoteSummary: { result: [{
-      incomeStatementHistory: { incomeStatementHistory: [
-        { endDate:{raw:1735689600}, totalRevenue:{raw:0}, netIncome:{raw:100} },
-        { endDate:{raw:1704067200}, totalRevenue:{raw:900}, netIncome:{raw:80} } ] },
-      balanceSheetHistory:    { balanceSheetStatements: [
-        { endDate:{raw:1735689600}, totalStockholderEquity:{raw:0} },
-        { endDate:{raw:1704067200}, totalStockholderEquity:{raw:700} } ] },
-    }]}};
-    const d = _stDerived(_stParse(json, false));
-    ok('zero revenue yields no margin, not Infinity', !d || d.netMargin === undefined, JSON.stringify(d));
-    ok('zero equity yields no ROE, not Infinity', !d || d.roe === undefined, JSON.stringify(d));
-  }
-
   // ── wiring & honesty ──
   // The Worker is a separate file, so assert against it directly - checking
   // SRC would silently pass since worker.js is not part of index.html.
@@ -1935,11 +1913,189 @@ group('financial statements');
   ok('the fallback only wins when it carries more', /if\(_stCells\(alt\) > _stCells\(out\)\) out = alt;/.test(SRC), 'thin fallback can overwrite');
   ok('a Financials tab exists', /data-rtab="financials"/.test(SRC), 'no tab');
   ok('statements load lazily on tab open', /if \(name === 'financials'\)/.test(SRC), 'not lazy');
-  ok('a missing line renders as a dash, not zero', /if\(v == null\) return '<span style="color:var\(--text3\)">—<\/span>'/.test(SRC), 'missing renders as a number');
+  ok('a missing line renders as a dash, not zero', /if\(v == null\) return '<span class="rt-na">—<\/span>'/.test(SRC), 'missing renders as a number');
   ok('the UI explains a dash means absent', /not that the value is zero/.test(SRC), 'ambiguous dash');
   ok('the UI says when it fell back to the thinner feed', /older, thinner one — expect gaps/.test(SRC), 'fallback unlabelled');
   ok('thin source coverage is named as a source gap', /that is a gap in the source, not an error here/.test(SRC), 'blames the app');
   ok('it warns the data can lag the filing', /can lag the latest filing/.test(SRC), 'no staleness warning');
+}
+
+// ── Key ratios ─────────────────────────────────────────────────────────────
+group('key ratios');
+{
+  const src = slice('const RT_EPS = 1e-9;', '\n// ── Display', 'ratios');
+  const { computeRatios, ratioBand, isLender, _rtDiv, _rtGrowth, _rtLatest, _rtPair, RT_LENDER_NA } =
+    load(src, ['computeRatios','ratioBand','isLender','_rtDiv','_rtGrowth','_rtLatest','_rtPair','RT_LENDER_NA'],
+         { Math, Object, Array, isFinite, Number });
+
+  // Build a statements object the way statements.js hands one over.
+  const mk = (byDate) => {
+    const line = {}, dates = Object.keys(byDate).sort().reverse();
+    for(const d of dates) for(const k of Object.keys(byDate[d])) (line[k] || (line[k] = {}))[d] = byDate[d][k];
+    return { line, periodsAll: dates };
+  };
+
+  // ── division and growth guards ──
+  eq('a normal division works', _rtDiv(10, 4), 2.5);
+  eq('a null numerator is null', _rtDiv(null, 4), null);
+  eq('a null denominator is null', _rtDiv(10, null), null);
+  eq('division by zero is null, not Infinity', _rtDiv(10, 0), null);
+  // A denominator that is float noise rather than a real number must not
+  // produce an enormous ratio that reads as a genuine result.
+  eq('division by float noise is null, not 1e13', _rtDiv(10, 1e-12), null);
+  eq('growth needs a positive base', _rtGrowth({ now: 50, prev: -100 }), null);
+  eq('growth from zero is null, not Infinity', _rtGrowth({ now: 50, prev: 0 }), null);
+  eq('ordinary growth is a percentage', _rtGrowth({ now: 120, prev: 100 }), 20);
+  eq('one period cannot make a growth rate', _rtPair(mk({ '2025-03-31': { TotalRevenue: 100 } }), 'TotalRevenue'), null);
+
+  // A line is read at its own newest date: a balance sheet published later than
+  // an income statement must not read as missing.
+  {
+    const t = mk({ '2025-03-31': { TotalRevenue: 100 }, '2024-03-31': { TotalRevenue: 80, TotalAssets: 500 } });
+    eq('a lagging line is read at its own latest date', _rtLatest(t, 'TotalAssets').v, 500);
+    eq('and reports which period that was', _rtLatest(t, 'TotalAssets').date, '2024-03-31');
+    eq('a line never reported is null', _rtLatest(t, 'Inventory'), null);
+  }
+
+  // ── the headline ratios ──
+  {
+    const t = mk({ '2025-03-31': {
+      TotalRevenue: 1000, CostOfRevenue: 600, GrossProfit: 400, OperatingIncome: 200,
+      EBIT: 200, EBITDA: 260, PretaxIncome: 180, TaxProvision: 45, NetIncome: 135,
+      TotalAssets: 2000, CurrentAssets: 800, CurrentLiabilities: 400, Inventory: 300,
+      AccountsReceivable: 200, StockholdersEquity: 900, LongTermDebt: 500, TotalDebt: 600,
+      CashAndCashEquivalents: 100, InterestExpense: 40, InvestedCapital: 1000,
+      OperatingCashFlow: 180, CapitalExpenditure: -60, DilutedEPS: 13.5, OrdinarySharesNumber: 10,
+    }, '2024-03-31': {
+      TotalRevenue: 800, NetIncome: 100, DilutedEPS: 10,
+    }});
+    const r = computeRatios(t, null, 270);
+
+    eq('gross margin', +r.grossMargin.toFixed(2), 40);
+    eq('operating margin', +r.opMargin.toFixed(2), 20);
+    eq('net margin', +r.netMargin.toFixed(2), 13.5);
+    eq('ROE', +r.roe.toFixed(2), 15);
+    eq('ROA', +r.roa.toFixed(2), 6.75);
+    // ROCE = EBIT / (total assets - current liabilities) = 200 / 1600
+    eq('ROCE uses capital employed, not equity', +r.roce.toFixed(2), 12.5);
+    // ROIC = EBIT x (1 - 45/180) / invested capital = 200 x 0.75 / 1000
+    eq('ROIC is after tax', +r.roic.toFixed(2), 15);
+    eq('revenue growth', +r.revGrowth.toFixed(2), 25);
+    eq('net income growth', +r.niGrowth.toFixed(2), 35);
+    eq('EPS growth', +r.epsGrowth.toFixed(2), 35);
+    eq('debt to equity uses total debt when present', +r.debtToEquity.toFixed(4), 0.6667);
+    // net debt = 600 - 100 = 500, over EBITDA 260
+    eq('net debt to EBITDA', +r.netDebtEbitda.toFixed(4), 1.9231);
+    eq('interest coverage', +r.interestCover.toFixed(2), 5);
+    eq('current ratio', +r.currentRatio.toFixed(2), 2);
+    eq('quick ratio strips inventory', +r.quickRatio.toFixed(2), 1.25);
+    eq('asset turnover', +r.assetTurnover.toFixed(2), 0.5);
+    eq('inventory turnover', +r.invTurnover.toFixed(2), 2);
+    eq('receivable days', Math.round(r.receivableDays), 73);
+    // capex is negative, so FCF is OCF plus it
+    eq('free cash flow nets capex', r.fcf, 120);
+    eq('FCF margin', +r.fcfMargin.toFixed(2), 12);
+    eq('cash conversion', +r.cashConversion.toFixed(4), 1.3333);
+    eq('P/E from price and reported EPS', +r.pe.toFixed(2), 20);
+    eq('earnings yield inverts P/E', +r.earningsYield.toFixed(2), 5);
+    // PEG = P/E 20 / EPS growth 35
+    eq('PEG divides P/E by the growth being paid for', +r.peg.toFixed(4), 0.5714);
+  }
+
+  // ── the refusals: every one of these must decline rather than invent ──
+  {
+    const empty = computeRatios(mk({ '2025-03-31': { TotalRevenue: 1000 } }), null, null);
+    for(const k of ['roce','roic','currentRatio','quickRatio','interestCover','invTurnover',
+                    'netDebtEbitda','pe','peg','pb','evEbitda','cashConversion','epsGrowth'])
+      eq('with no inputs, ' + k + ' is null not a number', empty[k], null);
+  }
+  {
+    // Capital employed at or below zero cannot produce a return on it.
+    const t = mk({ '2025-03-31': { EBIT: 100, TotalAssets: 400, CurrentLiabilities: 400 } });
+    eq('zero capital employed yields no ROCE', computeRatios(t, null, null).roce, null);
+    // Negative capital employed is the dangerous one: a profitable company
+    // would show a NEGATIVE return on capital and read as loss-making.
+    const neg = mk({ '2025-03-31': { EBIT: 100, TotalAssets: 300, CurrentLiabilities: 500 } });
+    eq('negative capital employed yields no ROCE either', computeRatios(neg, null, null).roce, null);
+  }
+  {
+    // An effective tax rate outside a sane band means the inputs disagree;
+    // scaling EBIT by it would produce a confident but wrong ROIC.
+    const t = mk({ '2025-03-31': { EBIT: 100, PretaxIncome: 100, TaxProvision: 95, InvestedCapital: 500 } });
+    eq('an implausible tax rate withholds ROIC', computeRatios(t, null, null).roic, null);
+  }
+  {
+    // Cash conversion against a loss flips sign and reads as a healthy ratio.
+    const t = mk({ '2025-03-31': { NetIncome: -100, OperatingCashFlow: -150 } });
+    eq('cash conversion is withheld against a loss', computeRatios(t, null, null).cashConversion, null);
+  }
+  {
+    // A negative PEG is not "cheap". It must be withheld and flagged, never
+    // shown as the best number on the page.
+    const t = mk({ '2025-03-31': { NetIncome: 50, DilutedEPS: 5 }, '2024-03-31': { NetIncome: 80, DilutedEPS: 8 } });
+    const r = computeRatios(t, { pe: 20 }, null);
+    eq('PEG on shrinking earnings is withheld', r.peg, null);
+    eq('and the reason is recorded for the UI', r.pegBlocked, true);
+  }
+  {
+    // Falling back to LongTermDebt when TotalDebt is absent is a substitution
+    // of a like-for-like line, not an estimate.
+    const t = mk({ '2025-03-31': { LongTermDebt: 300, StockholdersEquity: 600 } });
+    eq('debt to equity falls back to long-term debt', +computeRatios(t, null, null).debtToEquity.toFixed(2), 0.5);
+  }
+  {
+    // The feed's own figure wins over a derived one when both exist.
+    const t = mk({ '2025-03-31': { NetIncome: 100, DilutedEPS: 10 } });
+    eq('a feed P/E is preferred to a derived one', computeRatios(t, { pe: 33 }, 200).pe, 33);
+  }
+  {
+    // Reported free cash flow beats OCF + capex.
+    const t = mk({ '2025-03-31': { FreeCashFlow: 90, OperatingCashFlow: 180, CapitalExpenditure: -60 } });
+    eq('reported free cash flow is used as reported', computeRatios(t, null, null).fcf, 90);
+  }
+
+  // ── bands ──
+  eq('a high ROCE bands good', ratioBand('roce', 22), 'good');
+  eq('a middling ROCE bands fair', ratioBand('roce', 14), 'fair');
+  eq('a low ROCE bands weak', ratioBand('roce', 4), 'weak');
+  // Lower is better for these, so the comparison must invert.
+  eq('low debt bands good', ratioBand('debtToEquity', 0.3), 'good');
+  eq('high debt bands weak', ratioBand('debtToEquity', 2), 'weak');
+  eq('a PEG under 1 bands good', ratioBand('peg', 0.8), 'good');
+  eq('a null value has no band', ratioBand('roce', null), null);
+  eq('a ratio with no defensible threshold is unbanded', ratioBand('receivableDays', 40), null);
+
+  // ── lenders ──
+  ok('a bank is recognised', isLender({ sector: 'Financial Services' }), 'not detected');
+  ok('an insurer is recognised', isLender({ industry: 'Insurance - Life' }), 'not detected');
+  ok('a manufacturer is not', !isLender({ sector: 'Consumer Cyclical' }), 'false positive');
+  ok('no sector is not a lender', !isLender(null), 'null treated as lender');
+  ok('the ratios suppressed for lenders include the current ratio', RT_LENDER_NA.indexOf('currentRatio') >= 0, 'not suppressed');
+  ok('and inventory turnover', RT_LENDER_NA.indexOf('invTurnover') >= 0, 'not suppressed');
+
+  // ── wiring & honesty ──
+  ok('the ratio panel is rendered into the Financials tab', /ratiosHtml\(t, ar\.fundamentals, price\)/.test(SRC), 'not wired');
+  ok('ROCE is shown', /'ROCE',\s+'roce'/.test(SRC), 'no ROCE row');
+  ok('PEG is shown', /'PEG',\s+'peg'/.test(SRC), 'no PEG row');
+  ok('a withheld PEG says why rather than showing blank', /no growth to price/.test(SRC), 'silent');
+  ok('the UI states a dash means missing inputs, not an estimate', /the ratio is not shown rather than estimated/.test(SRC), 'ambiguous dash');
+  ok('the UI warns bank ratios differ', /deposits are raw material/.test(SRC), 'no lender warning');
+  ok('the UI says the bands are rules of thumb', /broad rules of thumb/.test(SRC), 'bands look authoritative');
+  ok('the UI states the maths runs locally', /nothing is sent anywhere/.test(SRC), 'no locality claim');
+  // Numbers are the content: they must be bold and tabular so columns align.
+  ok('figures are bold', /\.rt-val\{[^}]*font-weight:800/.test(SRC), 'values not bold');
+  ok('and tabular, so digits line up', /\.rt-val\{[^}]*tabular-nums/.test(SRC), 'not tabular');
+  ok('statement figures are bold too', /\.fin-table tbody td\{[^}]*font-weight:700/.test(SRC), 'statement values not bold');
+  ok('statement figures are tabular', /\.fin-table tbody td\{[^}]*tabular-nums/.test(SRC), 'not tabular');
+  // Calibri only exists on Windows; without a metric-compatible fallback the
+  // app silently renders in a generic face everywhere else.
+  ok('the font stack names Calibri first', /--font: 'Calibri'/.test(SRC), 'Calibri not primary');
+  ok('and falls back to a metric-compatible face', /'Carlito'/.test(SRC), 'no metric fallback');
+  ok('no bare Calibri declaration is left behind', !/'Calibri',sans-serif/.test(SRC), 'stale font declaration');
+  // The Calibri chain is resolved from fonts already on the machine. Fetching
+  // it would add a request that can fail exactly when the app is offline - and
+  // Carlito is already installed on most Linux systems that lack Calibri.
+  ok('the Calibri stack pulls no webfont of its own', !/family=(Calibri|Carlito)/.test(SRC), 'font fetched over the network');
 }
 
 // ── Build integrity ────────────────────────────────────────────────────────
