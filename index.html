@@ -12152,6 +12152,32 @@ function computeRatios(t, fund, price){
   const ebitdaV = _rtVal(t, 'EBITDA');
   let eps = null;
   if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
+  // ── Is the share count believable? ──────────────────────────────────────
+  // Every per-share figure rests on it, and a wrong one poisons all of them at
+  // once while leaving the business ratios untouched. Cupid Ltd showed exactly
+  // that: the feed reported 134 crore shares, which at the traded price implies
+  // a market capitalisation of about 37,700 crore for a company with 451 crore
+  // of equity and 351 crore of revenue. EPS came out at 0.79 and the P/E at
+  // 277, while net margin and ROE were correct to the decimal because they
+  // never divide by the share count.
+  //
+  // This is checkable without knowing anything about the company: the market
+  // capitalisation the feed reports and the one implied by price times the
+  // reported share count describe the same quantity, so they must agree. When
+  // they disagree by a wide margin, one of the two is wrong and every figure
+  // built on the share count is unreliable. That is a statement about the data,
+  // not a judgement about the business.
+  const sharesN = _rtVal(t, 'OrdinarySharesNumber');
+  const feedCap = (f.mktCap != null && isFinite(f.mktCap) && f.mktCap > 0) ? f.mktCap : null;
+  if(p != null && sharesN != null && sharesN > 0 && feedCap != null){
+    const implied = p * sharesN;
+    const factor = implied / feedCap;
+    if(factor > 3 || factor < 1/3){
+      r.shareCountSuspect = { impliedMcap: implied, feedMcap: feedCap,
+                              factor: factor, shares: sharesN };
+    }
+  }
+
   // P/E and EPS must come from the same basis, or the pair the reader sees does
   // not tie: the report showed EPS 0.79 beside a P/E of 277.2 at a price of
   // ~280, and 0.79 x 277.2 is 219. The P/E was the feed's trailing figure while
@@ -12279,6 +12305,8 @@ function ratioBand(key, v, lender){
 // Ratios that describe a manufacturer or retailer and say nothing useful about
 // a lender: a bank holds no inventory, its "current ratio" is an artefact of
 // how deposits are classified, and debt is its input, not its risk.
+// Everything that divides by, or is priced against, the share count.
+const RT_PER_SHARE = ['eps','pe','peg','pb','ps','earningsYield','evEbitda'];
 const RT_LENDER_NA = ['currentRatio','quickRatio','invTurnover','debtToEquity','netDebtEbitda',
   'evEbitda','assetTurnover','fcfMargin','cashConversion','receivableDays'];
 function isLender(fund){
@@ -12350,7 +12378,10 @@ function ratiosHtml(t, fund, price){
   const cell = (label, key, fmt, tip) => {
     const v = r[key];
     const na = lender && RT_LENDER_NA.indexOf(key) >= 0;
-    const band = na ? null : ratioBand(key, v, lender);
+    const suspect = !!r.shareCountSuspect && RT_PER_SHARE.indexOf(key) >= 0;
+    // A band is a verdict on a number. Where the number rests on a share count
+    // that does not survive its own cross-check, there is nothing to judge.
+    const band = (na || suspect) ? null : ratioBand(key, v, lender);
     const shown = na && v != null
       ? `<span class="rt-na" title="This ratio does not describe a lender's balance sheet.">n/a</span>`
       : fmt(v);
@@ -12361,6 +12392,9 @@ function ratiosHtml(t, fund, price){
         g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
     }
     let note = '', display = shown;
+    if(suspect && v != null){
+      note = `<div class="rt-note">share count unverified</div>`;
+    }
     if(key === 'pe' && v != null && r.peBasis){
       note = `<div class="rt-note">${r.peBasis}</div>`;
     }
@@ -12388,12 +12422,24 @@ function ratiosHtml(t, fund, price){
       <div class="rt-card-h">${title}</div>
       <table class="rt-table"><tbody>${rows.map(x => cell(x[0], x[1], x[2], x[3])).join('')}</tbody></table>
     </div>`).join('');
+  const scWarn = r.shareCountSuspect ? (() => {
+    const sc = r.shareCountSuspect;
+    const cr = n => '₹' + (n/1e7).toLocaleString('en-IN', { maximumFractionDigits: 0 }) + ' Cr';
+    return `<div class="rt-warn"><b>The per-share figures below are not trustworthy for this stock.</b>
+      The data source reports ${(sc.shares/1e7).toFixed(2)} crore shares outstanding, which at the current
+      price implies a market value of ${cr(sc.impliedMcap)} against the ${cr(sc.feedMcap)} the same source
+      reports. Those describe the same quantity and disagree by about ${sc.factor > 1 ? sc.factor.toFixed(0) : (1/sc.factor).toFixed(0)}
+      times, so the share count is wrong somewhere. EPS, P/E, PEG, P/B, P/S and the yields all divide by it
+      and inherit the error, which is why they are shown without a rating.
+      The ratios above them, margins, returns on capital, leverage and cash, never touch the share count
+      and are unaffected.</div>`;
+  })() : '';
   const lenderNote = lender
     ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders, for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
     : '';
   return `<div class="rt-wrap">
     <div class="rt-h">📐 Key Ratios</div>
-    ${lenderNote}
+    ${scWarn}${lenderNote}
     <div class="rt-grid">${groups}</div>
     <div class="rt-foot">Computed in your browser from the reported statements above and the current price, nothing is sent anywhere.
       n/r means the source did not carry the inputs, so the ratio is not shown rather than estimated.
@@ -12474,6 +12520,14 @@ function combinedRead(tech, fund, ratios){
   if(fund && fund.coverage != null && fund.coverage < 0.5){
     limits.push('The fundamental score rests on less than half the inputs it wants, because the '
       + 'data source did not carry the rest. Treat it as indicative rather than settled.');
+  }
+  if(r.shareCountSuspect){
+    const sc = r.shareCountSuspect;
+    limits.push('The valuation figures cannot be relied on for this stock. The share count the data '
+      + 'source reports disagrees with its own market capitalisation by about '
+      + (sc.factor > 1 ? sc.factor.toFixed(0) : (1/sc.factor).toFixed(0)) + ' times, and EPS, P/E, PEG, '
+      + 'P/B and the yields all divide by that count. The margins, returns and leverage figures do not '
+      + 'use it and are unaffected, so the business half of this reading still stands.');
   }
   if(r.pegBlocked){
     limits.push('PEG could not be computed: earnings were not growing over the period measured, '

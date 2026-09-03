@@ -72,6 +72,14 @@ function combinedRead(tech, fund, ratios){
     limits.push('The fundamental score rests on less than half the inputs it wants, because the '
       + 'data source did not carry the rest. Treat it as indicative rather than settled.');
   }
+  if(r.shareCountSuspect){
+    const sc = r.shareCountSuspect;
+    limits.push('The valuation figures cannot be relied on for this stock. The share count the data '
+      + 'source reports disagrees with its own market capitalisation by about '
+      + (sc.factor > 1 ? sc.factor.toFixed(0) : (1/sc.factor).toFixed(0)) + ' times, and EPS, P/E, PEG, '
+      + 'P/B and the yields all divide by that count. The margins, returns and leverage figures do not '
+      + 'use it and are unaffected, so the business half of this reading still stands.');
+  }
   if(r.pegBlocked){
     limits.push('PEG could not be computed: earnings were not growing over the period measured, '
       + 'and a price-to-growth ratio against flat or falling earnings has no meaning.');

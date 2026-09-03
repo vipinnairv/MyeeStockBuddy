@@ -2326,6 +2326,76 @@ group('key ratios');
   ok('and inventory turnover', RT_LENDER_NA.indexOf('invTurnover') >= 0, 'not suppressed');
 
   // ── wiring & honesty ──
+  // ── a share count that fails its own cross-check ──
+  // Cupid Ltd, from the live feed: 134.47 crore shares reported, which at ₹280.46
+  // implies a market value of ~₹37,700 Cr for a company with ₹451 Cr of equity
+  // and ₹351 Cr of revenue. EPS came out 0.79 and P/E 277, while net margin and
+  // ROE were correct to the decimal because they never divide by the share count.
+  {
+    const CUPID = mk({ '2026-03-31': {
+      NetIncome: 1.082333e9, TotalRevenue: 3.509897e9, StockholdersEquity: 4.508058e9,
+      OrdinarySharesNumber: 1.3446607e9, DilutedEPS: 0.79, TotalAssets: 5.532242e9,
+    }});
+    const PRICE = 280.46;
+    {
+      // Feed market cap ~₹757 Cr; price x shares says ₹37,712 Cr. They describe
+      // the same quantity, so one of them is wrong.
+      const r = computeRatios(CUPID, { mktCap: 7.572e9 }, PRICE);
+      // Read through a guard: a regression that stops detecting must fail the
+      // assertion, not throw and take the rest of the group with it.
+      const sc = r.shareCountSuspect || {};
+      ok('the disagreement is detected', !!r.shareCountSuspect, 'not detected');
+      eq('and the factor is recorded', sc.factor == null ? null : Math.round(sc.factor), 50);
+      eq('along with the share count it doubted', sc.shares == null ? null : sc.shares, 1.3446607e9);
+      // The figures that do not divide by the share count must be untouched.
+      eq('net margin is unaffected and correct', fx(r.netMargin, 1), 30.8);
+      eq('ROE is unaffected and correct', fx(r.roe, 1), 24.0);
+    }
+    {
+      // A consistent feed raises no flag.
+      const r = computeRatios(CUPID, { mktCap: PRICE * 1.3446607e9 }, PRICE);
+      ok('a consistent share count is not flagged', !r.shareCountSuspect, JSON.stringify(r.shareCountSuspect));
+    }
+    {
+      // Within the tolerance band: prices move between the two snapshots, so a
+      // modest difference is normal and must not cry wolf.
+      const r = computeRatios(CUPID, { mktCap: PRICE * 1.3446607e9 * 1.4 }, PRICE);
+      ok('a modest difference is tolerated', !r.shareCountSuspect, 'false positive at 1.4x');
+    }
+    {
+      // No market cap to check against: nothing is claimed either way.
+      const r = computeRatios(CUPID, {}, PRICE);
+      ok('with nothing to cross-check, no accusation is made', !r.shareCountSuspect, 'flagged blindly');
+    }
+    {
+      // The rating is withheld on the affected ratios, and only those. The
+      // display half lives past this group's slice, so it is loaded here.
+      const disp = load(slice('const RT_EPS = 1e-9;', '\n// ── UI ──', 'scui'),
+        ['ratiosHtml'], { Math, Object, Array, JSON, isFinite, Number, String, encodeURIComponent,
+          document: { createElement: () => ({}), head: { appendChild(){} } },
+          AbortController, setTimeout, clearTimeout, fetch: async () => { throw new Error('none'); },
+          localStorage: { getItem: () => null, setItem(){}, removeItem(){} } });
+      const html = disp.ratiosHtml(CUPID, { mktCap: 7.572e9, pe: 277.2 }, PRICE);
+      ok('the panel warns before the figures', /per-share figures below are not trustworthy/.test(html), 'no warning');
+      ok('it shows the two market values that disagree', /37,712 Cr/.test(html) && /757 Cr/.test(html), html.slice(0,300));
+      ok('it names which ratios inherit the error', /EPS, P\/E, PEG, P\/B, P\/S and the yields/.test(html), 'not named');
+      ok('and which ones do not', /never touch the share count/.test(html), 'no all-clear');
+      // Over-escaping here made every cell lookup return '', so the three
+      // assertions below passed against an empty string rather than the markup.
+      const cell = k => {
+        const m = html.match(new RegExp('>' + k + '</th>\\s*<td class="(rt-val[^"]*)"'));
+        ok('the ' + k + ' cell was actually found', !!m, 'cell lookup matched nothing');
+        return m ? m[1] : '';
+      };
+      ok('earnings yield loses its rating', !/rt-(good|fair|weak)/.test(cell('Earnings yield')),
+         cell('Earnings yield'));
+      ok('and so does PEG', !/rt-(good|fair|weak)/.test(cell('PEG')), cell('PEG'));
+      ok('but ROE keeps its rating', /rt-(good|fair|weak)/.test(cell('ROE')), cell('ROE'));
+      ok('and net margin keeps its rating', /rt-(good|fair|weak)/.test(cell('Net margin')), cell('Net margin'));
+      ok('and the cells say why', /share count unverified/.test(html), 'no per-cell note');
+    }
+  }
+
   // ── rendered output, not source text ──
   // Asserting that a string appears in the file only proves the string is in
   // the file. These render the panel and read the cell that comes out.
