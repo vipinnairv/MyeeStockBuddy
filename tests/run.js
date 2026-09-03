@@ -2582,6 +2582,155 @@ group('number formatting');
   ok('statement figures go through the grouping helper', /_finGroup\(n, dp, isIndia\)/.test(SRC), 'ungrouped');
 }
 
+// ── Combined read: technicals against fundamentals ─────────────────────────
+group('combined read');
+{
+  const src = slice('const CR_BULL = 60', '\n// ── Report sections', 'combined');
+  const { combinedRead } = load(src, ['combinedRead'], { Math, isFinite, Number, String });
+
+  const T = (score, extra) => Object.assign({ verdict: score >= 60 ? 'BUY' : score <= 40 ? 'SELL' : 'HOLD', score }, extra || {});
+  const F = (composite, extra) => composite == null ? null
+    : Object.assign({ composite, grade: composite >= 65 ? 'B' : composite >= 50 ? 'C' : 'D', coverage: 1 }, extra || {});
+
+  // ── the four quadrants ──
+  eq('strong price and strong business is called aligned',
+     combinedRead(T(75), F(80), null).stance, 'Aligned, constructive');
+  eq('weak and weak is called aligned the other way',
+     combinedRead(T(20), F(30), null).stance, 'Aligned, negative');
+  eq('rising price on weak accounts is named as momentum',
+     combinedRead(T(75), F(30), null).stance, 'Momentum ahead of the accounts');
+  eq('falling price on strong accounts is named as the reverse',
+     combinedRead(T(20), F(80), null).stance, 'Accounts ahead of the price');
+  eq('neither emphatic is not forced into a verdict',
+     combinedRead(T(50), F(52), null).stance, 'No clear agreement');
+
+  // ── the honest refusals ──
+  {
+    // A technical-only reading is not a view on the company, and must not be
+    // presented as one.
+    const c = combinedRead(T(75), null, null);
+    eq('with no fundamentals the reading is labelled technical only', c.stance, 'Technical only');
+    ok('and says price alone cannot judge a business',
+       /Price behaviour alone cannot tell you whether a company is sound/.test(c.limits.join(' ')),
+       c.limits.join(' '));
+    ok('it is not dressed up as a positive verdict', c.tone === 'info', c.tone);
+  }
+  {
+    const c = combinedRead({}, F(80), null);
+    eq('with no technicals it is labelled fundamental only', c.stance, 'Fundamental only');
+    ok('and says nothing about timing', /cannot say anything about the moment/.test(c.detail), c.detail);
+  }
+  {
+    const c = combinedRead({}, null, null);
+    eq('with neither, it concludes nothing', c.stance, 'No reading');
+    ok('and says so plainly', /nothing to conclude from/.test(c.detail), c.detail);
+  }
+
+  // ── caveats that change how much weight the reading carries ──
+  {
+    const c = combinedRead(T(75, { isChop: true }), F(80), null);
+    ok('a sideways trend is flagged as weakening the technical half',
+       /trend is sideways/.test(c.limits.join(' ')), c.limits.join(' '));
+  }
+  {
+    const c = combinedRead(T(75), F(80, { coverage: 0.3 }), null);
+    ok('thin fundamental coverage is disclosed',
+       /less than half the inputs/.test(c.limits.join(' ')), c.limits.join(' '));
+  }
+  {
+    const c = combinedRead(T(75), F(80, { coverage: 1 }), null);
+    ok('full coverage raises no such caveat',
+       !/less than half the inputs/.test(c.limits.join(' ')), c.limits.join(' '));
+  }
+  {
+    const c = combinedRead(T(50), F(50), { pegBlocked: true });
+    ok('a withheld PEG is explained rather than silently absent',
+       /price-to-growth ratio against flat or falling earnings has no meaning/.test(c.limits.join(' ')),
+       c.limits.join(' '));
+  }
+
+  // ── never advice ──
+  {
+    const all = [combinedRead(T(75), F(80)), combinedRead(T(20), F(20)),
+                 combinedRead(T(75), F(20)), combinedRead(T(20), F(80)),
+                 combinedRead(T(50), F(50)), combinedRead(T(75), null)];
+    const body = all.map(c => [c.headline, c.detail, c.stance].concat(c.limits).join(' ')).join(' ').toLowerCase();
+    for(const phrase of ['you should', 'we recommend', 'strong buy', 'must buy', 'avoid this', 'price target'])
+      ok('no combined reading gives advice: ' + phrase, body.indexOf(phrase) < 0, phrase);
+    // Agreement is not certainty, and the report says so.
+    ok('agreement is not sold as safety',
+       /agreement means the two\s+analyses are not contradicting each other, not that the outcome is known/.test(
+         all[0].detail.replace(/\s+/g, ' ')) || /not that the outcome is known/.test(all[0].detail),
+       all[0].detail);
+  }
+
+  // ── the report sections ──
+  {
+    const dsrc = slice('const CR_TONE_COL', '\n// ══', 'reportsec');
+    const { repExecSummaryHtml, repFundamentalHtml } =
+      load(src + '\n' + dsrc, ['repExecSummaryHtml','repFundamentalHtml'],
+        { Math, isFinite, Number, String, Object, Array, RT_LENDER_NA: ['currentRatio'] });
+    {
+      const ar = { currentPrice: 100, priceChg: 1.5, pricePct: 1.5,
+                   signals: { verdict: 'BUY', score: 75, long: { confidence: 60 } } };
+      const html = repExecSummaryHtml(ar, combinedRead(T(75), F(80)), F(80), '₹');
+      ok('the summary leads the report', /Executive Summary/.test(html), 'no heading');
+      ok('it carries the technical score', /75\/100/.test(html), html.slice(0, 200));
+      ok('and the fundamental grade', />B</.test(html), 'no grade');
+      ok('and the combined stance', /Aligned, constructive/.test(html), 'no stance');
+    }
+    {
+      // With no fundamentals the box says "not reported" rather than showing a
+      // zero or an empty cell that reads as a bad score.
+      const ar = { currentPrice: 100, signals: { verdict: 'BUY', score: 75 } };
+      const html = repExecSummaryHtml(ar, combinedRead(T(75), null), null, '₹');
+      ok('a missing grade is marked not reported', /not reported/.test(html), html.slice(0, 400));
+      ok('and the limits section is printed', /What this report cannot tell you/.test(html), 'limits hidden');
+    }
+    {
+      const html = repFundamentalHtml(null, false, null, null, []);
+      ok('no statements is called a source gap, not a finding',
+         /gap in the data source, not a finding about the company/.test(html), html);
+    }
+    {
+      const groups = [['Profitability', [['ROCE', 'roce', v => v.toFixed(1) + '%'],
+                                         ['Current ratio', 'currentRatio', v => v.toFixed(2)]]]];
+      const html = repFundamentalHtml({ roce: 22, currentRatio: 1.5 }, true, null, null, groups);
+      ok('a computed ratio is printed', /22\.0%/.test(html), html);
+      ok('a lender-inapplicable ratio prints n/a, not a number', /n\/a/.test(html) && !/1\.50/.test(html), html);
+      ok('and the reason is given', /deposits are raw material/.test(html), 'lender note missing');
+      const html2 = repFundamentalHtml({ roce: null, currentRatio: 1.5 }, false, null, null, groups);
+      // Read the ROCE cell itself. The legend below the table also contains
+      // "n/r", so matching the whole document proves nothing about the cell.
+      const roceCell = (html2.match(/<td>ROCE<\/td><td[^>]*>([^<]*)<\/td>/) || [])[1];
+      eq('an unreported ratio prints n/r in its own cell', roceCell, 'n/r');
+      ok('and never a fabricated zero', !/0\.0%/.test(html2), html2);
+      ok('the markers are explained in the report itself', /not reported by the data source/.test(html2), 'no key');
+      ok('and it states nothing is estimated', /Nothing is estimated to fill a gap/.test(html2), 'no claim');
+    }
+    {
+      const interp = { summary: 'A mixed picture.', findings: [{ tone:'weak', label:'Margins', text:'Thin.' }] };
+      const html = repFundamentalHtml({ roce: 5 }, false, interp, null, []);
+      ok('the Python reading is carried into the report', /A mixed picture\./.test(html), 'summary missing');
+      ok('with its findings', /Margins/.test(html) && /Thin\./.test(html), 'findings missing');
+    }
+  }
+
+  // ── wiring ──
+  ok('the report gathers the fundamental half before composing',
+     /fx\.execSummary = repExecSummaryHtml/.test(SRC) && /fx\.fundamental = repFundamentalHtml/.test(SRC), 'not wired');
+  ok('a failure there does not cost the technical report',
+     /catch \(e\) \{ console\.warn\('fundamental section skipped', e\); \}/.test(SRC), 'one failure kills the report');
+  ok('the summary is printed before the technical detail',
+     SRC.indexOf('${fx.execSummary') < SRC.indexOf('<h2>Technical Analysis</h2>'), 'summary is not first');
+  ok('the technical section says what it does not cover',
+     /they say\s*\n?\s*nothing about what the business earns or owes/.test(SRC), 'technicals oversold');
+  ok('the branding is market-wide, not NSE\\/BSE', !/NSE\/BSE Analysis/.test(SRC), 'stale branding');
+  ok('and the report header matches', /Complete Stock Market Analysis/.test(SRC), 'header not updated');
+  ok('the mode button reflects that fundamentals are included',
+     /🔬 Detailed analysis/.test(SRC) && !/🔬 Full technicals/.test(SRC), 'button still says technicals only');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {

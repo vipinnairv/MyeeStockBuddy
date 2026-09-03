@@ -104,7 +104,7 @@ function renderSimpleView(){
       </div>
       <div class="sv-sec"><div class="sv-h">What would change this view</div><div class="sv-flip">${flip}</div></div>
       <div class="sv-sec"><div class="sv-h">The indicators, in plain English</div>${reads}</div>
-      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history, not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Full technicals</b> for every indicator, pattern and backtest behind this summary.</div></div>
+      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history, not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Detailed analysis</b> for every indicator, pattern and backtest behind this summary, plus the financial statements and ratios.</div></div>
     </div>`;
   glossaryScan(el);
 }
