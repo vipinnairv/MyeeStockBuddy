@@ -2098,7 +2098,7 @@ group('key ratios');
     const t = mk({ '2025-03-31': { TotalRevenue: 100 } });
     const r = computeRatios(t, { pe: 24, earnGrowth: 12 }, null);
     eq('the feed growth is used when no EPS series exists', fx(r.peg, 2), 2);
-    eq('and is named as such', r.pegBasis, 'the feed’s earnings growth');
+    eq('and is named as such', r.pegBasis, 'the feed’s earnings growth (one quarter)');
   }
   {
     // Net income growth is the last resort - it ignores dilution, so it is
@@ -2150,7 +2150,7 @@ group('key ratios');
     eq('PEG is still withheld', r.peg, null);
     eq('and the block is recorded', r.pegBlocked, true);
     eq('but it is NOT presented as an annual verdict', r.pegBlockedOnAnnual, false);
-    eq('the quarterly figure is named as the reason', (r.pegBlockedBy || {}).label || null, 'the feed’s earnings growth');
+    eq('the quarterly figure is named as the reason', (r.pegBlockedBy || {}).label || null, 'the feed’s earnings growth (one quarter)');
   }
   {
     // An annual measure that is negative outranks a positive-looking quarter
@@ -2161,13 +2161,43 @@ group('key ratios');
     eq('and is marked as annual', r.pegBlockedOnAnnual, true);
   }
   {
-    // ...but a positive annual measure still produces a PEG even when the
-    // quarter was poor. This is the bug that hid PEG in the first place.
+    // A positive annual measure produces a PEG even when the quarter was poor.
+    // This is the bug that hid PEG in the first place.
     const t = mk({ '2025-03-31': { DilutedEPS: 12 }, '2024-03-31': { DilutedEPS: 10 } });
     const r = computeRatios(t, { pe: 30, earnGrowth: -8 }, null);
     eq('PEG computes on the annual figure', fx(r.peg, 2), 1.5);
     eq('and reports the span it used', r.pegSpan, '2024-03-31 → 2025-03-31');
     eq('nothing is blocked', r.pegBlocked, false);
+  }
+  {
+    // The dangerous direction, and the reason the rule changed. Axis Bank showed
+    // annual EPS -6.3% and annual net income -6.0%, while the feed's single
+    // quarter was strongly positive - and the panel published PEG 0.66 in green,
+    // calling a company whose yearly earnings fell "cheap against growth".
+    // An annual measure decides, whichever way it points.
+    const t = mk({ '2025-03-31': { DilutedEPS: 9.37, NetIncome: 94 },
+                   '2024-03-31': { DilutedEPS: 10.0, NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 14.3, earnGrowth: 21.7 }, null);
+    eq('a strong quarter cannot override a negative year', r.peg, null);
+    eq('the annual measure is what withheld it', (r.pegBlockedBy || {}).label || null, 'annual EPS growth');
+    eq('and the verdict is an annual one', r.pegBlockedOnAnnual, true);
+    // The quarterly figure is still shown, so the reader sees both.
+    ok('the quarter is still reported for context',
+       (r.pegGrowths || []).some(g => /one quarter/.test(g.label)), 'quarter hidden');
+  }
+  {
+    // Net income growth stands in when no EPS series exists...
+    const t = mk({ '2025-03-31': { NetIncome: 110 }, '2024-03-31': { NetIncome: 100 } });
+    eq('net income growth is used when EPS is unavailable',
+       fx(computeRatios(t, { pe: 20, earnGrowth: -50 }, null).peg, 2), 2);
+  }
+  {
+    // ...but EPS outranks it when both exist, because it accounts for dilution.
+    const t = mk({ '2025-03-31': { DilutedEPS: 10.2, NetIncome: 200 },
+                   '2024-03-31': { DilutedEPS: 10.0, NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20 }, null);
+    eq('EPS growth outranks net income growth', r.pegBasis, 'annual EPS growth');
+    eq('so dilution is not priced away', fx(r.peg, 1), 10);
   }
   {
     // Growth is measured between the two periods the series actually has. If
@@ -2191,6 +2221,29 @@ group('key ratios');
   eq('a PEG under 1 bands good', ratioBand('peg', 0.8), 'good');
   eq('a null value has no band', ratioBand('roce', null), null);
   eq('a ratio with no defensible threshold is unbanded', ratioBand('receivableDays', 40), null);
+
+  // ── lender-appropriate bands ──
+  // A band is a claim about whether a number is good. Using a manufacturer's
+  // threshold on a bank is a wrong answer, not an imprecise one.
+  eq('1.4% ROA is weak for a manufacturer', ratioBand('roa', 1.4, false), 'weak');
+  eq('but fair for a bank', ratioBand('roa', 1.4, true), 'fair');
+  eq('1.8% ROA is good for a bank', ratioBand('roa', 1.8, true), 'good');
+  eq('0.6% ROA is weak even for a bank', ratioBand('roa', 0.6, true), 'weak');
+  // Values chosen to sit on opposite sides of the two tables; a value banding
+  // the same either way would assert nothing.
+  eq('11% ROE is weak for a manufacturer', ratioBand('roe', 11, false), 'weak');
+  eq('but fair for a bank', ratioBand('roe', 11, true), 'fair');
+  eq('16% ROE is only fair for a manufacturer', ratioBand('roe', 16, false), 'fair');
+  eq('but good for a bank', ratioBand('roe', 16, true), 'good');
+  // Ratios with no lender-specific table fall through to the general one.
+  eq('an unbanded-for-lenders ratio keeps the general band', ratioBand('netMargin', 30, true), 'good');
+  // Cash flow measures describe a manufacturer's earnings quality. A bank with
+  // negative operating cash flow has usually grown its loan book.
+  ok('FCF margin is not applied to lenders', RT_LENDER_NA.indexOf('fcfMargin') >= 0, 'still applied');
+  ok('nor is cash conversion', RT_LENDER_NA.indexOf('cashConversion') >= 0, 'still applied');
+  ok('nor receivable days', RT_LENDER_NA.indexOf('receivableDays') >= 0, 'still applied');
+  ok('the panel passes the lender flag when banding', /ratioBand\(key, v, lender\)/.test(SRC), 'lender bands never apply');
+  ok('and the insight payload bands the same way', /ratioBand\(k, r\[k\], lender\)/.test(SRC), 'narrative can disagree with the table');
 
   // ── lenders ──
   ok('a bank is recognised', isLender({ sector: 'Financial Services' }), 'not detected');
