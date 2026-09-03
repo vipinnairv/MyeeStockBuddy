@@ -1935,6 +1935,10 @@ group('key ratios');
     return { line, periodsAll: dates };
   };
 
+  // Rounding that survives a null: a regression must fail the assertion, not
+  // crash the runner and take every later test with it.
+  const fx = (v, dp) => (v == null || !isFinite(v)) ? null : +v.toFixed(dp);
+
   // ── division and growth guards ──
   eq('a normal division works', _rtDiv(10, 4), 2.5);
   eq('a null numerator is null', _rtDiv(null, 4), null);
@@ -2053,6 +2057,76 @@ group('key ratios');
     const t = mk({ '2025-03-31': { FreeCashFlow: 90, OperatingCashFlow: 180, CapitalExpenditure: -60 } });
     eq('reported free cash flow is used as reported', computeRatios(t, null, null).fcf, 90);
   }
+
+  // ── EPS and PEG ──
+  {
+    // EPS is net profit over shares outstanding. A source that reports both but
+    // carries no EPS line must still yield an EPS - and therefore an EPS growth
+    // rate, and therefore a PEG.
+    const t = mk({ '2025-03-31': { NetIncome: 1000, OrdinarySharesNumber: 100 },
+                   '2024-03-31': { NetIncome: 800,  OrdinarySharesNumber: 100 } });
+    const r = computeRatios(t, { pe: 20 }, null);
+    eq('EPS is derived from net profit and share count', r.eps, 10);
+    eq('and gives an EPS growth rate', fx(r.epsGrowth, 2), 25);
+    eq('which PEG is computed against', fx(r.peg, 2), 0.8);
+    eq('and the panel says which growth it used', r.pegBasis, 'annual EPS growth');
+  }
+  {
+    // A reported diluted EPS wins over the derived one: it accounts for
+    // dilution the raw share count does not.
+    const t = mk({ '2025-03-31': { DilutedEPS: 9, NetIncome: 1000, OrdinarySharesNumber: 100 } });
+    eq('a reported diluted EPS is preferred', computeRatios(t, null, null).eps, 9);
+  }
+  {
+    // Shares reported as zero cannot produce an EPS.
+    const t = mk({ '2025-03-31': { NetIncome: 1000, OrdinarySharesNumber: 0 } });
+    eq('a zero share count yields no EPS, not Infinity', computeRatios(t, null, null).eps, null);
+  }
+  {
+    // The regression this fixes. The feed's earningsGrowth is a quarterly
+    // year-on-year figure and is often negative for a company whose ANNUAL
+    // earnings grew. Taking it unconditionally withheld PEG on the weaker
+    // measure while a healthy annual EPS growth sat unused.
+    const t = mk({ '2025-03-31': { DilutedEPS: 12 }, '2024-03-31': { DilutedEPS: 10 } });
+    const r = computeRatios(t, { pe: 30, earnGrowth: -8 }, null);
+    eq('annual EPS growth is preferred over a negative feed figure', fx(r.peg, 2), 1.5);
+    eq('and the basis is named', r.pegBasis, 'annual EPS growth');
+    ok('PEG is not blocked just because the feed figure was negative', !r.pegBlocked, 'blocked');
+  }
+  {
+    // With no EPS series, the feed's figure is used rather than nothing.
+    const t = mk({ '2025-03-31': { TotalRevenue: 100 } });
+    const r = computeRatios(t, { pe: 24, earnGrowth: 12 }, null);
+    eq('the feed growth is used when no EPS series exists', fx(r.peg, 2), 2);
+    eq('and is named as such', r.pegBasis, 'the feed’s earnings growth');
+  }
+  {
+    // Net income growth is the last resort - it ignores dilution, so it is
+    // used only when nothing better was reported.
+    const t = mk({ '2025-03-31': { NetIncome: 110 }, '2024-03-31': { NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20 }, null);
+    eq('net income growth is the fallback', fx(r.peg, 2), 2);
+    eq('and is named honestly', r.pegBasis, 'net income growth');
+  }
+  {
+    // Every measure available and none positive: that is a verdict, and the
+    // panel says so.
+    const t = mk({ '2025-03-31': { DilutedEPS: 8, NetIncome: 80 },
+                   '2024-03-31': { DilutedEPS: 10, NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20, earnGrowth: -5 }, null);
+    eq('PEG on shrinking earnings stays withheld', r.peg, null);
+    eq('and the reason is recorded', r.pegBlocked, true);
+  }
+  {
+    // No growth measured at all is NOT the same claim. A dash, not a verdict.
+    const t = mk({ '2025-03-31': { NetIncome: 100 } });
+    const r = computeRatios(t, { pe: 20 }, null);
+    eq('unmeasured growth leaves PEG null', r.peg, null);
+    ok('but is not reported as shrinking earnings', !r.pegBlocked, 'claims a verdict it cannot support');
+    eq('and names no basis', r.pegBasis, null);
+  }
+  ok('EPS is shown so the PEG inputs are visible', /'EPS',\s+'eps'/.test(SRC), 'EPS row missing');
+  ok('a computed PEG states which growth it used', /vs \$\{r\.pegBasis\}/.test(SRC), 'basis not shown');
 
   // ── bands ──
   eq('a high ROCE bands good', ratioBand('roce', 22), 'good');
