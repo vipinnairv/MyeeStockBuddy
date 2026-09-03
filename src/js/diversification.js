@@ -105,7 +105,7 @@ function renderDiversification(){
     el.innerHTML = `<div class="tax-sum-grid">${effHtml}</div>
       <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
         ${sp ? 'Correlation appears once the Risk &amp; Reward card above has loaded its price history.'
-             : 'Correlation needs price history via the data proxy — deploy the Worker in <code>proxy/README.md</code>.'}
+             : 'Correlation needs price history via the data proxy, deploy the Worker in <code>proxy/README.md</code>.'}
       </div>`;
     return;
   }
@@ -127,12 +127,12 @@ function renderDiversification(){
       ${effHtml}
       ${tile('Average correlation', m.avg.toFixed(2), v ? v.why : '', v ? v.col : 'var(--T3)',
         'How closely your holdings move together on average. 1.00 means identical, 0 means unrelated. High correlation means fewer real bets than the count suggests.')}
-      ${tile('Verdict', v ? v.word : '—', `${m.holdings} holdings · ${m.days} days`, v ? v.col : 'var(--T3)',
+      ${tile('Verdict', v ? v.word : '-', `${m.holdings} holdings · ${m.days} days`, v ? v.col : 'var(--T3)',
         'A plain reading of the average correlation.')}
     </div>
     ${rows ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:12px 0 6px">Most closely linked pairs</div>
     <div class="ts"><table style="min-width:420px"><thead><tr><th>Holding</th><th>Holding</th><th class="r">Correlation</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      Correlation is measured on daily moves over ${m.days} shared days and is <b>weight-blind</b> — it says nothing about position size, which is what "effective holdings" covers. Past correlation rises in a crash; treat a comfortable number with caution.
+      Correlation is measured on daily moves over ${m.days} shared days and is <b>weight-blind</b>, it says nothing about position size, which is what "effective holdings" covers. Past correlation rises in a crash; treat a comfortable number with caution.
     </div>`;
 }

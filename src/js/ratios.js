@@ -3,7 +3,7 @@
 // the market figures (price, P/E, market cap) the fundamentals feed supplies.
 //
 // All of it runs here, in the browser, in JavaScript. There is no server doing
-// the arithmetic — which is the point: nothing about what you look at or hold
+// the arithmetic, which is the point: nothing about what you look at or hold
 // is sent anywhere.
 //
 // Two rules govern every figure below.
@@ -32,11 +32,11 @@ function _finGroup(n, dp, isIndia){
 // Short forms are unavoidable on a statement - the full numbers do not fit -
 // but they are jargon to anyone outside finance, so each carries what it means.
 const FIN_ABBR = {
-  'Cr': 'Crore — 1,00,00,000, i.e. ten million',
-  'L':  'Lakh — 1,00,000, i.e. one hundred thousand',
-  'B':  'Billion — 1,000,000,000',
-  'M':  'Million — 1,000,000',
-  '×':  'Times — a multiple, not a percentage. 2× means twice.',
+  'Cr': 'Crore, 1,00,00,000, i.e. ten million',
+  'L':  'Lakh, 1,00,000, i.e. one hundred thousand',
+  'B':  'Billion, 1,000,000,000',
+  'M':  'Million, 1,000,000',
+  '×':  'Times, a multiple, not a percentage. 2× means twice.',
 };
 function _finUnit(u){
   const tip = FIN_ABBR[u];
@@ -78,7 +78,7 @@ function _rtGrowth(pair){
   return (pair.now - pair.prev) / pair.prev * 100;
 }
 // Earnings per share, period by period. The source's own diluted EPS is used
-// where it exists; otherwise EPS is what it is defined as — net profit divided
+// where it exists; otherwise EPS is what it is defined as, net profit divided
 // by the shares outstanding in that same period. Without this fallback a
 // company reporting both of those but no EPS line yielded no EPS at all, and
 // with it no EPS growth and so no PEG.
@@ -106,6 +106,32 @@ function _rtSpan(pair){
   return (pair && pair.nowDate && pair.prevDate) ? pair.prevDate + ' → ' + pair.nowDate : null;
 }
 
+// The newest period at which EVERY line a ratio needs is reported, and the
+// values there. This is the fix for a genuine error: reading each line at its
+// own latest date meant a 2026 income statement could be divided by a balance
+// sheet from years earlier, which produced a return on assets of 112%, net
+// income cannot exceed everything a company owns. A ratio is only a ratio if
+// its parts describe the same moment.
+//
+// A key may be an array of alternates, tried in order, for lines the source
+// reports under either of two names.
+function _rtCommon(t, keys){
+  if(!t || !t.line || !t.periodsAll) return null;
+  for(const d of t.periodsAll){
+    const vals = [];
+    let complete = true;
+    for(const key of keys){
+      const alts = Array.isArray(key) ? key : [key];
+      let v = null;
+      for(const k of alts){ const m = t.line[k]; if(m && m[d] != null){ v = m[d]; break; } }
+      if(v == null){ complete = false; break; }
+      vals.push(v);
+    }
+    if(complete) return { v: vals, date: d };
+  }
+  return null;
+}
+
 // First of several lines that is actually reported. Used where the source may
 // carry either of two equivalent names.
 function _rtFirst(t, keys){
@@ -116,49 +142,42 @@ function _rtFirst(t, keys){
 // ── The ratios ─────────────────────────────────────────────────────────────
 function computeRatios(t, fund, price){
   const f = fund || {};
-  const rev    = _rtVal(t, 'TotalRevenue');
-  const cogs   = _rtVal(t, 'CostOfRevenue');
-  const gross  = _rtVal(t, 'GrossProfit');
-  const opInc  = _rtVal(t, 'OperatingIncome');
-  const ebit   = _rtFirst(t, ['EBIT', 'OperatingIncome']);
-  const ebitda = _rtVal(t, 'EBITDA');
-  const pretax = _rtVal(t, 'PretaxIncome');
-  const tax    = _rtVal(t, 'TaxProvision');
-  const ni     = _rtVal(t, 'NetIncome');
-  const assets = _rtVal(t, 'TotalAssets');
-  const ca     = _rtVal(t, 'CurrentAssets');
-  const cl     = _rtVal(t, 'CurrentLiabilities');
-  const inv    = _rtVal(t, 'Inventory');
-  const ar     = _rtVal(t, 'AccountsReceivable');
-  const eq     = _rtVal(t, 'StockholdersEquity');
-  const cash   = _rtVal(t, 'CashAndCashEquivalents');
-  const debt   = _rtFirst(t, ['TotalDebt', 'LongTermDebt']);
-  const interest = _rtVal(t, 'InterestExpense');
-  const invCap = _rtVal(t, 'InvestedCapital');
-  const ocf    = _rtVal(t, 'OperatingCashFlow');
-  const capex  = _rtVal(t, 'CapitalExpenditure');
-  const fcfRep = _rtVal(t, 'FreeCashFlow');
-  const shares = _rtVal(t, 'OrdinarySharesNumber');
-
   const r = {};
-  const pct = (a, b) => { const q = _rtDiv(a, b); return q == null ? null : q * 100; };
+
+  // Every ratio below reads its inputs at the newest period where all of them
+  // exist together. Where that period differs between ratios it is recorded,
+  // so the panel can say which one a figure describes.
+  const on = (keys, fn) => {
+    const c = _rtCommon(t, keys);
+    if(!c) return null;
+    const out = fn.apply(null, c.v);
+    if(out != null && isFinite(out)) r._dates = r._dates || {};
+    return out;
+  };
+  const at = (keys) => { const c = _rtCommon(t, keys); return c ? c.date : null; };
+  const pctOf = (a, b) => { const q = _rtDiv(a, b); return q == null ? null : q * 100; };
 
   // Profitability
-  r.grossMargin = pct(gross != null ? gross : (rev != null && cogs != null ? rev - cogs : null), rev);
-  r.opMargin    = pct(opInc, rev);
-  r.netMargin   = pct(ni, rev);
-  r.roe         = pct(ni, eq);
-  r.roa         = pct(ni, assets);
-  // ROCE: operating profit against the capital actually tied up in the
-  // business. Capital employed must be positive for the ratio to mean anything.
-  const capEmployed = (assets != null && cl != null) ? assets - cl : null;
-  r.roce = (capEmployed != null && capEmployed > 0) ? pct(ebit, capEmployed) : null;
-  // ROIC uses after-tax operating profit. The effective tax rate is only
-  // trusted inside a sane band; outside it the ratio is left unreported rather
-  // than scaled by a nonsense rate.
-  const taxRate = _rtDiv(tax, pretax);
-  r.roic = (taxRate != null && taxRate >= 0 && taxRate <= 0.6 && ebit != null && invCap != null)
-         ? pct(ebit * (1 - taxRate), invCap) : null;
+  r.grossMargin = on([['GrossProfit'], 'TotalRevenue'], (g, rev) => pctOf(g, rev));
+  if(r.grossMargin == null)
+    r.grossMargin = on(['TotalRevenue', 'CostOfRevenue'], (rev, c) => pctOf(rev - c, rev));
+  r.opMargin  = on(['OperatingIncome', 'TotalRevenue'], (o, rev) => pctOf(o, rev));
+  r.netMargin = on(['NetIncome', 'TotalRevenue'], (n, rev) => pctOf(n, rev));
+  r.roe       = on(['NetIncome', 'StockholdersEquity'], (n, e) => pctOf(n, e));
+  r.roa       = on(['NetIncome', 'TotalAssets'], (n, a) => pctOf(n, a));
+  r.periodUsed = at(['NetIncome', 'TotalAssets']) || at(['NetIncome', 'TotalRevenue']);
+  // ROCE: operating profit against capital actually tied up in the business.
+  // Capital employed must be positive for the ratio to mean anything.
+  r.roce = on([['EBIT', 'OperatingIncome'], 'TotalAssets', 'CurrentLiabilities'],
+    (e, a, c) => { const cap = a - c; return cap > 0 ? pctOf(e, cap) : null; });
+  // ROIC uses after-tax operating profit. The effective tax rate is trusted
+  // only inside a sane band; outside it the ratio is withheld rather than
+  // scaled by a nonsense rate.
+  r.roic = on([['EBIT', 'OperatingIncome'], 'PretaxIncome', 'TaxProvision', 'InvestedCapital'],
+    (e, pre, tax, cap) => {
+      const rate = _rtDiv(tax, pre);
+      return (rate != null && rate >= 0 && rate <= 0.6) ? pctOf(e * (1 - rate), cap) : null;
+    });
 
   // Growth
   const revPair = _rtPair(t, 'TotalRevenue'), niPair = _rtPair(t, 'NetIncome');
@@ -171,31 +190,36 @@ function computeRatios(t, fund, price){
   r.epsSpan   = _rtSpan(epsPair);
 
   // Leverage
-  r.debtToEquity = _rtDiv(debt, eq);
-  const netDebt = (debt != null && cash != null) ? debt - cash : null;
-  r.netDebtEbitda = (netDebt != null && netDebt > 0) ? _rtDiv(netDebt, ebitda) : (netDebt != null ? 0 : null);
-  r.interestCover = (interest != null && Math.abs(interest) > RT_EPS)
-                  ? _rtDiv(ebit, Math.abs(interest)) : null;
+  r.debtToEquity = on([['TotalDebt', 'LongTermDebt'], 'StockholdersEquity'], (d, e) => _rtDiv(d, e));
+  r.netDebtEbitda = on([['TotalDebt', 'LongTermDebt'], 'CashAndCashEquivalents', 'EBITDA'],
+    (d, c, e) => { const nd = d - c; return nd <= 0 ? 0 : _rtDiv(nd, e); });
+  r.interestCover = on([['EBIT', 'OperatingIncome'], 'InterestExpense'],
+    (e, i) => Math.abs(i) > RT_EPS ? _rtDiv(e, Math.abs(i)) : null);
 
   // Liquidity
-  r.currentRatio = _rtDiv(ca, cl);
-  r.quickRatio   = (ca != null && inv != null) ? _rtDiv(ca - inv, cl) : null;
+  r.currentRatio = on(['CurrentAssets', 'CurrentLiabilities'], (a, l) => _rtDiv(a, l));
+  r.quickRatio   = on(['CurrentAssets', 'Inventory', 'CurrentLiabilities'], (a, i, l) => _rtDiv(a - i, l));
 
   // Efficiency
-  r.assetTurnover = _rtDiv(rev, assets);
-  r.invTurnover   = _rtDiv(cogs, inv);
-  r.receivableDays = (() => { const q = _rtDiv(ar, rev); return q == null ? null : q * 365; })();
+  r.assetTurnover  = on(['TotalRevenue', 'TotalAssets'], (rev, a) => _rtDiv(rev, a));
+  r.invTurnover    = on(['CostOfRevenue', 'Inventory'], (c, i) => _rtDiv(c, i));
+  r.receivableDays = on(['AccountsReceivable', 'TotalRevenue'],
+    (ar, rev) => { const q = _rtDiv(ar, rev); return q == null ? null : q * 365; });
 
   // Cash quality
-  const fcf = fcfRep != null ? fcfRep : ((ocf != null && capex != null) ? ocf + capex : null);
-  r.fcf = fcf;
-  r.fcfMargin = pct(fcf, rev);
-  // Only meaningful when the company actually made a profit; against a loss the
-  // ratio flips sign and reads as if cash conversion were terrible or superb.
-  r.cashConversion = (ni != null && ni > 0) ? _rtDiv(ocf, ni) : null;
+  r.fcf = _rtVal(t, 'FreeCashFlow');
+  if(r.fcf == null) r.fcf = on(['OperatingCashFlow', 'CapitalExpenditure'], (o, c) => o + c);
+  r.fcfMargin = (r.fcf != null) ? on(['TotalRevenue'], (rev) => pctOf(r.fcf, rev)) : null;
+  // Only meaningful against a profit; against a loss the ratio flips sign and
+  // reads as if cash conversion were terrible or superb.
+  r.cashConversion = on(['OperatingCashFlow', 'NetIncome'], (o, n) => n > 0 ? _rtDiv(o, n) : null);
 
   // Valuation. These need the market's price, not just the accounts.
   const p = (typeof price === 'number' && isFinite(price) && price > 0) ? price : null;
+  const eq = _rtVal(t, 'StockholdersEquity'), rev = _rtVal(t, 'TotalRevenue');
+  const shares = _rtVal(t, 'OrdinarySharesNumber');
+  const netDebtV = on([['TotalDebt', 'LongTermDebt'], 'CashAndCashEquivalents'], (d, c) => d - c);
+  const ebitdaV = _rtVal(t, 'EBITDA');
   let eps = null;
   if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
   r.eps = eps;
@@ -207,9 +231,9 @@ function computeRatios(t, fund, price){
   r.earningsYield = r.pe != null ? _rtDiv(100, r.pe) : null;
   r.divYield = (f.divYield != null && isFinite(f.divYield)) ? f.divYield : null;
   // EV/EBITDA from the accounts when the feed does not carry it.
-  const ev = (f.mktCap != null && netDebt != null) ? f.mktCap + netDebt : null;
+  const ev = (f.mktCap != null && netDebtV != null) ? f.mktCap + netDebtV : null;
   r.evEbitda = (f.evEbitda != null && isFinite(f.evEbitda) && f.evEbitda > 0) ? f.evEbitda
-             : ((ev != null && ebitda != null && ebitda > 0) ? _rtDiv(ev, ebitda) : null);
+             : ((ev != null && ebitdaV != null && ebitdaV > 0) ? _rtDiv(ev, ebitdaV) : null);
   // PEG: P/E divided by the growth rate it is being paid for. Against flat or
   // shrinking earnings the ratio has no meaning at all - a negative PEG is not
   // "cheap" - so it is withheld rather than shown as a bargain.
@@ -244,7 +268,9 @@ function computeRatios(t, fund, price){
   const deciding = annualMeasures.length ? annualMeasures[0] : feedMeasure;
   r.pegBlocked = !!(r.pe != null && deciding && !pegOn);
   r.pegBlockedOnAnnual = !!(r.pegBlocked && deciding.annual);
-  r.pegBlockedBy = r.pegBlocked ? deciding : null;
+  r.pegBlockedBy = r.pegBlocked
+    ? { label: deciding.label, value: deciding.v, span: deciding.span, annual: deciding.annual }
+    : null;
 
   return r;
 }
@@ -296,7 +322,12 @@ function isLender(fund){
 }
 
 // ── Display ────────────────────────────────────────────────────────────────
-const RT_DASH = '<span class="rt-na">—</span>';
+// Three markers, each a different statement, none of them a blank or a dash a
+// reader has to decode:
+//   n/r  the source did not report this line
+//   n/a  the ratio does not describe this kind of business
+//   n/m  it applies, but cannot be computed to anything meaningful
+const RT_DASH = '<span class="rt-na" title="Not reported: the data source did not carry this line.">n/r</span>';
 function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
 function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + _finUnit('×'); }
 function _rtRaw(v, dp){ return v == null ? RT_DASH : _finGroup(v, dp == null ? 2 : dp, true); }
@@ -316,7 +347,7 @@ const RT_GROUPS = [
   ['📈 Growth', [
     ['Revenue growth',    'revGrowth',   _rtPct, 'Change in revenue against the previous reported period.'],
     ['Net income growth', 'niGrowth',    _rtPct, 'Change in net profit against the previous reported period.'],
-    ['EPS growth',        'epsGrowth',   _rtPct, 'Change in earnings per share — growth after any dilution.'],
+    ['EPS growth',        'epsGrowth',   _rtPct, 'Change in earnings per share, growth after any dilution.'],
   ]],
   ['⚖️ Leverage & solvency', [
     ['Debt / Equity',     'debtToEquity',  v => _rtRaw(v), 'Borrowings against shareholders’ funds. Above 1 means the business leans more on lenders than on owners.'],
@@ -325,7 +356,7 @@ const RT_GROUPS = [
   ]],
   ['💧 Liquidity', [
     ['Current ratio',     'currentRatio', v => _rtRaw(v), 'Short-term assets against short-term dues. Below 1 means near-term bills exceed near-term resources.'],
-    ['Quick ratio',       'quickRatio',   v => _rtRaw(v), 'The same, excluding inventory — what could be paid without selling stock first.'],
+    ['Quick ratio',       'quickRatio',   v => _rtRaw(v), 'The same, excluding inventory, what could be paid without selling stock first.'],
   ]],
   ['⚙️ Efficiency', [
     ['Asset turnover',    'assetTurnover', v => _rtX(v),   'Revenue generated per rupee of assets.'],
@@ -333,17 +364,17 @@ const RT_GROUPS = [
     ['Receivable days',   'receivableDays', _rtDays,       'Average days customers take to pay.'],
   ]],
   ['💵 Cash quality', [
-    ['FCF margin',        'fcfMargin',     _rtPct,         'Free cash flow as a share of revenue — cash left after running and maintaining the business.'],
+    ['FCF margin',        'fcfMargin',     _rtPct,         'Free cash flow as a share of revenue, cash left after running and maintaining the business.'],
     ['Cash conversion',   'cashConversion', v => _rtX(v),  'Operating cash flow divided by net profit. Well under 1 means profits are not turning into cash.'],
   ]],
   ['🏷️ Valuation', [
     ['EPS',               'eps',           v => _rtRaw(v),    'Earnings per share: net profit divided by the shares outstanding, or the source\u2019s own diluted figure where it reports one.'],
     ['P/E',               'pe',            v => _rtRaw(v, 1), 'Price paid per rupee of annual earnings.'],
     ['PEG',               'peg',           v => _rtRaw(v),    'P/E divided by the earnings growth rate being paid for. Around 1 means growth and price are roughly in line; under 1 is the classic screen for growth at a reasonable price.'],
-    ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value — the accounting net worth per share.'],
+    ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value, the accounting net worth per share.'],
     ['P/S',               'ps',            v => _rtRaw(v),    'Price against annual revenue. Useful where earnings are small or negative.'],
     ['EV / EBITDA',       'evEbitda',      v => _rtRaw(v, 1), 'Whole-company value (market cap plus net debt) against operating earnings. Comparable across different debt loads.'],
-    ['Earnings yield',    'earningsYield', _rtPct,            'Earnings per rupee invested — the P/E inverted, so it can be read against a deposit rate.'],
+    ['Earnings yield',    'earningsYield', _rtPct,            'Earnings per rupee invested, the P/E inverted, so it can be read against a deposit rate.'],
     ['Dividend yield',    'divYield',      _rtPct,            'Annual dividend as a share of the current price.'],
   ]],
 ];
@@ -364,19 +395,25 @@ function ratiosHtml(t, fund, price){
       tip += ' Growth measured: ' + r.pegGrowths.map(g =>
         g.label + ' ' + g.value.toFixed(1) + '%' + (g.span ? ' (' + g.span + ')' : '')).join('; ') + '.';
     }
-    let note = '';
+    let note = '', display = shown;
     if(key === 'peg'){
       if(v != null && r.pegBasis){
-        note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ' · ' + r.pegSpan : ''}</div>`;
+        note = `<div class="rt-note">vs ${r.pegBasis}${r.pegSpan ? ', ' + r.pegSpan : ''}</div>`;
       } else if(v == null && r.pegBlocked && r.pegBlockedBy){
         const b = r.pegBlockedBy;
-        const fig = b.value < 0 ? 'fell ' + Math.abs(b.value).toFixed(1) + '%' : 'flat';
-        note = `<div class="rt-note">earnings ${fig} (${b.label}${b.span ? ', ' + b.span : ''})` +
-               `${r.pegBlockedOnAnnual ? '' : ' — one quarter only'}</div>`;
+        // The figure itself, not merely the fact that one exists. PEG divides
+        // the P/E by a growth rate; with no positive growth there is no value
+        // to print, so the cell carries "n/m" (not meaningful) and the growth
+        // rate that made it so. That is distinct from "n/a", which means the
+        // ratio does not describe this kind of business at all.
+        const fig = (b.value < 0 ? '-' : '+') + Math.abs(b.value).toFixed(1) + '%';
+        display = `<span class="rt-na" title="Not meaningful: PEG divides the P/E by the growth rate, and there is no positive growth to divide by.">n/m</span>`;
+        note = `<div class="rt-note">growth ${fig} (${b.label}${b.span ? ', ' + b.span : ''})` +
+               `${r.pegBlockedOnAnnual ? '' : ', one quarter only'}</div>`;
       }
     }
     return `<tr class="rt-row"><th scope="row" class="rt-lbl" title="${tip.replace(/"/g,'&quot;')}">${label}</th>
-      <td class="rt-val ${band ? 'rt-'+band : ''}">${shown}${note}</td></tr>`;
+      <td class="rt-val ${band ? 'rt-'+band : ''}">${display}${note}</td></tr>`;
   };
   const groups = RT_GROUPS.map(([title, rows]) => `
     <div class="rt-card">
@@ -384,14 +421,14 @@ function ratiosHtml(t, fund, price){
       <table class="rt-table"><tbody>${rows.map(x => cell(x[0], x[1], x[2], x[3])).join('')}</tbody></table>
     </div>`).join('');
   const lenderNote = lender
-    ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders — for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
+    ? `<div class="rt-warn">This looks like a bank or financial company. Liquidity, turnover and debt ratios are marked <b>n/a</b> because they describe manufacturers and retailers, not lenders, for a bank, deposits are raw material, not a liability to worry about. Judge it on ROE, net margin and growth instead.</div>`
     : '';
   return `<div class="rt-wrap">
     <div class="rt-h">📐 Key Ratios</div>
     ${lenderNote}
     <div class="rt-grid">${groups}</div>
-    <div class="rt-foot">Computed in your browser from the reported statements above and the current price — nothing is sent anywhere.
-      A dash means the source did not carry the inputs, so the ratio is not shown rather than estimated.
+    <div class="rt-foot">Computed in your browser from the reported statements above and the current price, nothing is sent anywhere.
+      n/r means the source did not carry the inputs, so the ratio is not shown rather than estimated.
       Colours are broad rules of thumb across ordinary businesses; a capital-heavy company and an asset-light one are not judged on the same numbers.
       Hover any label for what it measures.</div>
   </div>`;

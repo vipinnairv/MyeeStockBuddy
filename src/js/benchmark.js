@@ -112,14 +112,14 @@ async function renderBenchmark(){
   }
   const r = _bmReplay(_pmLots(), _bmSeries, new Date());
   if(!r){
-    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings could be dated against ${BENCH_LABEL} yet — add purchase dates to compare.</div>`;
+    el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">No holdings could be dated against ${BENCH_LABEL} yet, add purchase dates to compare.</div>`;
     return;
   }
   const ahead = r.valueDiff >= 0;
   const col = ahead ? '#00B386' : '#D93025';
   const tile = (lbl,val,sub,c) => `<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div>`
     + `<div class="tax-sum-box-val" style="color:${c}">${val}</div><div class="tax-sum-box-sub">${sub}</div></div>`;
-  const pct = v => v==null ? '—' : (v>=0?'+':'')+v.toFixed(2)+'%';
+  const pct = v => v==null ? '-' : (v>=0?'+':'')+v.toFixed(2)+'%';
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Your XIRR', pct(r.portXirr), 'your actual picks', r.portXirr>=0?'#00B386':'#D93025')}
     ${tile(BENCH_LABEL+' XIRR', pct(r.benchXirr), 'same money, same dates', '#1A73E8')}
@@ -128,7 +128,7 @@ async function renderBenchmark(){
         r.xirrDiff==null?'':pct(r.xirrDiff)+' a year', col)}
   </div>
   <div style="font-size:11px;color:var(--T3);margin-top:8px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-    Every rupee you invested is replayed into ${BENCH_LABEL} <b>on the date you actually invested it</b>, then both sides get the same XIRR — so this isolates your stock picking, not your timing.
+    Every rupee you invested is replayed into ${BENCH_LABEL} <b>on the date you actually invested it</b>, then both sides get the same XIRR, so this isolates your stock picking, not your timing.
     ${r.skipped ? ` <b>${r.skipped}</b> holding${r.skipped===1?'':'s'} excluded from both sides (no usable purchase date).` : ''}
   </div>`;
 }

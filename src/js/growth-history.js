@@ -71,7 +71,7 @@ function renderGrowth(){
   const st = _ghStats(list);
   if(!st || st.days < 2){
     el.innerHTML = `<div style="font-size:12.5px;color:var(--T3);padding:10px 0">
-      📈 Building your growth history — <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
+      📈 Building your growth history, <b>${st ? st.days : 0}</b> day${(st&&st.days===1)?'':'s'} recorded so far.
       A point is saved each day you open the app; the curve appears from the second day.
       <div style="margin-top:5px;font-size:11.5px">This is a forward record: it can't reconstruct value from before tracking began.</div>
     </div>`;
@@ -92,7 +92,7 @@ function renderGrowth(){
   el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
     ${tile('Since tracking began', (st.change>=0?'+':'')+st.change.toFixed(2)+'%', `${st.days} days · from ${st.firstDate}`, col)}
     ${tile('Peak value', F.lac(st.peak), 'on '+st.peakDate, '#1A73E8')}
-    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '—', '#D93025')}
+    ${tile('Worst drawdown', '-'+st.maxDD.toFixed(1)+'%', st.maxDDDate ? 'on '+st.maxDDDate : '-', '#D93025')}
     ${tile('From peak now', st.currentDD<=0.005?'At peak':'-'+st.currentDD.toFixed(1)+'%', 'current value '+F.lac(st.last), st.currentDD<=0.005?'#00B386':'#F59E0B')}
   </div>
   <div style="overflow-x:auto">

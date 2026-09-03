@@ -18,11 +18,11 @@ function _ifSoldRows(lots, asOf, ltDays){
     if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return;
     const d = l.buyDate ? new Date(l.buyDate) : null;
     if(!d || isNaN(d.getTime()) || d > asOf){
-      undated.push({ name:l.name || '—', cls:l.cls || '', gain:cur - inv });
+      undated.push({ name:l.name || '-', cls:l.cls || '', gain:cur - inv });
       return;                                        // cannot be classified: excluded
     }
     const days = Math.round((asOf - d) / 864e5);
-    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    rows.push({ name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                 gain:cur - inv, holdingDays:days, isLTCG: days > LT });
   });
   return { rows, undated };
@@ -87,14 +87,14 @@ function renderIfSold(){
       ${tile(`STCG tax @${r.stcgRatePct}%`, F.inr(r.stcgTax), `on ${F.inr(r.stcgTaxable)}`, '#F59E0B')}
       ${tile('Estimated total', F.inr(r.totalWithCess), `${F.inr(r.total)} + 4% cess`, r.total>0?'#D93025':'#00B386')}
     </div>
-    ${r.vdaGain>0?`<div style="font-size:12px;color:var(--T2);margin-bottom:10px">Includes crypto (VDA) gains of ${F.inr(r.vdaGain)} taxed at ${r.vdaRatePct}% — losses cannot be set off.</div>`:''}
+    ${r.vdaGain>0?`<div style="font-size:12px;color:var(--T2);margin-bottom:10px">Includes crypto (VDA) gains of ${F.inr(r.vdaGain)} taxed at ${r.vdaRatePct}%, losses cannot be set off.</div>`:''}
     ${body?`<div class="ts"><table style="min-width:660px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Value now</th><th class="r">Unrealised</th><th class="r">Held</th><th>Category</th></tr></thead><tbody>${body}</tbody></table></div>`
           :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No datable holdings to estimate.</div>`}
     ${r.undated.length?`<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
-      ⚠️ <b>${r.undated.length} holding${r.undated.length===1?'':'s'} excluded</b> — no purchase date, so they cannot be classified long or short term. Add a purchase date to include them.
+      ⚠️ <b>${r.undated.length} holding${r.undated.length===1?'':'s'} excluded</b>, no purchase date, so they cannot be classified long or short term. Add a purchase date to include them.
       <div style="margin-top:5px;font-size:11.5px;color:var(--T2)">${r.undated.slice(0,5).map(u=>u.name).join(', ')}${r.undated.length>5?` +${r.undated.length-5} more`:''}</div>
     </div>`:''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      A <b>what-if</b> estimate on today's prices — nothing here is booked. The app stores one average cost and one purchase date per holding, so a position built from several purchases is estimated from its average; actual tax on sale is computed FIFO lot by lot and will differ. Prices move, and so will this. Confirm with your CA before acting.
+      A <b>what-if</b> estimate on today's prices, nothing here is booked. The app stores one average cost and one purchase date per holding, so a position built from several purchases is estimated from its average; actual tax on sale is computed FIFO lot by lot and will differ. Prices move, and so will this. Confirm with your CA before acting.
     </div>`;
 }

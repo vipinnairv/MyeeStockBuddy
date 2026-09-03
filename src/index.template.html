@@ -76,13 +76,13 @@
 .fin-table tbody th{text-transform:none;letter-spacing:0}
 .fin-table thead th{position:sticky;top:0;z-index:2;background:var(--surface2);color:var(--text3);
   font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
-  padding:9px 14px;text-align:right;border-bottom:2px solid var(--border2);white-space:nowrap}
+  padding:10px 18px;text-align:right;border-bottom:2px solid var(--border2);white-space:nowrap}
 .fin-table thead th:first-child{text-align:left}
 .fin-table tbody th{position:sticky;left:0;z-index:1;background:var(--surface);
-  text-align:left;font-weight:600;color:var(--text2);padding:9px 14px;white-space:nowrap;
+  text-align:left;font-weight:600;color:var(--text2);padding:10px 16px 10px 18px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .fin-table tbody td{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;
-  font-feature-settings:'tnum' 1;color:var(--text);padding:9px 14px;white-space:nowrap;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:10px 18px 10px 16px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .fin-table tbody tr:nth-child(even) th,.fin-table tbody tr:nth-child(even) td{background:var(--surface2)}
 .fin-table tbody tr:hover th,.fin-table tbody tr:hover td{background:var(--glow)}
@@ -92,22 +92,23 @@
 .fin-h{font-size:13px;font-weight:800;letter-spacing:.2px;margin:0 0 8px}
 .rt-wrap{margin-bottom:22px}
 .rt-h{font-size:15px;font-weight:800;margin-bottom:10px}
-.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}
+.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px}
 .rt-card{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
 .rt-card-h{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;
   color:var(--text3);padding:9px 13px;background:var(--surface2);border-bottom:1px solid var(--border)}
 .rt-table{width:100%;min-width:0;border-collapse:collapse;font-family:var(--font-num);table-layout:auto}
-.rt-lbl{text-align:left;font-weight:600;font-size:12.5px;color:var(--text2);padding:7px 13px;cursor:help;
-  text-transform:none;letter-spacing:0;white-space:normal;border-bottom:1px solid var(--border)}
+.rt-lbl{text-align:left;font-weight:600;font-size:12.5px;color:var(--text2);
+  padding:9px 10px 9px 16px;cursor:help;width:55%;
+  text-transform:none;letter-spacing:0;white-space:nowrap;border-bottom:1px solid var(--border)}
 .rt-val{text-align:right;font-weight:800;font-size:13.5px;font-variant-numeric:tabular-nums;
-  font-feature-settings:'tnum' 1;color:var(--text);padding:7px 13px;white-space:nowrap;
+  font-feature-settings:'tnum' 1;color:var(--text);padding:9px 16px 9px 10px;white-space:nowrap;
   border-bottom:1px solid var(--border)}
 .rt-row:last-child .rt-lbl,.rt-row:last-child .rt-val{border-bottom:none}
 .rt-good{color:var(--green)}
 .rt-fair{color:var(--accent)}
 .rt-weak{color:var(--red)}
 .rt-na{color:var(--text3);font-weight:600}
-.rt-note{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.2px}
+.rt-note{font-size:10.5px;font-weight:600;color:var(--text3);letter-spacing:.2px;margin-top:2px;white-space:normal}
 .rt-warn{font-size:12px;line-height:1.5;color:var(--text2);background:var(--surface2);
   border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:9px 13px;margin-bottom:12px}
 .rt-foot{font-size:11px;line-height:1.6;color:var(--text3);background:var(--surface2);
@@ -1737,7 +1738,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Company Name</label>
-              <input class="form-input" id="companyName" placeholder="e.g., BSE Limited" />
+              <input class="form-input" id="companyName" placeholder="e.g. BSE Limited" />
             </div>
             <div class="form-group" style="position:relative;">
               <label class="form-label">Symbol</label>
@@ -2534,7 +2535,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
 
   <!-- ══ Portfolio X-Ray (Trendlyne-style) ══ -->
   <div class="card" style="margin-bottom:18px;border-top:3px solid #7C3AED">
-    <div class="ch"><span class="ct">🩻 Portfolio X-Ray — Equity Allocation</span><span style="font-size:10.5px;color:var(--T3)">India + US equity · by current value</span></div>
+    <div class="ch"><span class="ct">🩻 Portfolio X-Ray, Equity Allocation</span><span style="font-size:10.5px;color:var(--T3)">India + US equity · by current value</span></div>
     <div class="cb" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px">
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Sector / Industry</div><div id="xray-sector"></div></div>
       <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin-bottom:10px">Market Cap</div><div id="xray-mcap"></div></div>
@@ -3171,7 +3172,7 @@ function selectMarket(mode) {
 
   // ── Company name placeholder
   const cnEl = document.getElementById('companyName');
-  const cnHints = { india:'e.g., BSE Limited', us:'e.g., Apple Inc', crypto:'e.g., Bitcoin', commodity:'e.g., Gold' };
+  const cnHints = { india:'e.g. BSE Limited', us:'e.g. Apple Inc', crypto:'e.g. Bitcoin', commodity:'e.g. Gold' };
   if (cnEl) cnEl.placeholder = cnHints[mode];
 
   // ── Reset prior selection
@@ -3697,7 +3698,7 @@ function searchStocks(query) {
   const exactTicker = db.filter(s => s[1].toUpperCase() === q || (s[2] && s[2].toUpperCase() === q));
   if (exactTicker.length) return exactTicker.slice(0, 8);
 
-  // 2. Ticker starts-with (e.g., "HDFC" → HDFCBANK, HDFCLIFE, HDFCAMC)
+  // 2. Ticker starts-with (e.g. "HDFC" → HDFCBANK, HDFCLIFE, HDFCAMC)
   const prefixTicker = db.filter(s => s[1].toUpperCase().startsWith(q) || (s[2] && s[2].toUpperCase().startsWith(q)));
   if (prefixTicker.length >= 3) return prefixTicker.slice(0, 8);
 
@@ -6437,7 +6438,7 @@ function _fmtCap(v, isIndia) {
 }
 
 // ============================================================
-// OPENING MARKET DASHBOARD — live indices + pattern reads
+// OPENING MARKET DASHBOARD, live indices + pattern reads
 // ============================================================
 // ── Symbol autocomplete ────────────────────────────────────────────────────
 // Yahoo's search endpoint is one of the few that still answers without a crumb
@@ -7010,7 +7011,7 @@ function renderFundamentals(ar) {
     if (!row) return;
     if (!f) {
       row.innerHTML = `<div style="background:var(--surface2);border:1px dashed var(--border2);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--text3);line-height:1.5;">
-        💡 Couldn't reach the keyless valuation feed right now (a public proxy or Yahoo crumb blocked it). It often works on retry — or add an <b>Alpha Vantage</b> key (NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> for reliable <b>P/E, market cap, EPS, dividend yield & sector</b>.</div>`;
+        💡 Couldn't reach the keyless valuation feed right now (a public proxy or Yahoo crumb blocked it). It often works on retry, or add an <b>Alpha Vantage</b> key (NSE/BSE & US) or <b>FMP</b> key (US) in <button onclick="openByok&&openByok()" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">🔑 API Keys</button> for reliable <b>P/E, market cap, EPS, dividend yield & sector</b>.</div>`;
       return;
     }
     const fc = [];
@@ -8832,7 +8833,7 @@ def miyee_momentum(closes):
           return window._miyeePyPromise;
         };
 
-        // JS mirror of the Python engine — used until Pyodide is ready.
+        // JS mirror of the Python engine, used until Pyodide is ready.
         const _jsCalc = (a) => {
           // Reuses the app's single RSI/EMA implementations rather than keeping
           // private copies - duplicated indicator math is how the chart and the
@@ -8904,7 +8905,7 @@ def miyee_momentum(closes):
           }
 
           // ── Industry / Sector from the data model ─────────────────────────
-          let _ind='—', _sec='—';
+          let _ind='-', _sec='-';
           const _entry = (typeof selectedStockEntry!=='undefined') ? selectedStockEntry : null;
           try {
             if (marketMode==='us') { _sec=(_entry&&_entry[3])||'US Equity'; }
@@ -11461,7 +11462,7 @@ function showGDrivePanel(){
 // MF state already in S.mf = [] - seeded below
 
 function xirr(cfs){
-  // cfs: [{date:Date, amount:Number}] — outflows negative, inflows positive.
+  // cfs: [{date:Date, amount:Number}], outflows negative, inflows positive.
   // Newton-Raphson with a bracketed bisection fallback for robustness.
   if(!cfs||cfs.length<2) return null;
   let neg=false,pos=false; for(const c of cfs){ if(c.amount<0)neg=true; if(c.amount>0)pos=true; }
@@ -11708,7 +11709,7 @@ function renderTaxation(){
     </div>
     ${unmatched.length ? `<div style="font-size:12px;color:var(--T1);margin-top:8px;padding:11px 14px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
       ⚠️ <strong>${unmatched.length} sale${unmatched.length===1?'':'s'} could not be matched to a purchase</strong> and ${unmatched.length===1?'is':'are'} <strong>excluded</strong> from the figures above - the cost basis and holding period are unknown, and guessing them would misstate your tax.
-      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date} — <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
+      <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">${unmatched.slice(0,6).map(u=>`• ${u.date}, <b>${u.name}</b> · ${(+u.qty).toFixed(2)} units (${u.reason})`).join('<br>')}${unmatched.length>6?`<br>• …and ${unmatched.length-6} more`:''}</div>
       <div style="margin-top:7px;font-size:11.5px;color:var(--T2)">Add the matching <b>BUY</b> in the Transactions tab and this recomputes automatically.</div>
     </div>` : ''}
     <div style="font-size:11.5px;color:var(--T2);margin-top:8px;padding:10px 14px;background:var(--GL);border-radius:var(--r3);border-left:3px solid var(--G)">
@@ -11811,7 +11812,7 @@ function renderXRay(){
   // Value-weighted valuation metrics (coverage-aware)
   const w=key=>{let ww=0,acc=0;book.forEach(x=>{const v=x[key];if(v!=null&&isFinite(v)&&v>0&&x.cur>0){ww+=x.cur;acc+=x.cur*v;}});return{v:ww>0?acc/ww:null,cov:totV>0?ww/totV*100:0};};
   const pe=w('pe'),pb=w('pb'),dy=w('dy');
-  const vtile=(lbl,o,fmt,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${o.v!=null?fmt(o.v):'—'}</div><div class="tax-sum-box-sub">${o.v!=null?o.cov.toFixed(0)+'% coverage':'add data in holding'}</div></div>`;
+  const vtile=(lbl,o,fmt,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${lbl}</div><div class="tax-sum-box-val" style="color:${c}">${o.v!=null?fmt(o.v):'-'}</div><div class="tax-sum-box-sub">${o.v!=null?o.cov.toFixed(0)+'% coverage':'add data in holding'}</div></div>`;
   valEl.innerHTML=`<div class="tax-sum-grid">
     ${vtile('Weighted P/E',pe,v=>v.toFixed(1),'#1A73E8')}
     ${vtile('Weighted P/B',pb,v=>v.toFixed(2),'#7C3AED')}
@@ -11965,7 +11966,7 @@ async function fetchGSheetLTP(){
       // Support both comma and tab delimited
       const parts=line.split(/,|\t/).map(s=>s.trim().replace(/^"|"$/g,''));
       if(parts.length<3) return;
-      const [cls,,ticker,ltp]=parts.length>=4?parts:[parts[0],null,parts[1],parts[2]];
+      const [cls,ticker,ltp]=parts.length>=4?parts:[parts[0],null,parts[1],parts[2]];
       // handle 3-col format: AssetClass, Ticker, LTP
       const tickerVal=parts.length>=4?parts[2]:parts[1];
       const ltpVal=parts.length>=4?parts[3]:parts[2];
@@ -12895,15 +12896,15 @@ function addToPortfolioFromAnalysis() {
     const vol=k>1? Math.sqrt((sum2-sum*sum/k)/(k-1))*Math.sqrt(252)*100 : null;
 
     const tile=(l,v,c)=>`<div class="tax-sum-box"><div class="tax-sum-box-lbl">${l}</div><div class="tax-sum-box-val" style="color:${c||'var(--T1)'}">${v}</div></div>`;
-    const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
+    const pct=v=>v==null?'-':(v>=0?'+':'')+v.toFixed(1)+'%';
     const g=v=>v==null?'var(--T3)':(v>=0?'var(--G)':'var(--R)');
     document.getElementById('mfnav-metrics').innerHTML=
       tile('Latest NAV', cur(last.nav)+'<div style="font-size:10px;color:var(--T3)">'+last.t.toLocaleDateString('en-IN')+'</div>','var(--P)')+
       tile('1Y Return', pct(ret(365)), g(ret(365)))+
       tile('3Y CAGR', pct(cagr(1095)), g(cagr(1095)))+
       tile('5Y CAGR', pct(cagr(1825)), g(cagr(1825)))+
-      tile('Max Drawdown', mdd?(mdd*100).toFixed(1)+'%':'—','var(--R)')+
-      tile('Volatility (ann.)', vol==null?'—':vol.toFixed(1)+'%');
+      tile('Max Drawdown', mdd?(mdd*100).toFixed(1)+'%':'-','var(--R)')+
+      tile('Volatility (ann.)', vol==null?'-':vol.toFixed(1)+'%');
 
     // Chart last ~3Y for readability.
     const cut=last.t.getTime()-1100*864e5; const view=ser.filter(p=>p.t.getTime()>=cut);
@@ -12989,7 +12990,7 @@ window.mfFormFind = async function(){
   if(sel) sel.innerHTML='<option>Searching…</option>';
   let list=[];
   try{ const r=await fetch('https://api.mfapi.in/mf/search?q='+encodeURIComponent(q)); list=await r.json(); }
-  catch(e){ if(sel) sel.innerHTML='<option value="">Search failed — check connection</option>'; return; }
+  catch(e){ if(sel) sel.innerHTML='<option value="">Search failed, check connection</option>'; return; }
   if(!Array.isArray(list)||!list.length){ if(sel) sel.innerHTML='<option value="">No AMFI schemes matched</option>'; return; }
   const tokens=q.toLowerCase().split(/\s+/).filter(Boolean);
   const matches=list.filter(x=>{const nm=(x.schemeName||'').toLowerCase(); return tokens.every(tk=>nm.includes(tk));});
@@ -13007,7 +13008,7 @@ window.mfFormLink = async function(){
 };
 window.mfRefreshLiveNAV = async function(){
   const linked=(typeof S!=='undefined'&&S.mf?S.mf:[]).filter(f=>f.schemeCode);
-  if(!linked.length){ if(typeof toast==='function') toast('No funds linked yet — Edit a fund → 🔗 Link Live NAV','err'); return; }
+  if(!linked.length){ if(typeof toast==='function') toast('No funds linked yet, Edit a fund → 🔗 Link Live NAV','err'); return; }
   if(typeof toast==='function') toast('Fetching live NAV for '+linked.length+' fund(s)…');
   let ok=0;
   for(const f of linked){ const nav=await mfFetchLatestNAV(f.schemeCode); if(nav!=null){ f.currentNAV=nav; ok++; } }

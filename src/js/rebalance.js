@@ -93,10 +93,10 @@ function renderRebalance(){
       <td class="tn">${r.label}</td>
       <td class="r tm">${r.actualPct.toFixed(1)}%</td>
       <td class="r"><input type="number" min="0" max="100" step="any" value="${r.hasTarget ? r.targetPct : ''}"
-          placeholder="—" onchange="rbSetTarget('${r.key}', this.value)"
+          placeholder="-" onchange="rbSetTarget('${r.key}', this.value)"
           style="width:74px;text-align:right;padding:4px 7px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--T1);font-size:12px"></td>
-      <td class="r tm" style="color:${col};font-weight:600">${r.driftPct == null ? '—' : (r.driftPct>=0?'+':'')+r.driftPct.toFixed(1)+'%'}</td>
-      <td class="r tm" style="color:${col}">${r.driftValue == null ? '—'
+      <td class="r tm" style="color:${col};font-weight:600">${r.driftPct == null ? '-' : (r.driftPct>=0?'+':'')+r.driftPct.toFixed(1)+'%'}</td>
+      <td class="r tm" style="color:${col}">${r.driftValue == null ? '-'
           : (r.driftValue>=0 ? 'trim '+F.inr(r.driftValue) : 'add '+F.inr(Math.abs(r.driftValue)))}</td>
     </tr>`;
   }).join('');
@@ -116,7 +116,7 @@ function renderRebalance(){
     ${d.anyTarget && !d.targetsSumOk ? `<div style="font-size:12px;color:var(--T1);margin-top:10px;padding:10px 13px;background:var(--RL);border-radius:var(--r3);border-left:3px solid var(--R)">
       ⚠️ Your targets add up to <b>${d.targetedPct.toFixed(1)}%</b>, not 100%. The drift figures are still shown, but they cannot all be satisfied at once until the targets balance.
     </div>` : ''}
-    ${!d.anyTarget ? `<div style="font-size:12px;color:var(--T3);margin-top:10px">Set a target % against any class to see drift. Classes left blank are simply untargeted — they are not treated as "should be zero".</div>` : ''}
+    ${!d.anyTarget ? `<div style="font-size:12px;color:var(--T3);margin-top:10px">Set a target % against any class to see drift. Classes left blank are simply untargeted, they are not treated as "should be zero".</div>` : ''}
     ${conc ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--T3);margin:16px 0 6px">
         Single-holding concentration · limit
         <input type="number" min="1" max="100" step="any" value="${lim}" onchange="rbSetLimit(this.value)"
@@ -128,6 +128,6 @@ function renderRebalance(){
         </div>`
         : `<div style="font-size:12.5px;color:var(--T2)">No single holding exceeds ${lim}% of the equity book. Top 5 together are ${conc.top5Pct.toFixed(1)}%.</div>`}` : ''}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      Targets and the limit are yours and stay on this device. "To reach target" is arithmetic on today's values, not advice — and rebalancing realises gains, which is taxable. Check the Taxation tab before acting.
+      Targets and the limit are yours and stay on this device. "To reach target" is arithmetic on today's values, not advice, and rebalancing realises gains, which is taxable. Check the Taxation tab before acting.
     </div>`;
 }

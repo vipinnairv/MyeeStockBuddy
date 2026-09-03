@@ -87,17 +87,17 @@ function renderIncome(){
     <div class="tax-sum-box-sub">${sub}</div></div>`;
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Portfolio XIRR',
-        xr==null ? '—' : (xr>=0?'+':'')+xr.toFixed(2)+'%',
+        xr==null ? '-' : (xr>=0?'+':'')+xr.toFixed(2)+'%',
         xr==null ? 'needs purchase dates' : cov+'% of holdings dated',
         xr==null ? 'var(--T3)' : (xr>=0?'#00B386':'#D93025'),
         'Money-weighted annualised return. Unlike absolute return it accounts for WHEN you invested, so an old holding and a recent one are compared fairly. Dividends are credited today, which slightly understates it.')}
     ${tile('Dividend Income',
-        inc.total>0 ? F.inr(inc.total) : '—',
+        inc.total>0 ? F.inr(inc.total) : '-',
         inc.total>0 ? inc.paying+' holding'+(inc.paying===1?'':'s')+' paying' : 'add dividends per holding',
         inc.total>0 ? '#7C3AED' : 'var(--T3)',
         'Total dividends recorded against your holdings. Enter it per stock when adding or editing a position.')}
     ${tile('Yield on Cost',
-        inc.yieldOnCost ? inc.yieldOnCost.toFixed(2)+'%' : '—',
+        inc.yieldOnCost ? inc.yieldOnCost.toFixed(2)+'%' : '-',
         inc.yieldOnCost ? 'income vs what you paid' : 'needs dividend data',
         inc.yieldOnCost ? '#F59E0B' : 'var(--T3)',
         'Dividends as a percent of your original cost - what the position actually yields you, not what a new buyer gets at the current price.')}

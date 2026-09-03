@@ -1913,9 +1913,14 @@ group('financial statements');
   ok('the fallback only wins when it carries more', /if\(_stCells\(alt\) > _stCells\(out\)\) out = alt;/.test(SRC), 'thin fallback can overwrite');
   ok('a Financials tab exists', /data-rtab="financials"/.test(SRC), 'no tab');
   ok('statements load lazily on tab open', /if \(name === 'financials'\)/.test(SRC), 'not lazy');
-  ok('a missing line renders as a dash, not zero', /if\(v == null\) return '<span class="rt-na">—<\/span>'/.test(SRC), 'missing renders as a number');
-  ok('the UI explains a dash means absent', /not that the value is zero/.test(SRC), 'ambiguous dash');
-  ok('the UI says when it fell back to the thinner feed', /older, thinner one — expect gaps/.test(SRC), 'fallback unlabelled');
+  // Three markers, three distinct claims. A blank or a bare dash forces the
+  // reader to guess which one applies.
+  ok('a missing line renders as n/r, not zero',
+     /if\(v == null\) return '<span class="rt-na" title="Not reported[^']*>n\/r<\/span>'/.test(SRC),
+     'missing renders as a number');
+  ok('no em dash survives in the page', (SRC.match(/\u2014/g) || []).length === 0, 'em dashes remain');
+  ok('the UI explains n/r means absent', /not that the value is zero/.test(SRC), 'ambiguous marker');
+  ok('the UI says when it fell back to the thinner feed', /older, thinner one, expect gaps/.test(SRC), 'fallback unlabelled');
   ok('thin source coverage is named as a source gap', /that is a gap in the source, not an error here/.test(SRC), 'blames the app');
   ok('it warns the data can lag the filing', /can lag the latest filing/.test(SRC), 'no staleness warning');
 }
@@ -2254,12 +2259,76 @@ group('key ratios');
   ok('and inventory turnover', RT_LENDER_NA.indexOf('invTurnover') >= 0, 'not suppressed');
 
   // ── wiring & honesty ──
+  // ── rendered output, not source text ──
+  // Asserting that a string appears in the file only proves the string is in
+  // the file. These render the panel and read the cell that comes out.
+  {
+    const rsrc = slice('const RT_EPS = 1e-9;', '\n// ── UI ──', 'ratiosrender');
+    const { ratiosHtml } = load(rsrc, ['ratiosHtml'],
+      { Math, Object, Array, JSON, isFinite, Number, String, encodeURIComponent,
+        document: { createElement: () => ({}), head: { appendChild(){} } },
+        AbortController, setTimeout, clearTimeout, fetch: async () => { throw new Error('none'); },
+        localStorage: { getItem: () => null, setItem(){}, removeItem(){} } });
+    const st = (byDate) => {
+      const line = {}, dates = Object.keys(byDate).sort().reverse();
+      for(const d of dates) for(const k of Object.keys(byDate[d])) (line[k] || (line[k] = {}))[d] = byDate[d][k];
+      return { line, periodsAll: dates };
+    };
+    const pegCell = html => {
+      const m = html.match(/>PEG<\/th>\s*<td class="rt-val[^"]*">([\s\S]*?)<\/tr>/);
+      return m ? m[1] : '';
+    };
+    {
+      // Earnings shrank: the cell must carry a marker and the figure, never a
+      // blank and never a bare "not reported" (the source reported it fine).
+      const t = st({ '2025-03-31': { DilutedEPS: 8 }, '2024-03-31': { DilutedEPS: 10 } });
+      const cell = pegCell(ratiosHtml(t, { pe: 20 }, null));
+      ok('a withheld PEG renders a marker, not an empty cell', /n\/m/.test(cell), cell);
+      ok('and states the growth that withheld it', /growth -20\.0%/.test(cell), cell);
+      ok('and names the measure', /annual EPS growth/.test(cell), cell);
+      ok('it is not mislabelled as unreported', !/n\/r/.test(cell), cell);
+    }
+    {
+      // Nothing reported at all: that IS "not reported", and says so.
+      const cell = pegCell(ratiosHtml(st({ '2025-03-31': { TotalRevenue: 5 } }), null, null));
+      ok('an unmeasurable PEG renders as not-reported', /n\/r/.test(cell), cell);
+      ok('and claims no growth figure it does not have', !/growth [-+]/.test(cell), cell);
+    }
+    {
+      // A computed PEG shows its basis and the periods it spans.
+      const t = st({ '2025-03-31': { DilutedEPS: 12 }, '2024-03-31': { DilutedEPS: 10 } });
+      const cell = pegCell(ratiosHtml(t, { pe: 30 }, null));
+      ok('a computed PEG shows the number', /1\.50/.test(cell), cell);
+      ok('and the basis it used', /vs annual EPS growth/.test(cell), cell);
+      ok('and the periods it spans', /2024-03-31 → 2025-03-31/.test(cell), cell);
+    }
+    {
+      // The same-period rule, end to end: net income from 2026 must not be
+      // divided by a balance sheet from 2019. That produced a 112% ROA.
+      const t = st({ '2026-03-31': { NetIncome: 1000, TotalRevenue: 5000 },
+                     '2019-03-31': { NetIncome: 40, TotalAssets: 900 } });
+      const html = ratiosHtml(t, null, null);
+      const roa = (html.match(/>ROA<\/th>\s*<td class="rt-val[^"]*">([\s\S]*?)<\/tr>/) || [])[1] || '';
+      ok('ROA uses the period where both lines exist, not the newest of each',
+         /4\.4%/.test(roa), roa);
+      ok('so it is not an impossible number', !/1[01]\d\.\d%/.test(roa), roa);
+    }
+  }
+  // The reading starts on its own; the button is a re-run, not the way in.
+  ok('the built-in reading starts without being asked',
+     /if\(typeof insRunBuiltin === 'function'\) insRunBuiltin\(\);/.test(SRC), 'still needs a click');
+  ok('and the button is offered as a repeat', /↻ Run again/.test(SRC), 'button is still the entry point');
+  ok('no "Read the numbers" call to action remains', !/Read the numbers/.test(SRC), 'stale call to action');
+
   ok('the ratio panel is rendered into the Financials tab', /ratiosHtml\(t, ar\.fundamentals, price\)/.test(SRC), 'not wired');
   ok('ROCE is shown', /'ROCE',\s+'roce'/.test(SRC), 'no ROCE row');
   ok('PEG is shown', /'PEG',\s+'peg'/.test(SRC), 'no PEG row');
-  ok('a withheld PEG names the figure that withheld it', /earnings \$\{fig\}/.test(SRC), 'silent');
+  ok('a withheld PEG names the figure that withheld it', /growth \$\{fig\}/.test(SRC), 'silent');
+  // A blank cell reads as a fault. A withheld ratio carries a marker.
+  ok('and the cell carries a marker rather than a blank', />n\/m<\/span>/.test(SRC), 'blank cell');
+  ok('n\/m is distinguished from n\/a in the tooltip', /Not meaningful: PEG divides/.test(SRC), 'markers conflated');
   ok('and every measured growth rate is inspectable in the tooltip', /Growth measured: /.test(SRC), 'not inspectable');
-  ok('the UI states a dash means missing inputs, not an estimate', /the ratio is not shown rather than estimated/.test(SRC), 'ambiguous dash');
+  ok('the UI states n/r means missing inputs, not an estimate', /the ratio is not shown rather than estimated/.test(SRC), 'ambiguous marker');
   ok('the UI warns bank ratios differ', /deposits are raw material/.test(SRC), 'no lender warning');
   ok('the UI says the bands are rules of thumb', /broad rules of thumb/.test(SRC), 'bands look authoritative');
   ok('the UI states the maths runs locally', /nothing is sent anywhere/.test(SRC), 'no locality claim');
@@ -2507,7 +2576,8 @@ group('number formatting');
   ok('the multiplication sign is distinguished from a percentage',
      /not a percentage/.test(FIN_ABBR['×']), 'x could be read as %');
   ok('a legend explains the short forms in place', /Reading the short forms/.test(SRC), 'no legend');
-  ok('the legend says what a dash means', /the source did not report it/.test(SRC), 'dash unexplained');
+  ok('the legend says what n/r means', /not reported by the data source/.test(SRC), 'n/r unexplained');
+  ok('and what n/m means', /cannot be computed to anything meaningful/.test(SRC), 'n/m unexplained');
   ok('and what n\\/a means', /does not describe this kind of business/.test(SRC), 'n/a unexplained');
   ok('statement figures go through the grouping helper', /_finGroup\(n, dp, isIndia\)/.test(SRC), 'ungrouped');
 }

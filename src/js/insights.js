@@ -1,12 +1,12 @@
 // ══════════════════════ INSIGHTS ══════════════════════
 // Two readings of the same numbers, and they are not equivalent.
 //
-//  Built-in — src/py/interpret.py, real CPython running in this tab through
+//  Built-in, src/py/interpret.py, real CPython running in this tab through
 //  Pyodide (WebAssembly). Free, deterministic, and nothing leaves the device.
 //  The Python is unit-tested in tests/test_interpret.py, so what it says here
 //  is what the test suite proved it says.
 //
-//  AI model — your own API key, your own account, your own bill. This one DOES
+//  AI model, your own API key, your own account, your own bill. This one DOES
 //  send the figures to the provider you pick, so it is opt-in per session and
 //  says so before it sends anything. The key is kept in this browser's
 //  localStorage and goes nowhere except that provider's API.
@@ -14,13 +14,13 @@
 const AI_PROVIDERS = {
   gemini: {
     label: 'Google Gemini',
-    cost: 'Has a genuinely free tier — the usual starting point.',
+    cost: 'Has a genuinely free tier, the usual starting point.',
     model: 'gemini-2.0-flash',
     keyUrl: 'https://aistudio.google.com/app/apikey',
     steps: [
       'Open <b>aistudio.google.com/app/apikey</b> and sign in with a Google account.',
       'Click <b>Create API key</b>, then pick a Google Cloud project (or let it make one).',
-      'Copy the key — it starts with <code>AIza</code> — and paste it below.',
+      'Copy the key, it starts with <code>AIza</code>, and paste it below.',
       'The free tier is rate-limited per minute, not billed. No card needed to start.',
     ],
   },
@@ -32,8 +32,8 @@ const AI_PROVIDERS = {
     steps: [
       'Open <b>console.anthropic.com</b> and sign in.',
       'Go to <b>Settings → API keys</b> and click <b>Create key</b>.',
-      'Add credit under <b>Billing</b> — there is no free tier, so a key with no credit will fail.',
-      'Copy the key — it starts with <code>sk-ant-</code> — and paste it below.',
+      'Add credit under <b>Billing</b>, there is no free tier, so a key with no credit will fail.',
+      'Copy the key, it starts with <code>sk-ant-</code>, and paste it below.',
     ],
   },
   openai: {
@@ -43,7 +43,7 @@ const AI_PROVIDERS = {
     keyUrl: 'https://platform.openai.com/api-keys',
     steps: [
       'Open <b>platform.openai.com/api-keys</b> and sign in.',
-      'Click <b>Create new secret key</b> and copy it immediately — it is shown once.',
+      'Click <b>Create new secret key</b> and copy it immediately, it is shown once.',
       'Add credit under <b>Billing</b>; a key on an account with no credit returns a quota error.',
       'The key starts with <code>sk-</code>.',
     ],
@@ -125,7 +125,7 @@ function aiPrompt(payload){
   if(payload.sector) lines.push('Sector: ' + payload.sector);
   if(payload.lender) lines.push('This is a bank or financial company. Ratios built for manufacturers (current ratio, inventory turnover, debt/equity) do not describe it; do not judge it on those.');
   lines.push('');
-  lines.push('Ratios actually reported (anything absent was not available — say so rather than guessing):');
+  lines.push('Ratios actually reported (anything absent was not available, say so rather than guessing):');
   for(const k of Object.keys(payload.ratios)){
     const v = payload.ratios[k];
     if(v == null || typeof v === 'boolean') continue;
@@ -222,14 +222,14 @@ function insightsHtml(){
     </div>
 
     <div id="ins-pane-free">
-      <div class="ins-note">Runs <b>Python on your device</b> — the same <code>interpret.py</code> the test suite checks — reading the ratios above.
+      <div class="ins-note">Runs <b>Python on your device</b>, the same <code>interpret.py</code> the test suite checks, reading the ratios above.
         Nothing is sent anywhere. The runtime is about 10 MB and is fetched once per visit, so the first run is the slow one.</div>
-      <button class="btn btn-sec btn-sm" onclick="insRunBuiltin()">▶ Read the numbers</button>
       <div id="ins-free-out" style="margin-top:12px"></div>
+      <button class="btn btn-sec btn-sm" style="margin-top:10px" onclick="insRunBuiltin()">↻ Run again</button>
     </div>
 
     <div id="ins-pane-ai" style="display:none">
-      <div class="ins-warn">⚠️ This one <b>sends the ratios above to ${cfg.label}</b> — figures and the ticker, never your holdings or portfolio.
+      <div class="ins-warn">⚠️ This one <b>sends the ratios above to ${cfg.label}</b>, figures and the ticker, never your holdings or portfolio.
         Your key is stored in this browser only and is sent to that provider and nowhere else. It is your account and your bill.</div>
       <div class="ins-row">
         <label class="ins-lbl">Provider</label>
@@ -302,7 +302,7 @@ function insFindingsHtml(res){
     ? `<div class="ins-cov">Read from <b>${res.coverage.available}</b> of ${res.coverage.tracked} ratios. The rest were not reported by the source, so nothing is claimed about them.</div>`
     : '';
   return `<div class="ins-sum">${res.summary || ''}</div>${rows}${cov}
-    <div class="ins-foot">A description of what the reported numbers show — not advice, not a recommendation, and no substitute for the company's own filings.</div>`;
+    <div class="ins-foot">A description of what the reported numbers show, not advice, not a recommendation, and no substitute for the company's own filings.</div>`;
 }
 
 async function insRunBuiltin(){
@@ -317,7 +317,7 @@ async function insRunBuiltin(){
   } catch(e){
     out.innerHTML = `<div class="ins-err">The Python runtime could not start: ${String(e && e.message || e)}.
       It is fetched from a public CDN, so a blocked network or an offline device will stop it.
-      The ratio tables above are unaffected — they are computed without it.</div>`;
+      The ratio tables above are unaffected, they are computed without it.</div>`;
   }
 }
 
@@ -334,7 +334,7 @@ async function insRunAi(){
   const keyEl = document.getElementById('ins-key'), modelEl = document.getElementById('ins-model');
   const key = (keyEl && keyEl.value.trim()) || _aiGet(AI_KEY_PREFIX + pv, '');
   const model = (modelEl && modelEl.value.trim()) || _aiGet(AI_MODEL_PREFIX + pv, cfg.model);
-  if(!key){ out.innerHTML = `<div class="ins-err">No ${cfg.label} key yet — see “How do I get a key?” above.</div>`; return; }
+  if(!key){ out.innerHTML = `<div class="ins-err">No ${cfg.label} key yet, see “How do I get a key?” above.</div>`; return; }
   out.innerHTML = `<div class="ins-busy">Asking ${cfg.label}…</div>`;
   try {
     const text = await callAiProvider(pv, model, key, aiPrompt(_insPayload));

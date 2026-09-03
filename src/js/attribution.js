@@ -20,7 +20,7 @@ function _atContribution(lots){
     const div = isFinite(+l.dividend) && +l.dividend > 0 ? +l.dividend : 0;
     const pl = (cur - inv) + div;
     invested += inv; current += cur; income += div;
-    rows.push({ name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    rows.push({ name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                 dividend:div, pl, retPct: inv > 0 ? pl / inv * 100 : null });
   });
   if(!rows.length) return null;
@@ -46,7 +46,7 @@ function _atHarvest(lots, realisedLTCG, realisedSTCG, exemption){
     const inv = +l.invested, cur = +l.current;
     if(!isFinite(inv) || inv <= 0 || !isFinite(cur)) return null;
     const loss = inv - cur;                       // positive when under water
-    return loss > 0 ? { name:l.name || '—', cls:l.cls || '', invested:inv, current:cur,
+    return loss > 0 ? { name:l.name || '-', cls:l.cls || '', invested:inv, current:cur,
                         loss, lossPct: loss / inv * 100 } : null;
   }).filter(Boolean).sort((a,b) => b.loss - a.loss);
 
@@ -160,21 +160,21 @@ function renderHarvest(){
       <td class="r" style="font-size:11.5px;color:var(--R)">-${c.lossPct.toFixed(1)}%</td>
     </tr>`).join('');
   el.innerHTML = `<div class="tax-sum-grid" style="margin-bottom:12px">
-      ${tile('Unrealised losses', h.totalLoss>0?F.inr(h.totalLoss):'—',
+      ${tile('Unrealised losses', h.totalLoss>0?F.inr(h.totalLoss):'-',
              h.candidates.length?h.candidates.length+' holding'+(h.candidates.length===1?'':'s')+' under water':'nothing at a loss',
              h.totalLoss>0?'#D93025':'#00B386')}
-      ${tile('Gains to offset', h.offsettable>0?F.inr(h.offsettable):'—',
+      ${tile('Gains to offset', h.offsettable>0?F.inr(h.offsettable):'-',
              h.offsettable>0?'realised, after exemption':'none booked yet this FY','#1A73E8')}
       ${tile('₹1.25L exemption left', F.inr(h.exemptionLeft),
              h.exemptionUsed>0?F.inr(h.exemptionUsed)+' used':'none used yet','#F59E0B')}
-      ${tile('Worth booking', h.usefulLoss>0?F.inr(h.usefulLoss):'—',
+      ${tile('Worth booking', h.usefulLoss>0?F.inr(h.usefulLoss):'-',
              h.usefulLoss>0?'offsets tax this year':'no gains to offset', h.usefulLoss>0?'#7C3AED':'var(--T3)')}
     </div>
     ${rows?`<div class="ts"><table style="min-width:560px"><thead><tr><th>Holding</th><th>Class</th><th class="r">Invested</th><th class="r">Now</th><th class="r">Unrealised loss</th><th class="r">%</th></tr></thead><tbody>${rows}</tbody></table></div>`
           :`<div style="font-size:12.5px;color:var(--T3);padding:6px 0">No holdings are currently at a loss.</div>`}
     <div style="font-size:11px;color:var(--T3);margin-top:10px;padding:8px 12px;background:var(--BL);border-radius:var(--r3)">
-      These are <b>unrealised</b> losses — nothing is booked until you actually sell and record the transaction.
+      These are <b>unrealised</b> losses, nothing is booked until you actually sell and record the transaction.
       "Worth booking" is capped at the gains you have already realised this year, because a loss beyond that offsets nothing now.
-      Selling purely for tax has real costs (spread, brokerage, and being out of the position) — check with your CA.
+      Selling purely for tax has real costs (spread, brokerage, and being out of the position), check with your CA.
     </div>`;
 }

@@ -5,15 +5,15 @@
 // These come from Yahoo through the owner Worker (both endpoints need the
 // cookie+crumb handshake a browser cannot perform). There are two of them:
 //
-//   1. fundamentals-timeseries — the endpoint Yahoo's own site uses. It carries
+//   1. fundamentals-timeseries, the endpoint Yahoo's own site uses. It carries
 //      the full line items and simply omits what it does not have.
-//   2. quoteSummary history modules — the older endpoint. Yahoo has hollowed
+//   2. quoteSummary history modules, the older endpoint. Yahoo has hollowed
 //      these out: for many listings it returns literal zeros for cost of
 //      revenue, gross profit, operating expenses and tax, drops the balance
 //      sheet entirely, and leaves cash flow with nothing but net income. It is
 //      kept only as a fallback for symbols the timeseries endpoint misses.
 //
-// Coverage is honest, not assumed. A missing line shows as a dash, never as
+// Coverage is honest, not assumed. A missing line shows as n/r, never as
 // zero, because "we do not have this" and "this is zero" are different claims
 // about a company's accounts. On the fallback endpoint a line that reads zero
 // in every period is treated as unreported, because that endpoint is known to
@@ -232,7 +232,7 @@ async function _stFetch(sym, quarterly){
     const tsJson = await _stOne(`${sp}/?timeseries=${enc}${per}`);
     out = tsJson ? _stTsParse(tsJson, quarterly) : null;
     // Only reach for the hollowed-out endpoint when the good one came back
-    // empty or near-empty — never to "top up" an answer that already stands.
+    // empty or near-empty, never to "top up" an answer that already stands.
     if(_stCells(out) < 4){
       const qsJson = await _stOne(`${sp}/?statements=${enc}${per}`);
       const alt = qsJson ? _stParse(qsJson, quarterly) : null;
@@ -244,7 +244,7 @@ async function _stFetch(sym, quarterly){
 }
 
 function _stFmt(v, isIndia){
-  if(v == null) return '<span class="rt-na">—</span>';   // absent, not zero
+  if(v == null) return '<span class="rt-na" title="Not reported: the data source did not carry this line.">n/r</span>';   // absent, not zero
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   const unit = isIndia ? '₹' : '$';
   // Grouped, always. A bare 192566.78 is read wrong at a glance far too easily.
@@ -298,7 +298,7 @@ async function renderStatements(){
   if(!t){
     el.innerHTML = toggle + `<div style="font-size:12.5px;color:var(--text3)">
       No ${_stQuarterly ? 'quarterly' : 'annual'} statements available for <b>${sym}</b>.
-      Yahoo's statement history is often thin or absent for smaller Indian listings — that is a gap in the source, not an error here.</div>`;
+      Yahoo's statement history is often thin or absent for smaller Indian listings, that is a gap in the source, not an error here.</div>`;
     return;
   }
   const price = (ar && typeof ar.currentPrice === 'number') ? ar.currentPrice : null;
@@ -311,22 +311,27 @@ async function renderStatements(){
     insights = `<div id="ins-body">${insightsHtml()}</div>`;
   }
   const fallbackNote = t.source === 'quoteSummary'
-    ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one — expect gaps.`
+    ? ` Yahoo's main statement feed had nothing for this symbol, so these came from its older, thinner one, expect gaps.`
     : '';
   el.innerHTML = toggle + ratios
     + _stTableHtml(t.income,   '📊 Profit &amp; Loss', isIndia)
     + _stTableHtml(t.balance,  '🏛 Balance Sheet',    isIndia)
     + _stTableHtml(t.cashflow, '💵 Cash Flow',        isIndia)
     + `<div class="fin-legend"><b>Reading the short forms:</b>
-        <abbr class="fin-abbr" title="Crore — 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
-        <abbr class="fin-abbr" title="Lakh — 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
-        <abbr class="fin-abbr" title="Times — a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
-        <b>—</b> = the source did not report it ·
-        <b>n/a</b> = the ratio does not describe this kind of business.
+        <abbr class="fin-abbr" title="Crore, 1,00,00,000, i.e. ten million">Cr</abbr> = crore (1,00,00,000) ·
+        <abbr class="fin-abbr" title="Lakh, 1,00,000, i.e. one hundred thousand">L</abbr> = lakh (1,00,000) ·
+        <abbr class="fin-abbr" title="Times, a multiple, not a percentage. 2× means twice.">×</abbr> = times (a multiple) ·
+        <b>n/r</b> = not reported by the data source ·
+        <b>n/a</b> = does not describe this kind of business ·
+        <b>n/m</b> = applies, but cannot be computed to anything meaningful.
         Hover any underlined term.</div>`
     + insights
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:8px 12px;background:var(--surface2);border-radius:8px">
-        Reported figures from the data source, newest period first. A dash means the source did not carry that line — not that the value is zero.${fallbackNote}
+        Reported figures from the data source, newest period first. n/r means the source did not carry that line, not that the value is zero.${fallbackNote}
         Statement data can lag the latest filing; check the company's own filing before relying on it.
       </div>`;
+  // The reading runs on its own rather than waiting to be asked for. It costs
+  // a one-off runtime download, so it is deliberately the last thing to start
+  // and the tables are already on screen by the time it does.
+  if(typeof insRunBuiltin === 'function') insRunBuiltin();
 }

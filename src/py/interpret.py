@@ -6,7 +6,7 @@ The ratios themselves are computed in JavaScript and arrive here already
 worked out, along with the band (good / fair / weak) each one fell into. That
 split is deliberate: thresholds live in exactly one place, so this file cannot
 drift out of agreement with the numbers on screen. What Python does here is the
-part it is actually better at — reading across the ratios, weighing them
+part it is actually better at, reading across the ratios, weighing them
 against each other, and turning the result into sentences.
 
 It runs in the browser through Pyodide (CPython compiled to WebAssembly), so

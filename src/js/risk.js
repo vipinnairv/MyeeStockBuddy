@@ -164,9 +164,9 @@ async function renderRisk(){
   el.innerHTML = `<div class="tax-sum-grid">
     ${tile('Volatility', m.vol.toFixed(1)+'%', 'annualised swing', '#F59E0B',
         'How violently the portfolio moves, annualised from daily returns. Higher means bigger swings both ways - it is not itself bad, but it should be paid for.')}
-    ${tile('Beta vs Nifty', m.beta==null?'—':m.beta.toFixed(2), m.beta==null?'needs more overlap':betaWord, '#1A73E8',
+    ${tile('Beta vs Nifty', m.beta==null?'-':m.beta.toFixed(2), m.beta==null?'needs more overlap':betaWord, '#1A73E8',
         'How much the portfolio moves for a 1% move in the index. Above 1 amplifies the market; below 1 dampens it.')}
-    ${tile('Sharpe ratio', m.sharpe==null?'—':m.sharpe.toFixed(2), m.sharpe==null?'—':sharpeWord,
+    ${tile('Sharpe ratio', m.sharpe==null?'-':m.sharpe.toFixed(2), m.sharpe==null?'-':sharpeWord,
         m.sharpe==null?'var(--T3)':m.sharpe>=0.5?'#00B386':m.sharpe>=0?'#F59E0B':'#D93025',
         'Return above the risk-free rate, per unit of volatility. It answers whether the swings were worth enduring.')}
   </div>
