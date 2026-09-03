@@ -2716,6 +2716,54 @@ group('combined read');
     }
   }
 
+  // ── the printed page must not hide or mangle anything ──
+  // All four came out of a real exported PDF (NHPC, 5 pages).
+  {
+    // The fixed header/footer bands were painted over the flowing content by
+    // Edge's Print to PDF, so four indicator rows and the tail of a finding
+    // vanished with no sign anything was missing.
+    ok('no opaque band is positioned over the printed content',
+       !/\.page-header\{position:fixed/.test(SRC) && !/\.page-footer\{position:fixed/.test(SRC),
+       'fixed bands can cover text');
+    ok('and the reason is recorded so it is not reintroduced',
+       /painted OVER the flowing content/.test(SRC), 'no note against a regression');
+    ok('the footer prints at the end of the document instead',
+       SRC.indexOf('class="page-footer"') > SRC.indexOf('<div class="disc"'), 'footer still ahead of the content');
+    ok('and only once', (SRC.match(/<div class="page-footer">/g) || []).length === 1, 'more than one footer');
+  }
+  {
+    // Headings were being sliced in half across page breaks.
+    ok('headings are not split across a page break', /h2\{[^}]*break-inside:avoid/.test(SRC), 'h2 splits');
+    ok('nor are sub-headings', /h3\{break-after:avoid;break-inside:avoid\}/.test(SRC), 'h3 splits');
+    ok('table rows stay whole', /\.tbl tr\{break-inside:avoid\}/.test(SRC), 'rows split');
+    ok('and column headings repeat on a continued table',
+       /thead\{display:table-header-group\}/.test(SRC), 'headings do not repeat');
+  }
+  {
+    // 1.6300000000000097 printed in the price box.
+    const rsrc = slice('const CR_TONE_COL', '\n// ══', 'pdfnum');
+    const csrc = slice('const CR_BULL = 60', '\n// ── Report sections', 'pdfcomb');
+    const { repExecSummaryHtml } = load(csrc + '\n' + rsrc, ['repExecSummaryHtml'],
+      { Math, isFinite, Number, String, Object, Array, RT_LENDER_NA: [] });
+    const ar = { currentPrice: 76.45000000001, priceChg: 1.6300000000000097,
+                 pricePct: 2.1800000000000004, signals: { verdict: 'HOLD', score: 12 } };
+    const html = repExecSummaryHtml(ar, { stance:'x', tone:'info', headline:'h', detail:'d', limits:[] }, null, '₹');
+    ok('the price change is rounded for display', /\+1\.63/.test(html), html.slice(0, 700));
+    ok('no float tail reaches the page', !/0000000/.test(html), html.slice(0, 700));
+    ok('the percentage is rounded too', /2\.18%/.test(html), html.slice(0, 700));
+    ok('and the price itself', /76\.45</.test(html) || /₹76\.45/.test(html), html.slice(0, 700));
+  }
+  {
+    // A price the feed never sent must not print as "₹" with nothing after it.
+    const rsrc = slice('const CR_TONE_COL', '\n// ══', 'pdfnum2');
+    const csrc = slice('const CR_BULL = 60', '\n// ── Report sections', 'pdfcomb2');
+    const { repExecSummaryHtml } = load(csrc + '\n' + rsrc, ['repExecSummaryHtml'],
+      { Math, isFinite, Number, String, Object, Array, RT_LENDER_NA: [] });
+    const html = repExecSummaryHtml({ signals: {} }, { stance:'x', tone:'info', headline:'h', detail:'d', limits:[] }, null, '₹');
+    ok('a missing price prints n/r, not a bare currency symbol', /₹n\/r/.test(html), html.slice(0, 600));
+    ok('and no empty parentheses are left behind', !/\(\)/.test(html), html.slice(0, 600));
+  }
+
   // ── wiring ──
   ok('the report gathers the fundamental half before composing',
      /fx\.execSummary = repExecSummaryHtml/.test(SRC) && /fx\.fundamental = repFundamentalHtml/.test(SRC), 'not wired');

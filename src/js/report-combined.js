@@ -126,8 +126,13 @@ function _crEsc(v){
 // version: the position, and what the report could not see.
 function repExecSummaryHtml(ar, comb, fund, cur){
   const col = CR_TONE_COL[comb.tone] || CR_TONE_COL.info;
-  const chg = (ar.priceChg >= 0 ? '+' : '') + (ar.priceChg == null ? '' : ar.priceChg);
-  const pct = (ar.pricePct == null) ? '' : (ar.pricePct >= 0 ? '+' : '') + ar.pricePct + '%';
+  // Floats reach here straight from the price feed: 76.45 - 74.82 is
+  // 1.6300000000000097 in binary floating point, and that is what printed.
+  const num = (v, dp) => (v == null || !isFinite(v)) ? null : Number(v).toFixed(dp == null ? 2 : dp);
+  const chgN = num(ar.priceChg), pctN = num(ar.pricePct);
+  const chg = chgN == null ? '' : (ar.priceChg >= 0 ? '+' : '') + chgN;
+  const pct = pctN == null ? '' : (ar.pricePct >= 0 ? '+' : '') + pctN + '%';
+  const priceN = num(ar.currentPrice);
   const s = ar.signals || {};
   const box = (label, value, sub) =>
     `<td style="padding:9px 12px;border:1px solid #d8dde3;vertical-align:top">
@@ -136,20 +141,20 @@ function repExecSummaryHtml(ar, comb, fund, cur){
        ${sub ? `<div style="font-size:8.5pt;color:#6b7280;margin-top:1px">${sub}</div>` : ''}
      </td>`;
   const limits = comb.limits && comb.limits.length
-    ? `<div style="margin-top:10px;border-left:3px solid #9aa0a6;padding:8px 12px;background:#f6f7f9">
+    ? `<div style="margin-top:10px;border-left:3px solid #9aa0a6;padding:8px 12px;background:#f6f7f9;break-inside:avoid">
          <div style="font-size:9pt;font-weight:800;margin-bottom:4px">What this report cannot tell you</div>
          <ul style="margin:0 0 0 16px;padding:0;font-size:9pt;line-height:1.55">
            ${comb.limits.map(l => `<li style="margin-bottom:3px">${_crEsc(l)}</li>`).join('')}
          </ul>
        </div>` : '';
   return `<h2>Executive Summary</h2>
-  <div style="border:2px solid ${col};border-radius:6px;padding:12px 14px;margin-bottom:10px">
+  <div style="border:2px solid ${col};border-radius:6px;padding:12px 14px;margin-bottom:10px;break-inside:avoid">
     <div style="font-size:8.5pt;letter-spacing:1px;text-transform:uppercase;color:${col};font-weight:800">${_crEsc(comb.stance)}</div>
     <div style="font-size:13pt;font-weight:800;margin:3px 0 5px">${_crEsc(comb.headline)}</div>
     <div style="font-size:10pt;line-height:1.6">${_crEsc(comb.detail)}</div>
   </div>
-  <table class="tbl" style="width:100%;border-collapse:collapse;margin-bottom:6px"><tr>
-    ${box('Price', cur + (ar.currentPrice == null ? '-' : ar.currentPrice), chg + ' (' + pct + ')')}
+  <table class="tbl" style="width:100%;border-collapse:collapse;margin-bottom:6px;break-inside:avoid"><tr>
+    ${box('Price', cur + (priceN == null ? 'n/r' : priceN), chg && pct ? chg + ' (' + pct + ')' : '')}
     ${box('Technical verdict', _crEsc(s.isChop ? 'HOLD (Sideways)' : (s.verdict || '-')),
           (s.score == null ? '' : Math.round(s.score) + '/100')
           + (s.long && s.long.confidence != null ? ' · ' + s.long.confidence + '% confidence' : ''))}
@@ -193,7 +198,7 @@ function repFundamentalHtml(ratios, lender, interp, fund, groups){
        <div style="border:1px solid #d8dde3;border-radius:5px;padding:9px 12px;margin-bottom:8px;font-weight:700;font-size:10pt">
          ${_crEsc(interp.summary)}</div>
        ${interp.findings.map(f => `
-         <div style="break-inside:avoid;border-left:3px solid ${CR_TONE_COL[f.tone] || CR_TONE_COL.info};
+         <div style="break-inside:avoid;page-break-inside:avoid;border-left:3px solid ${CR_TONE_COL[f.tone] || CR_TONE_COL.info};
               padding:6px 11px;margin-bottom:6px;background:#fafbfc">
            <div style="font-weight:800;font-size:9.5pt">${_crEsc(f.label)}</div>
            <div style="font-size:9.5pt;line-height:1.55">${_crEsc(f.text)}</div>
