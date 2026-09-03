@@ -1453,7 +1453,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       <span class="logo-icon" style="display:inline-flex"><svg viewBox="0 0 463 463" style="width:30px;height:30px;color:var(--brand1);display:block"><use href="#ico-bull"/></svg></span>
       <div class="logo-text">
         <span class="logo-title">MiyeeStock Buddy</span>
-        <span class="logo-sub" id="marketSubtitle">by Vipin Nair · NSE/BSE Analysis</span>
+        <span class="logo-sub" id="marketSubtitle">by Vipin Nair · Complete Stock Market Analysis</span>
       </div>
     </div>
     <div class="header-right">
@@ -1793,7 +1793,7 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       <!-- Simple / Full mode switch -->
       <div class="sv-modebar no-print">
         <button class="sv-mode-btn" id="svBtnSimple" onclick="setAnalysisMode('simple')">🌱 Simple</button>
-        <button class="sv-mode-btn" id="svBtnFull" onclick="setAnalysisMode('full')">🔬 Full technicals</button>
+        <button class="sv-mode-btn" id="svBtnFull" onclick="setAnalysisMode('full')">🔬 Detailed analysis</button>
         <span style="font-size:11.5px;color:var(--text3)" id="svModeHint"></span>
       </div>
 
@@ -3083,7 +3083,7 @@ window.addEventListener('DOMContentLoaded', () => {
     marketMode = m;
     const isUS = m === 'us', isCrypto = m === 'crypto';
     const el = id => document.getElementById(id);
-    const subtitles = { india:'by Vipin Nair · NSE/BSE Analysis', us:'by Vipin Nair · NYSE/NASDAQ Analysis', crypto:'by Vipin Nair · Crypto Top 10 Analysis', commodity:'by Vipin Nair · Commodities Analysis' };
+    const subtitles = { india:'by Vipin Nair · Complete Stock Market Analysis', us:'by Vipin Nair · Complete Stock Market Analysis', crypto:'by Vipin Nair · Complete Stock Market Analysis', commodity:'by Vipin Nair · Complete Stock Market Analysis' };
     const modeLabels = { india:'🇮🇳 India', us:'🇺🇸 US', crypto:'🪙 Crypto', commodity:'🛢️ Commodity' };
     if (el('marketSubtitle')) el('marketSubtitle').textContent = subtitles[m];
     if (el('marketModeBtn'))  { el('marketModeBtn').textContent = modeLabels[m]; el('marketModeBtn').style.display = ''; }
@@ -3102,7 +3102,7 @@ function selectMarket(mode) {
   const notIndia = isUS || isCrypto;
 
   // ── Header subtitle & mode button
-  const subtitles = { india:'by Vipin Nair · NSE/BSE Analysis', us:'by Vipin Nair · NYSE/NASDAQ Analysis', crypto:'by Vipin Nair · Crypto Top 10 Analysis', commodity:'by Vipin Nair · Commodities Analysis' };
+  const subtitles = { india:'by Vipin Nair · Complete Stock Market Analysis', us:'by Vipin Nair · Complete Stock Market Analysis', crypto:'by Vipin Nair · Complete Stock Market Analysis', commodity:'by Vipin Nair · Complete Stock Market Analysis' };
   const modeLabels = { india:'🇮🇳 India', us:'🇺🇸 US', crypto:'🪙 Crypto', commodity:'🛢️ Commodity' };
   document.getElementById('marketSubtitle').textContent = subtitles[mode];
   const modeBtn = document.getElementById('marketModeBtn');
@@ -8224,7 +8224,7 @@ function renderSimpleView(){
       </div>
       <div class="sv-sec"><div class="sv-h">What would change this view</div><div class="sv-flip">${flip}</div></div>
       <div class="sv-sec"><div class="sv-h">The indicators, in plain English</div>${reads}</div>
-      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history, not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Full technicals</b> for every indicator, pattern and backtest behind this summary.</div></div>
+      <div class="sv-sec" style="background:var(--surface2)"><div style="font-size:11.5px;color:var(--text3);line-height:1.55">📋 This is an educational read of price history, not advice, and not a forecast. Technical signals fail regularly; position size and your stop matter more than being right. Switch to <b>🔬 Detailed analysis</b> for every indicator, pattern and backtest behind this summary, plus the financial statements and ratios.</div></div>
     </div>`;
   glossaryScan(el);
 }
@@ -8717,8 +8717,35 @@ async function exportAnalysisPDF() {
       if (ch.innerText && ch.innerText.includes('Reality Check')) { realityHTML = ch.outerHTML; break; }
     }
 
+    // 3c. The fundamental half: statements, ratios, and the Python reading of
+    //     them. Each step is allowed to fail on its own - a missing balance
+    //     sheet must not cost the reader the technical report they asked for.
+    const fx = {};
+    try {
+      const isIndiaMk = (typeof marketMode !== 'undefined') && marketMode === 'india';
+      const cur0 = (analysisResult.market === 'NYSE' || analysisResult.market === 'NASDAQ'
+                 || analysisResult.market === 'AMEX') ? '$' : '₹';
+      const ySym = isIndiaMk ? (analysisResult.symbol + (analysisResult.market === 'BSE' ? '.BO' : '.NS'))
+                             : analysisResult.symbol;
+      const t = (typeof _stFetch === 'function') ? await _stFetch(ySym, false) : null;
+      const fu = analysisResult.fundamentals || null;
+      const lender = (typeof isLender === 'function') ? isLender(fu) : false;
+      const ratios = (t && typeof computeRatios === 'function') ? computeRatios(t, fu, analysisResult.currentPrice) : null;
+      const fundScore = (typeof scoreFundamentals === 'function') ? scoreFundamentals(fu) : null;
+      let interp = null;
+      if (ratios && typeof runBuiltinInsight === 'function' && typeof insightPayload === 'function') {
+        try { interp = await runBuiltinInsight(insightPayload(t, fu, analysisResult.currentPrice, ySym)); }
+        catch (e) { interp = null; }   // the runtime may be blocked; the ratios still stand
+      }
+      const comb = combinedRead(
+        { verdict: analysisResult.signals.verdict, score: analysisResult.signals.score,
+          isChop: analysisResult.signals.isChop }, fundScore, ratios);
+      fx.execSummary = repExecSummaryHtml(analysisResult, comb, fundScore, cur0);
+      fx.fundamental = repFundamentalHtml(ratios, lender, interp, fundScore, RT_GROUPS);
+    } catch (e) { console.warn('fundamental section skipped', e); }
+
     // 4. Compose + print.
-    const html = _buildReportHTML(analysisResult, mainImg, patImgs, aiHTML, realityHTML);
+    const html = _buildReportHTML(analysisResult, mainImg, patImgs, aiHTML, realityHTML, fx);
     const ifr = document.createElement('iframe');
     ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
     document.body.appendChild(ifr);
@@ -8736,7 +8763,8 @@ async function exportAnalysisPDF() {
   }
 }
 
-function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
+function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML, fx) {
+  fx = fx || {};
   const s = ar.signals, cur = ar.market === 'NYSE' || ar.market === 'NASDAQ' || ar.market === 'AMEX' ? '$' : '₹';
   const esc = v => (v==null?'':String(v));
   const sigCol = x => x==='BUY'?'#31a745':x==='SELL'?'#ff4f55':'#d97706';
@@ -8860,7 +8888,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
   @page{size:A4;margin:16mm 12mm 14mm 12mm}
   @media print{ .pattern,.box,.tbl,img.chart{break-inside:avoid} body{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
 </style></head><body>
-  <div class="page-header"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 463 463" width="16" height="16" style="fill:#117b3d"><path d="M303.5,201.284h-32c-14.215,0-22.196,11.409-28.609,20.575c-3.929,5.617-7.992,11.425-11.391,11.425 s-7.462-5.808-11.391-11.425c-6.413-9.167-14.394-20.575-28.609-20.575h-32c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h32 c5.957,0,10.328,5.612,16.317,14.173c5.845,8.356,12.471,17.827,23.683,17.827s17.837-9.471,23.683-17.827 c5.989-8.562,10.36-14.173,16.317-14.173h32c4.142,0,7.5-3.358,7.5-7.5S307.642,201.284,303.5,201.284z"/><path d="M393.71,78.752c-19.089-10.832-37.119-21.062-43.557-33.43c-1.595-3.065-5.081-4.644-8.436-3.822 c-3.356,0.821-5.717,3.83-5.717,7.285c0,19.682,13.366,34.986,26.292,49.787c11.269,12.902,21.912,25.089,21.708,38.096 c-0.377,24.12-46.618,32.617-56.501,32.617c-0.19,0-0.376,0.014-0.562,0.028c-7.199-6.453-17.868-8.876-28.305-11.245 c-5.492-1.246-11.17-2.535-16.762-4.399c-5.734-1.911-10.591-4.341-15.288-6.691c-9.525-4.766-19.375-9.693-35.083-9.693 s-25.558,4.928-35.083,9.693c-4.697,2.35-9.554,4.78-15.288,6.691c-5.592,1.864-11.27,3.153-16.762,4.399 c-10.437,2.368-21.106,4.792-28.305,11.245c-0.186-0.014-0.372-0.028-0.562-0.028c-9.883,0-56.124-8.497-56.501-32.617 c-0.203-13.007,10.44-25.194,21.708-38.096C113.634,83.771,127,68.466,127,48.784c0-3.456-2.361-6.464-5.717-7.285 c-3.358-0.821-6.84,0.756-8.436,3.822C106.409,57.69,88.379,67.92,69.29,78.752C36.812,97.181,0,118.069,0,159.784 c0,25.216,16.564,48.449,47.901,67.187c22.422,13.407,48.117,21.983,65.885,25.914c-1.102,7.575-1.785,14.442-1.785,19.899 c0,30.031,30.353,49.932,48.487,61.822c3.631,2.38,7.931,5.201,10.294,7.104c-1.207,2.804-2.161,6.086-2.711,10.042 c-2.157,15.531,6.3,29.171,22.071,35.598c0.205,0.083,0.419,0.156,0.627,0.237c-0.395,1.52-0.785,3.265-1.084,5.143 c-1.422,8.931-0.054,15.953,4.066,20.871c10.284,12.274,22.265,7.705,29.422,4.974c3.088-1.178,6.004-2.291,8.327-2.291 s5.239,1.113,8.327,2.291c3.53,1.347,8.234,3.141,13.328,3.141c5.235,0,10.882-1.895,16.094-8.115 c4.121-4.917,5.489-11.939,4.066-20.871c-0.299-1.878-0.689-3.624-1.084-5.143c0.208-0.081,0.422-0.154,0.627-0.237 c15.771-6.426,24.228-20.066,22.071-35.598c-0.549-3.956-1.504-7.238-2.711-10.042c2.364-1.902,6.664-4.723,10.294-7.104 C320.647,322.717,351,302.816,351,272.784c0-5.457-0.684-12.323-1.785-19.899c17.768-3.931,43.462-12.507,65.885-25.914 C446.436,208.234,463,185.001,463,159.784C463,118.069,426.188,97.181,393.71,78.752z M55.599,214.097 C37.078,203.023,15,184.611,15,159.784c0-32.98,31.363-50.776,61.693-67.987c7.03-3.989,13.928-7.903,20.317-11.955 c-2.424,2.934-4.996,5.879-7.601,8.862c-12.636,14.468-25.702,29.429-25.409,48.197c0.517,33.1,44.529,44.258,64.06,46.779 c-0.658,2.948-1.442,6.367-2.31,10.154c-2.926,12.752-6.65,28.986-9.484,44.242C99.789,234.366,76.223,226.429,55.599,214.097z M257.751,403.968c-3.148,3.758-4.922,3.513-12.578,0.592c-4.025-1.536-8.587-3.276-13.673-3.276s-9.648,1.74-13.673,3.276 c-7.654,2.919-9.429,3.166-12.578-0.593c-1.844-2.201-1.151-8.41,0.216-13.337c0.576,0.023,1.152,0.044,1.726,0.044 c5.351,0,10.582-1.019,14.975-3.283c2.237,2.813,5.153,4.893,9.335,4.893c4.181,0,7.098-2.08,9.334-4.893 c4.393,2.264,9.624,3.283,14.975,3.283c0.577,0,1.155-0.021,1.733-0.044C258.924,395.607,259.554,401.816,257.751,403.968z M294.288,322.063c-4.354,2.855-7.974,5.228-10.798,7.442c-0.393-0.399-0.785-0.794-1.172-1.183 c-6.073-6.096-11.318-11.36-11.318-31.537c0-5.95,0.14-11.449,0.486-16.501c0.005,0,0.009,0.001,0.014,0.001 c12.403,0,22.124-3.453,28.892-10.263c8.849-8.904,10.356-21.039,10.583-29.737h0.525c4.142,0,7.5-3.358,7.5-7.5 s-3.358-7.5-7.5-7.5h-8c-41.746,0-47.5,34.364-47.5,71.5c0,26.374,8.701,35.107,15.692,42.124c4.414,4.431,7.33,7.357,8.379,14.908 c1.646,11.856-7.359,17.396-12.874,19.643c-7.263,2.958-14.929,2.781-19.132,0.785c2.366-4.147,4.377-5.96,7.434-5.96 c4.142,0,7.5-3.358,7.5-7.5s-3.358-7.5-7.5-7.5c-14.229,0-20.084,12.269-23.583,19.6c-0.13,0.273-0.271,0.567-0.417,0.872 c-0.146-0.305-0.287-0.599-0.417-0.872c-3.499-7.331-9.354-19.6-23.583-19.6c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5 c3.057,0,5.069,1.813,7.435,5.96c-4.203,1.996-11.87,2.174-19.132-0.785c-5.515-2.247-14.52-7.787-12.874-19.643 c1.049-7.55,3.965-10.477,8.379-14.908c6.991-7.017,15.692-15.75,15.692-42.124c0-37.136-5.754-71.5-47.5-71.5h-8 c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h0.525c0.228,8.698,1.735,20.833,10.583,29.737 c6.755,6.797,16.453,10.249,28.823,10.262c0.376,4.906,0.569,10.379,0.569,16.501c0,20.177-5.245,25.441-11.318,31.537 c-0.387,0.389-0.779,0.784-1.172,1.183c-2.824-2.213-6.444-4.587-10.798-7.442C152.102,311.172,127,294.714,127,272.784 c0-17.315,8.37-53.798,13.371-75.595c0.928-4.044,1.765-7.691,2.45-10.778c1.718-7.733,8.539-10.011,24.865-13.715 c5.574-1.265,11.892-2.699,18.186-4.796c6.747-2.249,12.331-5.042,17.257-7.507c9.054-4.53,16.206-8.108,28.372-8.108 s19.317,3.578,28.372,8.108c4.926,2.465,10.51,5.258,17.257,7.507c6.293,2.098,12.611,3.532,18.186,4.796 c16.326,3.705,23.146,5.982,24.865,13.715c0.686,3.086,1.522,6.734,2.45,10.778C327.63,218.987,336,255.469,336,272.784 C336,294.714,310.898,311.172,294.288,322.063z M273.494,265.223c3.081-13.845,9.587-22.13,22.45-24.334 c-0.256,6.245-1.4,13.738-6.191,18.558C286.224,262.999,280.745,264.924,273.494,265.223z M189.335,265.218 c-7.167-0.322-12.586-2.247-16.088-5.771c-4.818-4.848-5.947-12.399-6.194-18.666C178.067,242.417,185.617,248.52,189.335,265.218z M407.401,214.097c-20.623,12.332-44.19,20.269-60.667,23.98c-2.835-15.256-6.559-31.49-9.484-44.242 c-0.869-3.787-1.653-7.207-2.31-10.154c19.531-2.521,63.543-13.68,64.06-46.779c0.293-18.769-12.773-33.729-25.409-48.197 c-2.605-2.983-5.177-5.928-7.601-8.862c6.389,4.052,13.288,7.966,20.317,11.955c30.33,17.21,61.693,35.006,61.693,67.987 C448,184.611,425.922,203.023,407.401,214.097z"/></svg><b>MiyeeStock Buddy</b> · Technical Analysis Report</span><span>${esc(ar.company)} (${esc(ar.symbol)})</span></div>
+  <div class="page-header"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 463 463" width="16" height="16" style="fill:#117b3d"><path d="M303.5,201.284h-32c-14.215,0-22.196,11.409-28.609,20.575c-3.929,5.617-7.992,11.425-11.391,11.425 s-7.462-5.808-11.391-11.425c-6.413-9.167-14.394-20.575-28.609-20.575h-32c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h32 c5.957,0,10.328,5.612,16.317,14.173c5.845,8.356,12.471,17.827,23.683,17.827s17.837-9.471,23.683-17.827 c5.989-8.562,10.36-14.173,16.317-14.173h32c4.142,0,7.5-3.358,7.5-7.5S307.642,201.284,303.5,201.284z"/><path d="M393.71,78.752c-19.089-10.832-37.119-21.062-43.557-33.43c-1.595-3.065-5.081-4.644-8.436-3.822 c-3.356,0.821-5.717,3.83-5.717,7.285c0,19.682,13.366,34.986,26.292,49.787c11.269,12.902,21.912,25.089,21.708,38.096 c-0.377,24.12-46.618,32.617-56.501,32.617c-0.19,0-0.376,0.014-0.562,0.028c-7.199-6.453-17.868-8.876-28.305-11.245 c-5.492-1.246-11.17-2.535-16.762-4.399c-5.734-1.911-10.591-4.341-15.288-6.691c-9.525-4.766-19.375-9.693-35.083-9.693 s-25.558,4.928-35.083,9.693c-4.697,2.35-9.554,4.78-15.288,6.691c-5.592,1.864-11.27,3.153-16.762,4.399 c-10.437,2.368-21.106,4.792-28.305,11.245c-0.186-0.014-0.372-0.028-0.562-0.028c-9.883,0-56.124-8.497-56.501-32.617 c-0.203-13.007,10.44-25.194,21.708-38.096C113.634,83.771,127,68.466,127,48.784c0-3.456-2.361-6.464-5.717-7.285 c-3.358-0.821-6.84,0.756-8.436,3.822C106.409,57.69,88.379,67.92,69.29,78.752C36.812,97.181,0,118.069,0,159.784 c0,25.216,16.564,48.449,47.901,67.187c22.422,13.407,48.117,21.983,65.885,25.914c-1.102,7.575-1.785,14.442-1.785,19.899 c0,30.031,30.353,49.932,48.487,61.822c3.631,2.38,7.931,5.201,10.294,7.104c-1.207,2.804-2.161,6.086-2.711,10.042 c-2.157,15.531,6.3,29.171,22.071,35.598c0.205,0.083,0.419,0.156,0.627,0.237c-0.395,1.52-0.785,3.265-1.084,5.143 c-1.422,8.931-0.054,15.953,4.066,20.871c10.284,12.274,22.265,7.705,29.422,4.974c3.088-1.178,6.004-2.291,8.327-2.291 s5.239,1.113,8.327,2.291c3.53,1.347,8.234,3.141,13.328,3.141c5.235,0,10.882-1.895,16.094-8.115 c4.121-4.917,5.489-11.939,4.066-20.871c-0.299-1.878-0.689-3.624-1.084-5.143c0.208-0.081,0.422-0.154,0.627-0.237 c15.771-6.426,24.228-20.066,22.071-35.598c-0.549-3.956-1.504-7.238-2.711-10.042c2.364-1.902,6.664-4.723,10.294-7.104 C320.647,322.717,351,302.816,351,272.784c0-5.457-0.684-12.323-1.785-19.899c17.768-3.931,43.462-12.507,65.885-25.914 C446.436,208.234,463,185.001,463,159.784C463,118.069,426.188,97.181,393.71,78.752z M55.599,214.097 C37.078,203.023,15,184.611,15,159.784c0-32.98,31.363-50.776,61.693-67.987c7.03-3.989,13.928-7.903,20.317-11.955 c-2.424,2.934-4.996,5.879-7.601,8.862c-12.636,14.468-25.702,29.429-25.409,48.197c0.517,33.1,44.529,44.258,64.06,46.779 c-0.658,2.948-1.442,6.367-2.31,10.154c-2.926,12.752-6.65,28.986-9.484,44.242C99.789,234.366,76.223,226.429,55.599,214.097z M257.751,403.968c-3.148,3.758-4.922,3.513-12.578,0.592c-4.025-1.536-8.587-3.276-13.673-3.276s-9.648,1.74-13.673,3.276 c-7.654,2.919-9.429,3.166-12.578-0.593c-1.844-2.201-1.151-8.41,0.216-13.337c0.576,0.023,1.152,0.044,1.726,0.044 c5.351,0,10.582-1.019,14.975-3.283c2.237,2.813,5.153,4.893,9.335,4.893c4.181,0,7.098-2.08,9.334-4.893 c4.393,2.264,9.624,3.283,14.975,3.283c0.577,0,1.155-0.021,1.733-0.044C258.924,395.607,259.554,401.816,257.751,403.968z M294.288,322.063c-4.354,2.855-7.974,5.228-10.798,7.442c-0.393-0.399-0.785-0.794-1.172-1.183 c-6.073-6.096-11.318-11.36-11.318-31.537c0-5.95,0.14-11.449,0.486-16.501c0.005,0,0.009,0.001,0.014,0.001 c12.403,0,22.124-3.453,28.892-10.263c8.849-8.904,10.356-21.039,10.583-29.737h0.525c4.142,0,7.5-3.358,7.5-7.5 s-3.358-7.5-7.5-7.5h-8c-41.746,0-47.5,34.364-47.5,71.5c0,26.374,8.701,35.107,15.692,42.124c4.414,4.431,7.33,7.357,8.379,14.908 c1.646,11.856-7.359,17.396-12.874,19.643c-7.263,2.958-14.929,2.781-19.132,0.785c2.366-4.147,4.377-5.96,7.434-5.96 c4.142,0,7.5-3.358,7.5-7.5s-3.358-7.5-7.5-7.5c-14.229,0-20.084,12.269-23.583,19.6c-0.13,0.273-0.271,0.567-0.417,0.872 c-0.146-0.305-0.287-0.599-0.417-0.872c-3.499-7.331-9.354-19.6-23.583-19.6c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5 c3.057,0,5.069,1.813,7.435,5.96c-4.203,1.996-11.87,2.174-19.132-0.785c-5.515-2.247-14.52-7.787-12.874-19.643 c1.049-7.55,3.965-10.477,8.379-14.908c6.991-7.017,15.692-15.75,15.692-42.124c0-37.136-5.754-71.5-47.5-71.5h-8 c-4.142,0-7.5,3.358-7.5,7.5s3.358,7.5,7.5,7.5h0.525c0.228,8.698,1.735,20.833,10.583,29.737 c6.755,6.797,16.453,10.249,28.823,10.262c0.376,4.906,0.569,10.379,0.569,16.501c0,20.177-5.245,25.441-11.318,31.537 c-0.387,0.389-0.779,0.784-1.172,1.183c-2.824-2.213-6.444-4.587-10.798-7.442C152.102,311.172,127,294.714,127,272.784 c0-17.315,8.37-53.798,13.371-75.595c0.928-4.044,1.765-7.691,2.45-10.778c1.718-7.733,8.539-10.011,24.865-13.715 c5.574-1.265,11.892-2.699,18.186-4.796c6.747-2.249,12.331-5.042,17.257-7.507c9.054-4.53,16.206-8.108,28.372-8.108 s19.317,3.578,28.372,8.108c4.926,2.465,10.51,5.258,17.257,7.507c6.293,2.098,12.611,3.532,18.186,4.796 c16.326,3.705,23.146,5.982,24.865,13.715c0.686,3.086,1.522,6.734,2.45,10.778C327.63,218.987,336,255.469,336,272.784 C336,294.714,310.898,311.172,294.288,322.063z M273.494,265.223c3.081-13.845,9.587-22.13,22.45-24.334 c-0.256,6.245-1.4,13.738-6.191,18.558C286.224,262.999,280.745,264.924,273.494,265.223z M189.335,265.218 c-7.167-0.322-12.586-2.247-16.088-5.771c-4.818-4.848-5.947-12.399-6.194-18.666C178.067,242.417,185.617,248.52,189.335,265.218z M407.401,214.097c-20.623,12.332-44.19,20.269-60.667,23.98c-2.835-15.256-6.559-31.49-9.484-44.242 c-0.869-3.787-1.653-7.207-2.31-10.154c19.531-2.521,63.543-13.68,64.06-46.779c0.293-18.769-12.773-33.729-25.409-48.197 c-2.605-2.983-5.177-5.928-7.601-8.862c6.389,4.052,13.288,7.966,20.317,11.955c30.33,17.21,61.693,35.006,61.693,67.987 C448,184.611,425.922,203.023,407.401,214.097z"/></svg><b>MiyeeStock Buddy</b> · Complete Stock Market Analysis</span><span>${esc(ar.company)} (${esc(ar.symbol)})</span></div>
   <div class="page-footer"><span>Educational tool only - NOT investment advice. Consult a SEBI-registered advisor.</span><span>by Vipin Nair · ${now}</span></div>
   <main>
     <div class="cover">
@@ -8875,7 +8903,13 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
         <div style="font-size:9px;color:#5c6368">${s.isChop?'Moving sideways · ':''}Score ${s.score.toFixed(0)}/100 · ${s.long.confidence}% conf</div></div>
     </div>
 
-    <h2>Signals by Timeframe</h2>
+    ${fx.execSummary || ''}
+
+    <h2>Technical Analysis</h2>
+    <p class="muted">What the price has been doing. These read price and volume only; they say
+    nothing about what the business earns or owes.</p>
+
+    <h3 style="font-size:11pt;margin:8px 0 4px">Signals by Timeframe</h3>
     <table class="tbl"><tr><th>Horizon</th><th>Signal</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Conf</th></tr>${tf}</table>
     ${s.isChop?`<p class="muted">⚠️ This stock is moving sideways (ADX ${s.adxV}, below 20) - no clear trend, so trend signals are unreliable and the call is held at HOLD.</p>`:''}
 
@@ -8915,6 +8949,7 @@ function _buildReportHTML(ar, mainImg, patImgs, aiHTML, realityHTML) {
 
     ${aiHTML?`<h2>AI Analyst Report</h2><div class="ai">${aiHTML}</div>`:''}
 
+    ${fx.fundamental || ''}
     <div class="disc"><b>Disclaimer:</b> MiyeeStock Buddy and Vipin Nair are NOT SEBI-registered investment advisors.
       This report is generated by rule-based and AI models for educational purposes only and does not account for news,
       earnings, macro events or your personal circumstances. Past performance is not indicative of future results.
@@ -12238,6 +12273,220 @@ function ratiosHtml(t, fund, price){
       Colours are broad rules of thumb across ordinary businesses; a capital-heavy company and an asset-light one are not judged on the same numbers.
       Hover any label for what it measures.</div>
   </div>`;
+}
+// ══════════════════ COMBINED READ: TECHNICALS vs FUNDAMENTALS ══════════════
+// Two analyses of the same company that answer different questions. Technicals
+// describe what the price has been doing. Fundamentals describe what the
+// business has been doing. Neither subsumes the other, and the interesting
+// information is usually in whether they agree.
+//
+// This produces the report's opening verdict. It states a position and, more
+// importantly, states what it cannot see: a reading built on one side alone is
+// labelled as such rather than presented as a whole-company judgement.
+
+const CR_BULL = 60, CR_BEAR = 40;          // technical score thresholds
+const CR_FGOOD = 60, CR_FWEAK = 45;        // fundamental composite thresholds
+
+function _crBand(score, good, weak){
+  if(score == null || !isFinite(score)) return null;
+  return score >= good ? 'strong' : score < weak ? 'weak' : 'middling';
+}
+
+// tech: { verdict, score, confidence, isChop }
+// fund: { composite, grade, coverage } or null
+// ratios: the computeRatios output, or null
+function combinedRead(tech, fund, ratios){
+  const t = tech || {};
+  const tScore = (typeof t.score === 'number' && isFinite(t.score)) ? t.score : null;
+  const fScore = (fund && typeof fund.composite === 'number' && isFinite(fund.composite))
+    ? fund.composite : null;
+  const r = ratios || {};
+  const limits = [];
+
+  const tBand = _crBand(tScore, CR_BULL, CR_BEAR);
+  const fBand = _crBand(fScore, CR_FGOOD, CR_FWEAK);
+
+  if(t.isChop){
+    limits.push('The trend is sideways, so the technical reading carries less weight than usual: '
+      + 'direction indicators are unreliable in a range and the verdict is held at HOLD regardless '
+      + 'of the bull/bear split.');
+  }
+  if(fund && fund.coverage != null && fund.coverage < 0.5){
+    limits.push('The fundamental score rests on less than half the inputs it wants, because the '
+      + 'data source did not carry the rest. Treat it as indicative rather than settled.');
+  }
+  if(r.pegBlocked){
+    limits.push('PEG could not be computed: earnings were not growing over the period measured, '
+      + 'and a price-to-growth ratio against flat or falling earnings has no meaning.');
+  }
+
+  // Neither side alone is a whole-company view, and the report says so.
+  if(tScore == null && fScore == null){
+    return { stance: 'No reading', tone: 'info',
+      headline: 'Neither analysis could be completed.',
+      detail: 'Neither the technical indicators nor the fundamental figures were available, so this '
+            + 'report has nothing to conclude from.',
+      limits };
+  }
+  if(fScore == null){
+    limits.unshift('This is a technical reading only. No fundamental data was available for this '
+      + 'symbol, so nothing here speaks to what the business earns, owes or is worth. Price '
+      + 'behaviour alone cannot tell you whether a company is sound.');
+    return { stance: 'Technical only', tone: 'info',
+      headline: 'Price says ' + (t.verdict || 'nothing definite') + '; the business side is unknown.',
+      detail: 'The technical score is ' + Math.round(tScore) + '/100. Without fundamentals there is '
+            + 'no way to tell whether that price behaviour is supported by the accounts or running '
+            + 'ahead of them, which is exactly the question that decides whether a trend holds.',
+      limits };
+  }
+  if(tScore == null){
+    limits.unshift('This is a fundamental reading only. The technical indicators could not be '
+      + 'computed, so nothing here speaks to timing, trend or entry level.');
+    return { stance: 'Fundamental only', tone: 'info',
+      headline: 'The business scores ' + (fund.grade || '-') + '; price behaviour is unknown.',
+      detail: 'A sound business bought at the wrong moment still loses money for a long time, and '
+            + 'this reading cannot say anything about the moment.',
+      limits };
+  }
+
+  const both = 'Technical ' + Math.round(tScore) + '/100, fundamental '
+             + Math.round(fScore) + '/100 (' + (fund.grade || '-') + ').';
+
+  if(tBand === 'strong' && fBand === 'strong'){
+    return { stance: 'Aligned, constructive', tone: 'good',
+      headline: 'Both readings point the same way, and it is the constructive one.',
+      detail: both + ' The price trend is firm and the accounts behind it are strong. This is the '
+            + 'least ambiguous case, which is not the same as a safe one: agreement means the two '
+            + 'analyses are not contradicting each other, not that the outcome is known.',
+      limits };
+  }
+  if(tBand === 'weak' && fBand === 'weak'){
+    return { stance: 'Aligned, negative', tone: 'weak',
+      headline: 'Both readings point the same way, and it is the negative one.',
+      detail: both + ' Price structure is weak and the business figures are weak with it. When the '
+            + 'two agree downward there is no second story to fall back on.',
+      limits };
+  }
+  if(tBand === 'strong' && fBand === 'weak'){
+    return { stance: 'Momentum ahead of the accounts', tone: 'watch',
+      headline: 'Price is rising while the business figures are not keeping up.',
+      detail: both + ' A rising price on weak fundamentals is a momentum or story move rather than '
+            + 'a value one. It can continue for a long time and it can end quickly, and the accounts '
+            + 'give no support if it turns.',
+      limits };
+  }
+  if(tBand === 'weak' && fBand === 'strong'){
+    return { stance: 'Accounts ahead of the price', tone: 'watch',
+      headline: 'The business figures are strong while the price is falling.',
+      detail: both + ' Either the market is pricing in something the reported numbers do not show '
+            + 'yet, or this is the disagreement value buyers look for. The report cannot tell you '
+            + 'which, because that depends on information outside the numbers.',
+      limits };
+  }
+  return { stance: 'No clear agreement', tone: 'info',
+    headline: 'The two readings do not line up strongly either way.',
+    detail: both + ' Neither analysis is emphatic and they do not reinforce each other. There is no '
+          + 'strong conclusion here, and inventing one would be worse than saying so.',
+    limits };
+}
+
+// ── Report sections ────────────────────────────────────────────────────────
+const CR_TONE_COL = { good:'#0f9d58', weak:'#d93025', watch:'#e37400', info:'#5f6368' };
+
+function _crEsc(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// The opening page. A reader who stops after this should still have the honest
+// version: the position, and what the report could not see.
+function repExecSummaryHtml(ar, comb, fund, cur){
+  const col = CR_TONE_COL[comb.tone] || CR_TONE_COL.info;
+  const chg = (ar.priceChg >= 0 ? '+' : '') + (ar.priceChg == null ? '' : ar.priceChg);
+  const pct = (ar.pricePct == null) ? '' : (ar.pricePct >= 0 ? '+' : '') + ar.pricePct + '%';
+  const s = ar.signals || {};
+  const box = (label, value, sub) =>
+    `<td style="padding:9px 12px;border:1px solid #d8dde3;vertical-align:top">
+       <div style="font-size:8.5pt;letter-spacing:.5px;text-transform:uppercase;color:#6b7280">${label}</div>
+       <div style="font-size:14pt;font-weight:800;margin-top:2px">${value}</div>
+       ${sub ? `<div style="font-size:8.5pt;color:#6b7280;margin-top:1px">${sub}</div>` : ''}
+     </td>`;
+  const limits = comb.limits && comb.limits.length
+    ? `<div style="margin-top:10px;border-left:3px solid #9aa0a6;padding:8px 12px;background:#f6f7f9">
+         <div style="font-size:9pt;font-weight:800;margin-bottom:4px">What this report cannot tell you</div>
+         <ul style="margin:0 0 0 16px;padding:0;font-size:9pt;line-height:1.55">
+           ${comb.limits.map(l => `<li style="margin-bottom:3px">${_crEsc(l)}</li>`).join('')}
+         </ul>
+       </div>` : '';
+  return `<h2>Executive Summary</h2>
+  <div style="border:2px solid ${col};border-radius:6px;padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:8.5pt;letter-spacing:1px;text-transform:uppercase;color:${col};font-weight:800">${_crEsc(comb.stance)}</div>
+    <div style="font-size:13pt;font-weight:800;margin:3px 0 5px">${_crEsc(comb.headline)}</div>
+    <div style="font-size:10pt;line-height:1.6">${_crEsc(comb.detail)}</div>
+  </div>
+  <table class="tbl" style="width:100%;border-collapse:collapse;margin-bottom:6px"><tr>
+    ${box('Price', cur + (ar.currentPrice == null ? '-' : ar.currentPrice), chg + ' (' + pct + ')')}
+    ${box('Technical verdict', _crEsc(s.isChop ? 'HOLD (Sideways)' : (s.verdict || '-')),
+          (s.score == null ? '' : Math.round(s.score) + '/100')
+          + (s.long && s.long.confidence != null ? ' · ' + s.long.confidence + '% confidence' : ''))}
+    ${box('Fundamental grade', _crEsc(fund && fund.grade ? fund.grade : 'n/r'),
+          fund && fund.composite != null ? Math.round(fund.composite) + '/100' : 'not reported')}
+    ${box('Combined', _crEsc(comb.stance), '')}
+  </tr></table>
+  ${limits}
+  <p class="muted">Technicals describe what the price has done. Fundamentals describe what the
+  business has done. This report keeps them apart, then says whether they agree, because the
+  disagreement is usually the informative part.</p>`;
+}
+
+// The fundamental half: the ratios that were computable, and the reading of
+// them. Markers carry meaning rather than leaving a reader to guess at a blank.
+function repFundamentalHtml(ratios, lender, interp, fund, groups){
+  if(!ratios) {
+    return `<h2>Fundamental Analysis</h2>
+      <p class="muted">No financial statements were available for this symbol, so no ratios could be
+      computed. That is a gap in the data source, not a finding about the company.</p>`;
+  }
+  const rows = [];
+  for(const [title, items] of groups){
+    const cells = items.map(([label, key, fmt]) => {
+      const na = lender && RT_LENDER_NA.indexOf(key) >= 0;
+      const v = ratios[key];
+      const shown = na && v != null ? 'n/a' : (v == null ? 'n/r' : fmt(v).replace(/<[^>]+>/g, ''));
+      return `<tr><td>${_crEsc(label)}</td><td style="text-align:right;font-weight:700">${shown}</td></tr>`;
+    }).join('');
+    rows.push(`<div style="break-inside:avoid;margin-bottom:8px">
+      <div style="font-size:9.5pt;font-weight:800;margin-bottom:3px">${title}</div>
+      <table class="tbl" style="width:100%;border-collapse:collapse">${cells}</table></div>`);
+  }
+  const lenderNote = lender
+    ? `<p class="muted">This is a bank or financial company. Ratios built for manufacturers and
+       retailers are marked <b>n/a</b>: for a lender, deposits are raw material rather than a
+       liability to worry about, there is no inventory, and negative operating cash flow usually
+       means the loan book grew.</p>` : '';
+  const findings = (interp && interp.findings && interp.findings.length)
+    ? `<h2>What the figures say</h2>
+       <div style="border:1px solid #d8dde3;border-radius:5px;padding:9px 12px;margin-bottom:8px;font-weight:700;font-size:10pt">
+         ${_crEsc(interp.summary)}</div>
+       ${interp.findings.map(f => `
+         <div style="break-inside:avoid;border-left:3px solid ${CR_TONE_COL[f.tone] || CR_TONE_COL.info};
+              padding:6px 11px;margin-bottom:6px;background:#fafbfc">
+           <div style="font-weight:800;font-size:9.5pt">${_crEsc(f.label)}</div>
+           <div style="font-size:9.5pt;line-height:1.55">${_crEsc(f.text)}</div>
+         </div>`).join('')}` : '';
+  const scoreNote = (fund && fund.composite != null)
+    ? `<p class="muted">Composite score ${Math.round(fund.composite)}/100 (grade ${_crEsc(fund.grade)}),
+       weighted across quality, valuation, growth and income. A pillar with no data is left out
+       rather than scored as zero.</p>` : '';
+  return `<h2>Fundamental Analysis</h2>
+    ${lenderNote}
+    <div style="columns:2;column-gap:14px">${rows.join('')}</div>
+    ${scoreNote}
+    <p class="muted"><b>n/r</b> not reported by the data source ·
+      <b>n/a</b> does not describe this kind of business ·
+      <b>n/m</b> applies, but cannot be computed to anything meaningful.
+      Nothing is estimated to fill a gap.</p>
+    ${findings}`;
 }
 const PY_INTERPRET = "\"\"\"Reads a set of computed ratios and says, in plain English, what they show.\n\nWhy this is Python and the rest of the app is not\n------------------------------------------------\nThe ratios themselves are computed in JavaScript and arrive here already\nworked out, along with the band (good / fair / weak) each one fell into. That\nsplit is deliberate: thresholds live in exactly one place, so this file cannot\ndrift out of agreement with the numbers on screen. What Python does here is the\npart it is actually better at, reading across the ratios, weighing them\nagainst each other, and turning the result into sentences.\n\nIt runs in the browser through Pyodide (CPython compiled to WebAssembly), so\n\"no server\" still holds: the figures never leave the machine. The same file is\nimported directly by tests/test_interpret.py under normal CPython, which is\nwhat makes the logic here verified rather than merely present.\n\nTwo rules govern every sentence produced:\n\n  1. Nothing is said about a ratio that was not computed. A missing input\n     yields silence, never a guess and never a reassuring absence.\n  2. Nothing here is advice. Every finding describes what the reported numbers\n     show. What to do about it is the reader's judgement, and the caller is\n     expected to say so.\n\"\"\"\n\nimport json\n\nGOOD, FAIR, WEAK = \"good\", \"fair\", \"weak\"\n\n\ndef _f(x):\n    \"\"\"A finite float, or None. Guards against NaN and infinity arriving as JSON.\"\"\"\n    if x is None:\n        return None\n    try:\n        v = float(x)\n    except (TypeError, ValueError):\n        return None\n    if v != v or v in (float(\"inf\"), float(\"-inf\")):\n        return None\n    return v\n\n\ndef _pct(v, dp=1):\n    return \"{:.{dp}f}%\".format(v, dp=dp)\n\n\ndef _x(v, dp=2):\n    return \"{:.{dp}f}x\".format(v, dp=dp)\n\n\n# Each entry: key, tone by band, and the sentence template. Only ratios worth\n# narrating appear here - a list of every number would be a table, not a read.\ndef _profitability(r, b, lender, out):\n    roce, roe, nm, gm = r.get(\"roce\"), r.get(\"roe\"), r.get(\"netMargin\"), r.get(\"grossMargin\")\n\n    if roce is not None and not lender:\n        band = b.get(\"roce\")\n        if band == GOOD:\n            out.append((GOOD, \"Returns on capital\",\n                        \"ROCE of %s means the business earns well on the capital tied up in it. \"\n                        \"This is the number that is hardest to flatter with borrowing, so a high \"\n                        \"one is worth more than a high ROE.\" % _pct(roce)))\n        elif band == FAIR:\n            out.append((\"info\", \"Returns on capital\",\n                        \"ROCE of %s is moderate - the business earns its keep on the capital \"\n                        \"employed without standing out.\" % _pct(roce)))\n        elif band == WEAK:\n            out.append((WEAK, \"Returns on capital\",\n                        \"ROCE of %s is low. The business is not generating much from the capital \"\n                        \"tied up in it, which over time limits how fast it can grow without \"\n                        \"raising more money.\" % _pct(roce)))\n\n    if roe is not None:\n        band = b.get(\"roe\")\n        if roce is not None and not lender and roe - roce > 10:\n            out.append((\"info\", \"ROE flattered by debt\",\n                        \"ROE of %s sits well above ROCE of %s. That gap is usually borrowing: \"\n                        \"debt lifts the return to shareholders while adding risk that ROE alone \"\n                        \"does not show.\" % (_pct(roe), _pct(roce))))\n        elif band == GOOD:\n            out.append((GOOD, \"Return on equity\",\n                        \"ROE of %s is a strong return on shareholders' money.\" % _pct(roe)))\n        elif band == WEAK:\n            out.append((WEAK, \"Return on equity\",\n                        \"ROE of %s is a weak return on shareholders' money.\" % _pct(roe)))\n\n    if nm is not None:\n        band = b.get(\"netMargin\")\n        if band == GOOD:\n            out.append((GOOD, \"Margins\",\n                        \"Net margin of %s means the business keeps a healthy share of every \"\n                        \"rupee it sells.\" % _pct(nm)))\n        elif band == WEAK:\n            out.append((WEAK, \"Margins\",\n                        \"Net margin of %s is thin, so profit is sensitive to small moves in \"\n                        \"costs or pricing.\" % _pct(nm)))\n        if nm < 0:\n            out.append((WEAK, \"Loss-making\",\n                        \"Net margin is negative: the business lost money over this period. \"\n                        \"Several ratios below are withheld because they are meaningless \"\n                        \"against a loss.\"))\n\n    if gm is not None and nm is not None and gm > 0 and nm > 0 and gm - nm > 45:\n        out.append((\"info\", \"Costs below the gross line\",\n                    \"Gross margin is %s but net margin is only %s. Most of what the business \"\n                    \"earns on its product is spent before it reaches the bottom line - overheads, \"\n                    \"interest or tax.\" % (_pct(gm), _pct(nm))))\n\n\ndef _growth(r, b, out):\n    rev, ni, eps = r.get(\"revGrowth\"), r.get(\"niGrowth\"), r.get(\"epsGrowth\")\n\n    if rev is not None and ni is not None:\n        if ni < rev - 10:\n            out.append((WEAK, \"Profit lagging sales\",\n                        \"Revenue grew %s but net profit only %s. Sales are rising faster than \"\n                        \"profits, which means margins are compressing - growth is being bought \"\n                        \"rather than earned.\" % (_pct(rev), _pct(ni))))\n        elif ni > rev + 10:\n            out.append((GOOD, \"Profit outpacing sales\",\n                        \"Net profit grew %s against revenue growth of %s. The business is getting \"\n                        \"more profitable as it grows, not just bigger.\" % (_pct(ni), _pct(rev))))\n\n    if eps is not None and ni is not None and ni - eps > 5:\n        out.append((\"info\", \"Dilution\",\n                    \"Net profit grew %s but earnings per share only %s. The share count rose, so \"\n                    \"each existing share captured less of that growth than the headline suggests.\"\n                    % (_pct(ni), _pct(eps))))\n\n    if rev is not None and rev < 0:\n        out.append((WEAK, \"Shrinking\",\n                    \"Revenue fell %s against the previous period. The business sold less, not \"\n                    \"more.\" % _pct(abs(rev))))\n\n\ndef _solvency(r, b, lender, out):\n    if lender:\n        return\n    de, cover, nde = r.get(\"debtToEquity\"), r.get(\"interestCover\"), r.get(\"netDebtEbitda\")\n\n    if de is not None:\n        band = b.get(\"debtToEquity\")\n        if band == WEAK:\n            out.append((WEAK, \"Debt load\",\n                        \"Debt of %s times equity means the business leans more on lenders than on \"\n                        \"its owners. That magnifies both good years and bad ones.\" % _x(de)))\n        elif band == GOOD:\n            out.append((GOOD, \"Debt load\",\n                        \"Debt is %s times equity - a conservative balance sheet.\" % _x(de)))\n\n    if cover is not None:\n        if cover < 2:\n            out.append((WEAK, \"Interest burden\",\n                        \"Operating profit covers the interest bill only %s. There is little room \"\n                        \"for a bad year before interest becomes hard to service.\" % _x(cover, 1)))\n        elif b.get(\"interestCover\") == GOOD:\n            out.append((GOOD, \"Interest burden\",\n                        \"Operating profit covers interest %s over - comfortable.\" % _x(cover, 1)))\n\n    if nde is not None and nde <= 0:\n        out.append((GOOD, \"Net cash\",\n                    \"The business holds more cash than debt.\"))\n    elif nde is not None and b.get(\"netDebtEbitda\") == WEAK:\n        out.append((WEAK, \"Debt against earnings\",\n                    \"Net debt is %s years of operating earnings. Above about three, lenders and \"\n                    \"rating agencies start to take notice.\" % _x(nde, 1)))\n\n\ndef _liquidity(r, b, lender, out):\n    if lender:\n        return\n    cr, qr = r.get(\"currentRatio\"), r.get(\"quickRatio\")\n    if cr is not None and cr < 1:\n        out.append((WEAK, \"Short-term cover\",\n                    \"Current ratio of %s means short-term dues exceed short-term assets. The \"\n                    \"business depends on new cash coming in to meet bills already due.\" % _x(cr)))\n    elif cr is not None and qr is not None and cr >= 1.5 and qr < 1:\n        out.append((\"info\", \"Cover depends on inventory\",\n                    \"Current ratio looks comfortable at %s, but stripping out inventory drops it \"\n                    \"to %s. The cushion is stock that still has to be sold.\" % (_x(cr), _x(qr))))\n\n\ndef _cash(r, b, out):\n    cc, fcfm = r.get(\"cashConversion\"), r.get(\"fcfMargin\")\n    if cc is not None:\n        if cc < 0.6:\n            out.append((WEAK, \"Profits not becoming cash\",\n                        \"Only %s of net profit came through as operating cash. Reported profit is \"\n                        \"running ahead of money actually collected - worth checking receivables \"\n                        \"and inventory.\" % _x(cc)))\n        elif cc >= 1:\n            out.append((GOOD, \"Profits backed by cash\",\n                        \"Operating cash flow is %s of net profit, so the earnings are real cash \"\n                        \"rather than accounting entries.\" % _x(cc)))\n    if fcfm is not None and fcfm < 0:\n        out.append((WEAK, \"Cash consumed\",\n                    \"Free cash flow is negative: after capital spending, the business used more \"\n                    \"cash than it produced. That is normal while building capacity and a problem \"\n                    \"when it is not.\"))\n    elif fcfm is not None and b.get(\"fcfMargin\") == GOOD:\n        out.append((GOOD, \"Cash generative\",\n                    \"Free cash flow is %s of revenue - real money left after running and \"\n                    \"maintaining the business.\" % _pct(fcfm)))\n\n\ndef _valuation(r, b, out, deposit_rate=7.0):\n    pe, peg, ey, basis = r.get(\"pe\"), r.get(\"peg\"), r.get(\"earningsYield\"), r.get(\"pegBasis\")\n\n    if peg is not None:\n        if peg < 1:\n            out.append((GOOD, \"Price against growth\",\n                        \"PEG of %s: the price is below what the growth rate alone would justify, \"\n                        \"measured against %s.\" % (\"{:.2f}\".format(peg), basis or \"reported growth\")))\n        elif peg > 2:\n            out.append((WEAK, \"Price against growth\",\n                        \"PEG of %s: the price is well ahead of the growth being delivered. That \"\n                        \"only works out if growth accelerates.\" % \"{:.2f}\".format(peg)))\n    elif r.get(\"pegBlocked\"):\n        out.append((\"info\", \"PEG not meaningful\",\n                    \"Earnings are flat or shrinking, so PEG has no meaning here - dividing a \"\n                    \"price by negative growth produces a number that looks cheap and is not.\"))\n\n    if ey is not None:\n        if ey < deposit_rate - 2:\n            out.append((\"info\", \"Against a deposit\",\n                        \"The earnings yield is %s. A fixed deposit pays roughly %s with no \"\n                        \"business risk, so the case for holding this rests on growth rather than \"\n                        \"current earnings.\" % (_pct(ey), _pct(deposit_rate, 0))))\n        elif ey > deposit_rate + 3:\n            out.append((GOOD, \"Against a deposit\",\n                        \"The earnings yield is %s, comfortably above a deposit rate of about %s.\"\n                        % (_pct(ey), _pct(deposit_rate, 0))))\n\n    if pe is not None and pe > 60:\n        out.append((\"info\", \"High multiple\",\n                    \"A P/E of %s prices in a great deal of future growth. It is not wrong on its \"\n                    \"own, but it leaves little margin for disappointment.\"\n                    % \"{:.1f}\".format(pe)))\n\n\n# Ratios worth reporting coverage against. A read built on four numbers is a\n# different thing from one built on twenty, and the reader should be told which.\n_TRACKED = [\n    \"grossMargin\", \"opMargin\", \"netMargin\", \"roe\", \"roce\", \"roic\", \"roa\",\n    \"revGrowth\", \"niGrowth\", \"epsGrowth\", \"debtToEquity\", \"netDebtEbitda\",\n    \"interestCover\", \"currentRatio\", \"quickRatio\", \"assetTurnover\",\n    \"invTurnover\", \"receivableDays\", \"fcfMargin\", \"cashConversion\",\n    \"pe\", \"peg\", \"pb\", \"ps\", \"evEbitda\", \"earningsYield\", \"divYield\",\n]\n\n\ndef interpret(payload):\n    \"\"\"payload: {ratios, bands, lender, symbol, depositRate}. Returns a dict.\"\"\"\n    payload = payload or {}\n    raw = payload.get(\"ratios\") or {}\n    ratios = {}\n    for k in raw:\n        v = _f(raw[k])\n        if v is not None:\n            ratios[k] = v\n    # pegBasis is text and pegBlocked is a flag; neither survives the float pass.\n    if raw.get(\"pegBasis\"):\n        ratios[\"pegBasis\"] = raw[\"pegBasis\"]\n    ratios[\"pegBlocked\"] = bool(raw.get(\"pegBlocked\"))\n\n    bands = payload.get(\"bands\") or {}\n    lender = bool(payload.get(\"lender\"))\n    deposit = _f(payload.get(\"depositRate\"))\n    if deposit is None:\n        deposit = 7.0\n\n    out = []\n    _profitability(ratios, bands, lender, out)\n    _growth(ratios, bands, out)\n    _solvency(ratios, bands, lender, out)\n    _liquidity(ratios, bands, lender, out)\n    _cash(ratios, bands, out)\n    _valuation(ratios, bands, out, deposit)\n\n    findings = [{\"tone\": t, \"label\": l, \"text\": s} for (t, l, s) in out]\n    have = [k for k in _TRACKED if k in ratios]\n    coverage = {\"available\": len(have), \"tracked\": len(_TRACKED)}\n\n    strengths = len([f for f in findings if f[\"tone\"] == GOOD])\n    concerns = len([f for f in findings if f[\"tone\"] == WEAK])\n\n    if not findings:\n        summary = (\"Not enough of the statements came through to say anything useful. \"\n                   \"%d of %d ratios could be computed.\" % (coverage[\"available\"], coverage[\"tracked\"]))\n    elif concerns == 0 and strengths:\n        summary = (\"The reported numbers read well: %d point%s in favour and nothing that stands \"\n                   \"out as a concern, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    elif strengths == 0 and concerns:\n        summary = (\"The reported numbers read poorly: %d concern%s and nothing that stands out in \"\n                   \"favour, from %d of %d ratios.\"\n                   % (concerns, \"\" if concerns == 1 else \"s\", coverage[\"available\"], coverage[\"tracked\"]))\n    else:\n        summary = (\"A mixed picture: %d point%s in favour, %d concern%s, from %d of %d ratios.\"\n                   % (strengths, \"\" if strengths == 1 else \"s\",\n                      concerns, \"\" if concerns == 1 else \"s\",\n                      coverage[\"available\"], coverage[\"tracked\"]))\n\n    if lender:\n        summary += (\" Ratios that describe manufacturers rather than lenders have been left out \"\n                    \"of this reading.\")\n\n    return {\"summary\": summary, \"findings\": findings, \"coverage\": coverage,\n            \"strengths\": strengths, \"concerns\": concerns}\n\n\ndef interpret_json(s):\n    \"\"\"String in, string out - the shape Pyodide passes across cleanly.\"\"\"\n    return json.dumps(interpret(json.loads(s)))\n";
 // ══════════════════════ INSIGHTS ══════════════════════
