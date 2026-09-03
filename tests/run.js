@@ -2138,6 +2138,44 @@ group('key ratios');
   }
 }
 
+
+// ── Valuation feed: quoteSummary through the Worker ────────────────────────
+group('valuation feed');
+{
+  // The entire Valuation card (P/E, PEG, P/B, P/S, EV/EBITDA, yields) and the
+  // sector that decides whether bank ratios are marked n/a all come from
+  // quoteSummary. It needs Yahoo's cookie+crumb, which only a server can get,
+  // so routing it through the public relays could never have worked.
+  const wsrc = require('fs').readFileSync(require('path').join(__dirname,'..','proxy','worker.js'),'utf8');
+  ok('the Worker exposes a quoteSummary route', /params\.get\('quotesummary'\)/.test(wsrc), 'no route');
+  ok('it does the crumb handshake for it', /_yahooAuth\(\)[\s\S]{0,300}quoteSummary/.test(wsrc), 'unauthenticated');
+  ok('it validates the symbol', /quotesummary'\)[\s\S]{0,200}\[A-Za-z0-9\.\\-\^\]\{1,20\}/.test(wsrc), 'symbol not validated');
+  // Modules must not be a pass-through: the Worker is not an open proxy, and a
+  // free-text parameter forwarded to Yahoo would make it one.
+  ok('it validates the module list rather than forwarding it',
+     /\^\[A-Za-z\]\{1,40\}\(,\[A-Za-z\]\{1,40\}\)\{0,9\}\$/.test(wsrc), 'modules passed through raw');
+  {
+    const re = new RegExp("\\^\\[A-Za-z\\]\\{1,40\\}(?:\\(,\\[A-Za-z\\]\\{1,40\\}\\)\\{0,9\\})\\$");
+    const m = wsrc.match(/if \(!\/(\^\[A-Za-z\][^/]*)\/\.test\(mods\)\)/);
+    ok('the module pattern is anchored at both ends', !!m && m[1].startsWith('^') && m[1].endsWith('$'), 'unanchored');
+    if(m){
+      const rx = new RegExp(m[1]);
+      ok('a normal module list passes', rx.test('summaryDetail,defaultKeyStatistics,financialData,assetProfile'), 'rejected');
+      ok('a URL smuggled in is refused', !rx.test('summaryDetail&url=https://evil.test'), 'accepted a URL');
+      ok('a path traversal attempt is refused', !rx.test('../../etc/passwd'), 'accepted traversal');
+      ok('an empty list is refused', !rx.test(''), 'accepted empty');
+    }
+  }
+  // The app must reach for the Worker before the public relays, not after.
+  ok('the app tries the Worker for quoteSummary', /\$\{_sp\}\/\?quotesummary=\$\{enc\(ySym\)\}/.test(SRC), 'Worker not used');
+  {
+    const i = SRC.indexOf('quotesummary=${enc(ySym)}');
+    const j = SRC.indexOf("'https://corsproxy.io/?url='+enc(yUrl)");
+    ok('and tries it first, ahead of the public relays', i > 0 && j > 0 && i < j, 'Worker is not first');
+  }
+  ok('with no Worker configured the relays are still tried', /\.\.\.\(_sp \? \[/.test(SRC), 'hard dependency on the Worker');
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
