@@ -21,11 +21,23 @@ const ROOT = __dirname;
 const TEMPLATE = path.join(ROOT, 'src', 'index.template.html');
 const OUT = path.join(ROOT, 'index.html');
 const INCLUDE = /^([ \t]*)\/\/ @include ([\w./-]+)[ \t]*$/gm;
+// Python sources are embedded as JSON string literals rather than pasted in.
+// JSON.stringify escapes anything the file might contain, so a quote or a
+// backslash in the Python cannot break out into the surrounding script.
+const INCLUDE_PY = /^([ \t]*)\/\/ @include-py (\w+) ([\w./-]+)[ \t]*$/gm;
 
 function build() {
   const tpl = fs.readFileSync(TEMPLATE, 'utf8');
   let missing = [];
-  const out = tpl.replace(INCLUDE, (_m, indent, rel) => {
+  const withPy = tpl.replace(INCLUDE_PY, (_m, indent, name, rel) => {
+    const p = path.join(ROOT, 'src', rel);
+    if (!fs.existsSync(p)) { missing.push(rel); return _m; }
+    // Normalise to \n so the embedded source is identical whatever the
+    // checkout's line endings, which keeps the build byte-exact.
+    const src = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+    return `${indent}const ${name} = ${JSON.stringify(src)};`;
+  });
+  const out = withPy.replace(INCLUDE, (_m, indent, rel) => {
     const p = path.join(ROOT, 'src', rel);
     if (!fs.existsSync(p)) { missing.push(rel); return _m; }
     // Files are stored verbatim, including their own indentation, so the

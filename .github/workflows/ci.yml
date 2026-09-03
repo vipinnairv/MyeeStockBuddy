@@ -12,8 +12,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       # jsdom enables the glossary DOM tests; they skip cleanly without it.
       - run: npm install --no-audit --no-fund
       # index.html must be rebuildable from src/ byte-for-byte.
       - run: node build.js --check
       - run: node tests/run.js
+      # src/py/interpret.py runs in the browser under Pyodide. Testing it here
+      # under CPython is what makes it verified rather than merely shipped.
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v

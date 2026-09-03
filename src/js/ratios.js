@@ -20,6 +20,29 @@
 
 const RT_EPS = 1e-9;
 
+// ── Shared number formatting ───────────────────────────────────────────────
+// Indian grouping puts separators at 1,00,00,000 rather than 10,000,000, so a
+// crore figure reads the way it is spoken. Both statement figures and ratios
+// go through here, so the two tables never disagree on how a number looks.
+function _finGroup(n, dp, isIndia){
+  if(n == null || !isFinite(n)) return '';
+  return n.toLocaleString(isIndia ? 'en-IN' : 'en-US',
+    { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+// Short forms are unavoidable on a statement - the full numbers do not fit -
+// but they are jargon to anyone outside finance, so each carries what it means.
+const FIN_ABBR = {
+  'Cr': 'Crore — 1,00,00,000, i.e. ten million',
+  'L':  'Lakh — 1,00,000, i.e. one hundred thousand',
+  'B':  'Billion — 1,000,000,000',
+  'M':  'Million — 1,000,000',
+  '×':  'Times — a multiple, not a percentage. 2× means twice.',
+};
+function _finUnit(u){
+  const tip = FIN_ABBR[u];
+  return tip ? `<abbr class="fin-abbr" title="${tip}">${u}</abbr>` : u;
+}
+
 // Latest reported value for a line, and the period it came from. Lines are not
 // all published on the same date - a balance sheet can lag an income statement
 // - so each line is read at its own newest date rather than forced onto one.
@@ -59,6 +82,29 @@ function _rtGrowth(pair){
   if(pair.prev == null || pair.prev <= 0) return null;
   return (pair.now - pair.prev) / pair.prev * 100;
 }
+// Earnings per share, period by period. The source's own diluted EPS is used
+// where it exists; otherwise EPS is what it is defined as — net profit divided
+// by the shares outstanding in that same period. Without this fallback a
+// company reporting both of those but no EPS line yielded no EPS at all, and
+// with it no EPS growth and so no PEG.
+function _rtEpsSeries(t){
+  if(!t || !t.line || !t.periodsAll) return null;
+  const rep = t.line.DilutedEPS || {}, ni = t.line.NetIncome || {}, sh = t.line.OrdinarySharesNumber || {};
+  const out = {};
+  for(const d of t.periodsAll){
+    if(rep[d] != null){ out[d] = rep[d]; continue; }
+    if(ni[d] != null && sh[d] != null && Math.abs(sh[d]) > RT_EPS) out[d] = ni[d] / sh[d];
+  }
+  return Object.keys(out).length ? out : null;
+}
+// The two most recent values of an already-built series, newest first.
+function _rtPairFrom(map, periodsAll){
+  if(!map || !periodsAll) return null;
+  const got = [];
+  for(const d of periodsAll){ if(map[d] != null) got.push(map[d]); if(got.length === 2) break; }
+  return got.length === 2 ? { now: got[0], prev: got[1] } : null;
+}
+
 // First of several lines that is actually reported. Used where the source may
 // carry either of two equivalent names.
 function _rtFirst(t, keys){
@@ -116,7 +162,8 @@ function computeRatios(t, fund, price){
   // Growth
   r.revGrowth = _rtGrowth(_rtPair(t, 'TotalRevenue'));
   r.niGrowth  = _rtGrowth(_rtPair(t, 'NetIncome'));
-  r.epsGrowth = _rtGrowth(_rtPair(t, 'DilutedEPS'));
+  const epsSeries = _rtEpsSeries(t);
+  r.epsGrowth = _rtGrowth(_rtPairFrom(epsSeries, t && t.periodsAll));
 
   // Leverage
   r.debtToEquity = _rtDiv(debt, eq);
@@ -144,8 +191,8 @@ function computeRatios(t, fund, price){
 
   // Valuation. These need the market's price, not just the accounts.
   const p = (typeof price === 'number' && isFinite(price) && price > 0) ? price : null;
-  const eps = _rtFirst(t, ['DilutedEPS']) != null ? _rtVal(t, 'DilutedEPS')
-            : ((ni != null && shares != null) ? _rtDiv(ni, shares) : null);
+  let eps = null;
+  if(epsSeries && t && t.periodsAll) for(const d of t.periodsAll){ if(epsSeries[d] != null){ eps = epsSeries[d]; break; } }
   r.eps = eps;
   r.pe  = (f.pe != null && isFinite(f.pe) && f.pe > 0) ? f.pe : (p != null && eps != null && eps > 0 ? _rtDiv(p, eps) : null);
   r.pb  = (f.pb != null && isFinite(f.pb) && f.pb > 0) ? f.pb
@@ -161,10 +208,22 @@ function computeRatios(t, fund, price){
   // PEG: P/E divided by the growth rate it is being paid for. Against flat or
   // shrinking earnings the ratio has no meaning at all - a negative PEG is not
   // "cheap" - so it is withheld rather than shown as a bargain.
-  const g = (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth
-          : (r.epsGrowth != null ? r.epsGrowth : r.niGrowth);
-  r.peg = (r.pe != null && g != null && g > 0) ? _rtDiv(r.pe, g) : null;
-  r.pegBlocked = (r.pe != null && g != null && g <= 0);
+  // Preference order matters. Annual EPS growth from the statements is what
+  // PEG is defined against. The feed's own earningsGrowth is a quarterly
+  // year-on-year figure that is often negative for a company whose annual
+  // earnings grew, and taking it unconditionally withheld PEG on the weaker
+  // measure. Net income growth is the last resort: it ignores dilution.
+  const pegCandidates = [
+    ['annual EPS growth', r.epsGrowth],
+    ['the feed\u2019s earnings growth', (f.earnGrowth != null && isFinite(f.earnGrowth)) ? f.earnGrowth : null],
+    ['net income growth', r.niGrowth],
+  ].filter(c => c[1] != null);
+  const pegOn = pegCandidates.find(c => c[1] > 0);
+  r.peg = (r.pe != null && pegOn) ? _rtDiv(r.pe, pegOn[1]) : null;
+  r.pegBasis = r.peg != null ? pegOn[0] : null;
+  // Only "no growth to price" when growth was actually measured and was not
+  // positive. Growth we simply do not have is a dash, not a verdict.
+  r.pegBlocked = (r.pe != null && pegCandidates.length > 0 && !pegOn);
 
   return r;
 }
@@ -210,9 +269,9 @@ function isLender(fund){
 // ── Display ────────────────────────────────────────────────────────────────
 const RT_DASH = '<span class="rt-na">—</span>';
 function _rtPct(v){ return v == null ? RT_DASH : (v >= 0 ? '' : '-') + Math.abs(v).toFixed(1) + '%'; }
-function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + '×'; }
-function _rtRaw(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp); }
-function _rtDays(v){ return v == null ? RT_DASH : Math.round(v) + ' days'; }
+function _rtX(v, dp){ return v == null ? RT_DASH : v.toFixed(dp == null ? 2 : dp) + _finUnit('×'); }
+function _rtRaw(v, dp){ return v == null ? RT_DASH : _finGroup(v, dp == null ? 2 : dp, true); }
+function _rtDays(v){ return v == null ? RT_DASH : _finGroup(Math.round(v), 0, true) + ' days'; }
 
 // label, key, formatter, what it actually tells you
 const RT_GROUPS = [
@@ -249,6 +308,7 @@ const RT_GROUPS = [
     ['Cash conversion',   'cashConversion', v => _rtX(v),  'Operating cash flow divided by net profit. Well under 1 means profits are not turning into cash.'],
   ]],
   ['🏷️ Valuation', [
+    ['EPS',               'eps',           v => _rtRaw(v),    'Earnings per share: net profit divided by the shares outstanding, or the source\u2019s own diluted figure where it reports one.'],
     ['P/E',               'pe',            v => _rtRaw(v, 1), 'Price paid per rupee of annual earnings.'],
     ['PEG',               'peg',           v => _rtRaw(v),    'P/E divided by the earnings growth rate being paid for. Around 1 means growth and price are roughly in line; under 1 is the classic screen for growth at a reasonable price.'],
     ['P/B',               'pb',            v => _rtRaw(v),    'Price against book value — the accounting net worth per share.'],
@@ -269,8 +329,11 @@ function ratiosHtml(t, fund, price){
     const shown = na && v != null
       ? `<span class="rt-na" title="This ratio does not describe a lender's balance sheet.">n/a</span>`
       : fmt(v);
-    const note = (key === 'peg' && v == null && r.pegBlocked)
-      ? `<div class="rt-note">no growth to price</div>` : '';
+    let note = '';
+    if(key === 'peg'){
+      if(v == null && r.pegBlocked) note = `<div class="rt-note">no growth to price</div>`;
+      else if(v != null && r.pegBasis) note = `<div class="rt-note">vs ${r.pegBasis}</div>`;
+    }
     return `<tr class="rt-row"><th scope="row" class="rt-lbl" title="${tip.replace(/"/g,'&quot;')}">${label}</th>
       <td class="rt-val ${band ? 'rt-'+band : ''}">${shown}${note}</td></tr>`;
   };
