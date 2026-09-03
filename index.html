@@ -12304,10 +12304,42 @@ function ratiosHtml(t, fund, price){
 
 const CR_BULL = 60, CR_BEAR = 40;          // technical score thresholds
 const CR_FGOOD = 60, CR_FWEAK = 45;        // fundamental composite thresholds
+const CR_MIN_CONF = 35;                    // below this the technical read is not usable
 
 function _crBand(score, good, weak){
   if(score == null || !isFinite(score)) return null;
   return score >= good ? 'strong' : score < weak ? 'weak' : 'middling';
+}
+
+// Is the technical reading worth putting weight on?
+//
+// This is the correction for a report that contradicted itself. The analyser
+// clamps the verdict to HOLD when ADX is below 20, on the stated grounds that
+// trend indicators fire false signals in a range, and caps confidence at 25%.
+// The raw score is left untouched. So a stock could show "HOLD" in the verdict
+// box while the score of 12/100 drove the summary to announce that the price
+// was falling: two conclusions from one dataset, side by side, disagreeing.
+//
+// A score built from indicators the analyser has just declared unreliable is
+// not weak evidence, it is absent evidence. Treated as weak it drags the whole
+// reading; treated as absent, the fundamentals carry it and the report says so.
+function _crTechUsable(t){
+  if(t == null) return false;
+  if(t.isChop) return false;
+  if(typeof t.confidence === 'number' && isFinite(t.confidence) && t.confidence < CR_MIN_CONF) return false;
+  return true;
+}
+
+function _crWhyUnusable(t){
+  if(t && t.isChop){
+    return 'the trend is sideways (ADX below 20), where the trend indicators that '
+         + 'make up the score fire false signals. The analyser holds the verdict at HOLD and '
+         + 'caps confidence for exactly this reason, so the score is not evidence of direction '
+         + 'here. It becomes usable again once ADX clears 20 to 25.';
+  }
+  return 'the indicators do not agree strongly enough to carry a direction '
+       + '(confidence below ' + CR_MIN_CONF + '%). A score near the middle means the evidence '
+       + 'is split, not that the answer is "hold".';
 }
 
 // tech: { verdict, score, confidence, isChop }
@@ -12321,13 +12353,14 @@ function combinedRead(tech, fund, ratios){
   const r = ratios || {};
   const limits = [];
 
-  const tBand = _crBand(tScore, CR_BULL, CR_BEAR);
+  const techUsable = tScore != null && _crTechUsable(t);
+  const tBand = techUsable ? _crBand(tScore, CR_BULL, CR_BEAR) : null;
   const fBand = _crBand(fScore, CR_FGOOD, CR_FWEAK);
 
-  if(t.isChop){
-    limits.push('The trend is sideways, so the technical reading carries less weight than usual: '
-      + 'direction indicators are unreliable in a range and the verdict is held at HOLD regardless '
-      + 'of the bull/bear split.');
+  if(tScore != null && !techUsable){
+    limits.push('The technical half is set aside for this reading: ' + _crWhyUnusable(t)
+      + ' The score of ' + Math.round(tScore) + '/100 is still shown, but it is not what the '
+      + 'conclusion above rests on.');
   }
   if(fund && fund.coverage != null && fund.coverage < 0.5){
     limits.push('The fundamental score rests on less than half the inputs it wants, because the '
@@ -12340,7 +12373,7 @@ function combinedRead(tech, fund, ratios){
 
   // Neither side alone is a whole-company view, and the report says so.
   if(tScore == null && fScore == null){
-    return { stance: 'No reading', tone: 'info',
+    return { stance: 'No reading', tone: 'info', techUsable: false,
       headline: 'Neither analysis could be completed.',
       detail: 'Neither the technical indicators nor the fundamental figures were available, so this '
             + 'report has nothing to conclude from.',
@@ -12350,7 +12383,7 @@ function combinedRead(tech, fund, ratios){
     limits.unshift('This is a technical reading only. No fundamental data was available for this '
       + 'symbol, so nothing here speaks to what the business earns, owes or is worth. Price '
       + 'behaviour alone cannot tell you whether a company is sound.');
-    return { stance: 'Technical only', tone: 'info',
+    return { stance: 'Technical only', tone: 'info', techUsable,
       headline: 'Price says ' + (t.verdict || 'nothing definite') + '; the business side is unknown.',
       detail: 'The technical score is ' + Math.round(tScore) + '/100. Without fundamentals there is '
             + 'no way to tell whether that price behaviour is supported by the accounts or running '
@@ -12360,10 +12393,40 @@ function combinedRead(tech, fund, ratios){
   if(tScore == null){
     limits.unshift('This is a fundamental reading only. The technical indicators could not be '
       + 'computed, so nothing here speaks to timing, trend or entry level.');
-    return { stance: 'Fundamental only', tone: 'info',
+    return { stance: 'Fundamental only', tone: 'info', techUsable: false,
       headline: 'The business scores ' + (fund.grade || '-') + '; price behaviour is unknown.',
       detail: 'A sound business bought at the wrong moment still loses money for a long time, and '
             + 'this reading cannot say anything about the moment.',
+      limits };
+  }
+
+  const fWord = fScore >= CR_FGOOD ? 'strong' : fScore < CR_FWEAK ? 'weak' : 'middling';
+  const fPart = 'The business scores ' + Math.round(fScore) + '/100 (' + (fund.grade || '-') + '), '
+              + 'which is ' + fWord + '.';
+
+  // The technical side has nothing usable to say. The fundamentals carry the
+  // reading on their own, and it is labelled that way rather than dressed up as
+  // agreement or disagreement between two analyses.
+  if(!techUsable){
+    if(fBand === 'strong'){
+      return { stance: 'Fundamentals lead; no usable trend signal', tone: 'info', techUsable: false,
+        headline: 'The business looks sound. Price direction is genuinely unreadable right now.',
+        detail: fPart + ' The technical side cannot be read at present, so this is a one-sided view: '
+              + 'it says the accounts are in good order, and says nothing about whether now is the '
+              + 'moment. Those are different questions and only one of them has an answer here.',
+        limits };
+    }
+    if(fBand === 'weak'){
+      return { stance: 'Fundamentals lead, and they are weak', tone: 'weak', techUsable: false,
+        headline: 'The business figures are weak. Price direction is unreadable right now.',
+        detail: fPart + ' With no usable trend signal there is nothing on the price side to set '
+              + 'against that, so the weak accounts are the whole of what this report can tell you.',
+        limits };
+    }
+    return { stance: 'No usable reading on either side', tone: 'info', techUsable: false,
+      headline: 'Neither half is emphatic enough to conclude anything.',
+      detail: fPart + ' The technical side cannot be read at present. Two inconclusive halves do '
+            + 'not add up to a conclusion, and this report will not manufacture one.',
       limits };
   }
 
@@ -12371,7 +12434,7 @@ function combinedRead(tech, fund, ratios){
              + Math.round(fScore) + '/100 (' + (fund.grade || '-') + ').';
 
   if(tBand === 'strong' && fBand === 'strong'){
-    return { stance: 'Aligned, constructive', tone: 'good',
+    return { stance: 'Aligned, constructive', tone: 'good', techUsable: true,
       headline: 'Both readings point the same way, and it is the constructive one.',
       detail: both + ' The price trend is firm and the accounts behind it are strong. This is the '
             + 'least ambiguous case, which is not the same as a safe one: agreement means the two '
@@ -12379,14 +12442,14 @@ function combinedRead(tech, fund, ratios){
       limits };
   }
   if(tBand === 'weak' && fBand === 'weak'){
-    return { stance: 'Aligned, negative', tone: 'weak',
+    return { stance: 'Aligned, negative', tone: 'weak', techUsable: true,
       headline: 'Both readings point the same way, and it is the negative one.',
       detail: both + ' Price structure is weak and the business figures are weak with it. When the '
             + 'two agree downward there is no second story to fall back on.',
       limits };
   }
   if(tBand === 'strong' && fBand === 'weak'){
-    return { stance: 'Momentum ahead of the accounts', tone: 'watch',
+    return { stance: 'Momentum ahead of the accounts', tone: 'watch', techUsable: true,
       headline: 'Price is rising while the business figures are not keeping up.',
       detail: both + ' A rising price on weak fundamentals is a momentum or story move rather than '
             + 'a value one. It can continue for a long time and it can end quickly, and the accounts '
@@ -12394,14 +12457,14 @@ function combinedRead(tech, fund, ratios){
       limits };
   }
   if(tBand === 'weak' && fBand === 'strong'){
-    return { stance: 'Accounts ahead of the price', tone: 'watch',
+    return { stance: 'Accounts ahead of the price', tone: 'watch', techUsable: true,
       headline: 'The business figures are strong while the price is falling.',
       detail: both + ' Either the market is pricing in something the reported numbers do not show '
             + 'yet, or this is the disagreement value buyers look for. The report cannot tell you '
             + 'which, because that depends on information outside the numbers.',
       limits };
   }
-  return { stance: 'No clear agreement', tone: 'info',
+  return { stance: 'No clear agreement', tone: 'info', techUsable: true,
     headline: 'The two readings do not line up strongly either way.',
     detail: both + ' Neither analysis is emphatic and they do not reinforce each other. There is no '
           + 'strong conclusion here, and inventing one would be worse than saying so.',
@@ -12451,12 +12514,18 @@ function repExecSummaryHtml(ar, comb, fund, cur){
     ${box('Price', cur + (priceN == null ? 'n/r' : priceN), chg && pct ? chg + ' (' + pct + ')' : '')}
     ${box('Technical verdict', _crEsc(s.isChop ? 'HOLD (Sideways)' : (s.verdict || '-')),
           (s.score == null ? '' : Math.round(s.score) + '/100')
-          + (s.long && s.long.confidence != null ? ' · ' + s.long.confidence + '% confidence' : ''))}
+          + (s.long && s.long.confidence != null ? ', ' + s.long.confidence + '% confidence' : '')
+          + (comb.techUsable === false ? ' &mdash; not used' : ''))}
     ${box('Fundamental grade', _crEsc(fund && fund.grade ? fund.grade : 'n/r'),
           fund && fund.composite != null ? Math.round(fund.composite) + '/100' : 'not reported')}
     ${box('Combined', _crEsc(comb.stance), '')}
   </tr></table>
   ${limits}
+  ${comb.techUsable === false && s.score != null ? `<p class="muted">
+    The verdict reads HOLD while the score reads ${Math.round(s.score)}/100. They are not in
+    conflict: the score counts trend indicators, and the analyser clamps the verdict to HOLD when
+    those indicators are unreliable. Where they diverge like this, the clamp is the more honest
+    of the two and the score is not treated as evidence of direction.</p>` : ''}
   <p class="muted">Technicals describe what the price has done. Fundamentals describe what the
   business has done. This report keeps them apart, then says whether they agree, because the
   disagreement is usually the informative part.</p>`;
