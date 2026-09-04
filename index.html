@@ -3123,6 +3123,12 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       if (!auth.currentUser) throw { code: 'auth/no-current-user' };
       return sendEmailVerification(auth.currentUser);
     },
+    reloadUser: async () => {
+      if (!auth.currentUser) return null;
+      await auth.currentUser.reload();
+      const u = auth.currentUser;
+      return u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null;
+    },
     onChange: (cb) => onAuthStateChanged(auth, (u) => {
       cb(u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null);
     }),
@@ -10626,13 +10632,32 @@ const csPush = _csDebounce(async function () {
   if (typeof window === 'undefined' || !window.CloudDB) return;
   try {
     await window.CloudDB.saveState(_csUser.uid, _csBuildPayload(S));
-  } catch (e) { try { _logErr(e, 'cloudSync:push'); } catch (_) {} }
+  } catch (e) {
+    try { _logErr(e, 'cloudSync:push'); } catch (_) {}
+    if (e && e.code === 'permission-denied') _csNotifyNotInvited();
+  }
 }, 2500);
+
+// Signing up is open to anyone (Firebase Auth itself is not invite-gated) -
+// it's the Firestore security rules that only let allowlisted emails read or
+// write sync data. A non-allowlisted verified user can still use the app,
+// just entirely off localStorage like before; this tells them so once,
+// rather than letting sync fail silently and look broken.
+let _csNotInvitedShown = false;
+function _csNotifyNotInvited() {
+  if (_csNotInvitedShown) return;
+  _csNotInvitedShown = true;
+  try { if (typeof toast === 'function') toast("Signed in, but this account isn't on the invite list yet - your data stays local only.", 'info'); } catch (_) {}
+}
 
 async function csPull() {
   if (!csIsSignedIn() || typeof window === 'undefined' || !window.CloudDB) return null;
   try { return await window.CloudDB.loadState(_csUser.uid); }
-  catch (e) { try { _logErr(e, 'cloudSync:pull'); } catch (_) {} return null; }
+  catch (e) {
+    try { _logErr(e, 'cloudSync:pull'); } catch (_) {}
+    if (e && e.code === 'permission-denied') _csNotifyNotInvited();
+    return null;
+  }
 }
 
 // Reconcile local and remote on sign-in. Never silently discards either side:
@@ -10763,6 +10788,18 @@ async function pmAuthResendVerification() {
   try { await window.CloudAuth.resendVerification(); if (out) out.textContent = 'Verification email sent again.'; }
   catch (e) { if (out) out.textContent = _csFriendlyAuthError(e && e.code); }
 }
+// Re-checks emailVerified without a full page reload: clicking the link in
+// the verification email verifies the account server-side, but the SDK's
+// cached user object here only picks that up via an explicit reload().
+async function pmAuthCheckVerified() {
+  const out = document.getElementById('pm-auth-msg');
+  if (out) out.textContent = 'Checking…';
+  try {
+    const user = await window.CloudAuth.reloadUser();
+    csOnAuthChange(user);
+    if (!(user && user.emailVerified) && out) out.textContent = 'Not verified yet - click the link in your email, then try again.';
+  } catch (e) { if (out) out.textContent = _csFriendlyAuthError(e && e.code); }
+}
 
 // Three states: signed out, signed in but unverified, signed in and verified.
 // Only the third shows the portfolio; the other two show why not, not just
@@ -10799,8 +10836,9 @@ function renderPmAuthGate() {
       <div class="pm-auth-ico">📧</div>
       <div class="pm-auth-title">Verify your email</div>
       <div class="pm-auth-sub">A verification link was sent to <b>${(user.email || '').replace(/</g,'&lt;')}</b>.
-        Click it, then reload this page.</div>
-      <button class="btn btn-pri" onclick="pmAuthResendVerification()">Resend verification email</button>
+        Click it, then tap Sign In below.</div>
+      <button class="btn btn-pri" onclick="pmAuthCheckVerified()">Sign In</button>
+      <button class="btn btn-sec" onclick="pmAuthResendVerification()">Resend verification email</button>
       <button class="btn btn-sec" onclick="pmAuthSignOut()">Use a different account</button>
       <div id="pm-auth-msg" class="pm-auth-msg"></div>
     </div>`;
