@@ -1,5 +1,5 @@
 # AIStockAuditor
-**AdvanceStockAnalyzer** — A single-file offline web app for investors. Combines a **Stock Analyser** (Indian/US/Crypto markets, live charts, AI Entry/Exit signals) with a **Portfolio Manager** (track Equity, Crypto, MF, FD, P&amp;L, AI Hold/Exit/Harvest insights). No login. No server. Just open &amp; invest smarter.
+**AdvanceStockAnalyzer** — A single-file offline web app for investors. Combines a **Stock Analyser** (Indian/US/Crypto markets, live charts, AI Entry/Exit signals) with a **Portfolio Manager** (track Equity, Crypto, MF, FD, P&amp;L, AI Hold/Exit/Harvest insights). No login required for stock analysis. The Portfolio Manager offers optional, invite-only sync via Firebase. Just open &amp; invest smarter.
 📊 AdvanceStockAnalyzer — App Description
 AdvanceStockAnalyzer is an all-in-one, offline-capable single-page web application built for Indian and global investors. It combines two powerful tools under one roof:
 

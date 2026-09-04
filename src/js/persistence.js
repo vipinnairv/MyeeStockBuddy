@@ -5,6 +5,8 @@
 // Now: caches are evicted to make room (never portfolio data), the write is
 // read back to prove it landed, and a persistent banner appears if it did not.
 const _PORTFOLIO_KEY='imp_data';
+let _csLastSaveTs = 0;
+function _csLastLocalSaveTs(){ return _csLastSaveTs || null; }
 // Keys we are allowed to sacrifice for space. All are re-fetchable caches.
 const _EVICTABLE=[ k => k.startsWith('ohlcv_'), k => k.startsWith('mfnav_') ];
 function _isEvictable(k){ return _EVICTABLE.some(f=>f(k)); }
@@ -51,7 +53,12 @@ function saveLocal(){
     try{
       localStorage.setItem(_PORTFOLIO_KEY,payload);
       // Prove it actually landed - a silent truncation is still data loss.
-      if(localStorage.getItem(_PORTFOLIO_KEY)===payload){ _saveFailedBanner(false); return true; }
+      if(localStorage.getItem(_PORTFOLIO_KEY)===payload){
+        _saveFailedBanner(false);
+        _csLastSaveTs = Date.now();
+        if(typeof csPush==='function') csPush();      // debounced; no-op if signed out
+        return true;
+      }
     }catch(e){}
     if(_evictCaches(attempt===0?12:60)===0) break;   // nothing left to sacrifice
   }

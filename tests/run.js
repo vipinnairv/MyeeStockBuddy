@@ -3200,6 +3200,95 @@ group('financials panel renders');
   }
 }
 
+// ── Cloud sync: pure logic ──────────────────────────────────────────────────
+group('cloud sync');
+{
+  const src = slice('// ══════════ CLOUD SYNC', '\n// ══════════ SIGN-IN GATE', 'cloudsync');
+  const { _csNormEmail, _csBuildPayload, _csShouldPreferRemote, _csDebounce, CS_SYNC_KEYS } =
+    load(src, ['_csNormEmail','_csBuildPayload','_csShouldPreferRemote','_csDebounce','CS_SYNC_KEYS'],
+         { Math, Object, Array, isFinite, Number, String, setTimeout, clearTimeout });
+
+  // ── email normalisation: must match how the allowlist document ID is read ──
+  eq('trims and lowercases', _csNormEmail('  Vipin@Example.COM  '), 'vipin@example.com');
+  eq('null becomes empty, not "null"', _csNormEmail(null), '');
+  eq('undefined becomes empty', _csNormEmail(undefined), '');
+  eq('already-normal input is unchanged', _csNormEmail('a@b.com'), 'a@b.com');
+
+  // ── the sync payload never carries API keys, whatever S holds ──────────────
+  {
+    const state = { indEQ: [1], usEQ: [], crypto: [2,3], fd: [], mf: [], txns: [4],
+                     usdInr: 83.1, tdApiKey: 'SECRET', pi_claude_key: 'SECRET2', aikey_x: 'SECRET3' };
+    const payload = _csBuildPayload(state);
+    ok('no key from S leaks into the payload that was not explicitly allowed',
+       !('tdApiKey' in payload) && !('pi_claude_key' in payload) && !('aikey_x' in payload),
+       JSON.stringify(payload));
+    eq('holdings are carried', payload.indEQ.length, 1);
+    eq('and the fx rate', payload.usdInr, 83.1);
+    ok('the allowlist itself contains no key-shaped field',
+       !CS_SYNC_KEYS.some(k => /key/i.test(k)), CS_SYNC_KEYS.join(','));
+  }
+  {
+    // A field S never set still gets a sane empty value, not undefined -
+    // Firestore rejects undefined, and a caller should not have to know that.
+    const payload = _csBuildPayload({});
+    ok('a missing array field becomes an empty array', Array.isArray(payload.indEQ) && payload.indEQ.length === 0,
+       JSON.stringify(payload.indEQ));
+    eq('a missing scalar field becomes null, not undefined', payload.usdInr, null);
+  }
+
+  // ── conflict resolution: newer wins, an unknown remote never overwrites ────
+  eq('a newer remote wins', _csShouldPreferRemote(1000, 2000), true);
+  eq('an older remote loses', _csShouldPreferRemote(2000, 1000), false);
+  eq('equal timestamps keep the local copy', _csShouldPreferRemote(1000, 1000), false);
+  eq('no remote timestamp never wins, however old local is', _csShouldPreferRemote(1, null), false);
+  eq('no remote timestamp and no local: still no', _csShouldPreferRemote(null, null), false);
+  eq('a remote timestamp with no local timestamp wins, since there is nothing to prefer it over',
+     _csShouldPreferRemote(null, 500), true);
+  eq('non-numeric local is treated as unknown', _csShouldPreferRemote('x', 500), true);
+  eq('non-numeric remote is treated as unknown, so it cannot win', _csShouldPreferRemote(500, 'x'), false);
+
+  // ── debounce: only the last call in a burst survives, and flush is immediate ──
+  pending.push(new Promise((resolve) => {
+    let calls = [];
+    const fn = _csDebounce((v) => calls.push(v), 20);
+    fn(1); fn(2); fn(3);
+    setTimeout(() => {
+      eq('only the last queued call ran', calls.join(','), '3');
+      let calls2 = [];
+      const fn2 = _csDebounce((v) => calls2.push(v), 5000);
+      fn2('a');
+      fn2.flush('b');
+      eq('flush runs immediately, bypassing the delay', calls2.join(','), 'b');
+      resolve();
+    }, 60);
+  }));
+
+  ok('the sync payload is built by an explicit allowlist, not by copying S',
+     /for \(const k of CS_SYNC_KEYS\) out\[k\]/.test(SRC), 'looks like a blanket copy');
+  ok('the allowlist is a short, named, auditable list',
+     /CS_SYNC_KEYS = \['indEQ', 'usEQ', 'crypto', 'fd', 'mf', 'txns', 'usdInr'\];/.test(SRC),
+     'allowlist changed shape unexpectedly - update this assertion deliberately if so');
+}
+
+// ── Auth gate: friendly errors and email shape ──────────────────────────────
+group('auth gate');
+{
+  const src = slice('// ══════════ SIGN-IN GATE', '\nasync function pmAuthSignUp', 'authgate');
+  const { _csEmailLooksValid, _csFriendlyAuthError } =
+    load(src, ['_csEmailLooksValid','_csFriendlyAuthError'], { String, RegExp });
+  ok('a plausible email passes', _csEmailLooksValid('a@b.com'), 'rejected a@b.com');
+  ok('no @ fails', !_csEmailLooksValid('not-an-email'), 'accepted garbage');
+  ok('no domain dot fails', !_csEmailLooksValid('a@b'), 'accepted a@b');
+  ok('empty fails', !_csEmailLooksValid(''), 'accepted empty');
+  ok('null fails rather than throwing', !_csEmailLooksValid(null), 'threw or accepted null');
+
+  eq('a known Firebase error code gets a specific, human sentence',
+     _csFriendlyAuthError('auth/wrong-password'), 'Incorrect password.');
+  eq('an unrecognised code still produces a sentence, not the raw code',
+     _csFriendlyAuthError('auth/some-future-code'), 'Something went wrong. Please try again.');
+  ok('the raw Firebase code never reaches the user for a known case',
+     !/auth\//.test(_csFriendlyAuthError('auth/wrong-password')), 'leaked the code');
+}
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
