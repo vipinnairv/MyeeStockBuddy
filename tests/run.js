@@ -3286,7 +3286,7 @@ group('cloud sync');
 // ── Auth gate: friendly errors and email shape ──────────────────────────────
 group('auth gate');
 {
-  const src = slice('// ══════════ SIGN-IN GATE', '\nasync function pmAuthSignUp', 'authgate');
+  const src = slice('// ══════════ SIGN-IN GATE', '\nasync function pmAuthRequestAccess', 'authgate');
   const { _csEmailLooksValid, _csFriendlyAuthError } =
     load(src, ['_csEmailLooksValid','_csFriendlyAuthError'], { String, RegExp });
   ok('a plausible email passes', _csEmailLooksValid('a@b.com'), 'rejected a@b.com');
@@ -3307,6 +3307,17 @@ group('auth gate');
      /onclick="pmAuthCheckVerified\(\)">Sign In</.test(SRC), 'button missing from the unverified gate');
   ok('the check calls reloadUser, since Firebase caches emailVerified until reload() is called',
      /await window\.CloudAuth\.reloadUser\(\)/.test(SRC), 'reloadUser not wired up');
+
+  // ── account creation is not self-serve: Firebase Auth sign-up itself was
+  //    never invite-gated, only Firestore sync was, so an open "Create
+  //    account" button let anyone in - request-access replaces it entirely ──
+  ok('there is no self-serve account creation left in the gate',
+     !/Create account/.test(SRC) && !/createUserWithEmailAndPassword/.test(SRC),
+     'a sign-up path still exists');
+  ok('a Request access button asks an admin to create the account instead',
+     /onclick="pmAuthRequestAccess\(\)">Request access</.test(SRC), 'button missing');
+  ok('the request goes through CloudDB, not CloudAuth (no account exists yet to sign up)',
+     /await window\.CloudDB\.requestAccess\(/.test(SRC), 'requestAccess not wired up');
 }
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
