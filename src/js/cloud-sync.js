@@ -182,28 +182,29 @@ function _csFriendlyAuthError(code) {
   const map = {
     'auth/invalid-email':        'That does not look like a valid email address.',
     'auth/user-disabled':        'This account has been disabled.',
-    'auth/user-not-found':       'No account with that email. Sign up first.',
+    'auth/user-not-found':       'No account with that email.',
     'auth/wrong-password':       'Incorrect password.',
     'auth/invalid-credential':   'Incorrect email or password.',
-    'auth/email-already-in-use': 'An account already exists for that email. Sign in instead.',
-    'auth/weak-password':        'Password must be at least 6 characters.',
     'auth/too-many-requests':    'Too many attempts. Wait a few minutes and try again.',
     'auth/network-request-failed': 'Could not reach the sign-in server. Check your connection.',
   };
   return map[code] || 'Something went wrong. Please try again.';
 }
 
-async function pmAuthSignUp() {
+// Account creation is not self-serve: Firebase Auth sign-up itself is not
+// invite-gated (the allowlist only controls Firestore sync access), so an
+// open self-signup button would let anyone in, not just anyone sync. This
+// instead writes a request to a write-only Firestore collection - the
+// admin reads it from the console and creates the account by hand.
+async function pmAuthRequestAccess() {
   const email = document.getElementById('pm-auth-email').value;
-  const pass  = document.getElementById('pm-auth-pass').value;
   const out   = document.getElementById('pm-auth-msg');
   if (!_csEmailLooksValid(email)) { out.textContent = 'Enter a valid email address.'; return; }
-  if (!pass || pass.length < 6) { out.textContent = 'Password must be at least 6 characters.'; return; }
-  out.textContent = 'Creating account…';
+  out.textContent = 'Sending request…';
   try {
-    await window.CloudAuth.signUp(email, pass);
-    out.textContent = 'Account created. Check your inbox for a verification link, then sign in.';
-  } catch (e) { out.textContent = _csFriendlyAuthError(e && e.code); }
+    await window.CloudDB.requestAccess(_csNormEmail(email));
+    out.textContent = "Request sent. You'll get an email once your account is set up.";
+  } catch (e) { out.textContent = 'Could not send the request. Please try again.'; }
 }
 async function pmAuthSignIn() {
   const email = document.getElementById('pm-auth-email').value;
@@ -290,13 +291,12 @@ function renderPmAuthGate() {
     <div class="pm-auth-ico">🔒</div>
     <div class="pm-auth-title">Sign in to Portfolio Manager</div>
     <div class="pm-auth-sub">Your holdings sync to your account so you can open them on another device.
-      Access is by invitation - if your email is not on the list, an account can be created but will
-      stay empty.</div>
+      Access is by invitation only.</div>
     <input id="pm-auth-email" class="form-input" type="email" placeholder="Email" autocomplete="email" style="width:100%;margin-bottom:8px">
     <input id="pm-auth-pass" class="form-input" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;margin-bottom:10px">
     <button class="btn btn-pri" style="width:100%;margin-bottom:6px" onclick="pmAuthSignIn()">Sign in</button>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-sec" style="flex:1" onclick="pmAuthSignUp()">Create account</button>
+      <button class="btn btn-sec" style="flex:1" onclick="pmAuthRequestAccess()">Request access</button>
       <button class="btn btn-sec" style="flex:1" onclick="pmAuthReset()">Forgot password</button>
     </div>
     <div id="pm-auth-msg" class="pm-auth-msg"></div>
