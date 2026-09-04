@@ -806,6 +806,9 @@ main{max-width:1400px;margin:0 auto;padding:14px 16px}
 .pm-auth-card .btn{border:1px solid transparent}
 .pm-auth-card .btn-sec{border-color:var(--bd2)}
 .pm-auth-msg{font-size:12px;color:var(--T2);min-height:16px;margin-top:2px}
+.pm-auth-tile{margin-top:6px;padding-top:14px;border-top:1px solid var(--bd);text-align:left}
+.pm-auth-tile-title{font-size:12.5px;font-weight:700;color:var(--T1);margin-bottom:3px}
+.pm-auth-tile-sub{font-size:11.5px;color:var(--T3);line-height:1.55}
 
 .kpi{
   background:var(--white);border:1px solid var(--bd);
@@ -2130,8 +2133,8 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     <div class="hdr-sync-btn" id="sync-status-btn" onclick="showGDrivePanel()">
       <span id="sync-icon">☁</span> <span id="sync-label">Connect Drive</span>
     </div>
-    <div class="hdr-badge" id="pm-account-badge" style="display:none;cursor:pointer" onclick="pmAuthSignOut()" title="Sign out">
-      <span id="pm-account-email"></span> <strong>Sign out</strong>
+    <div class="hdr-badge" id="pm-account-badge" style="display:none;cursor:pointer" onclick="pmOpenAccountSettings()" title="Account settings">
+      <span id="pm-account-email"></span> <strong>⚙️ Account</strong>
     </div>
   </div>
 </div>
@@ -3087,11 +3090,11 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   import {
     getAuth, signInWithEmailAndPassword,
     signOut as fbSignOut, sendPasswordResetEmail, sendEmailVerification,
-    onAuthStateChanged,
+    onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential,
+    verifyBeforeUpdateEmail, updatePassword as fbUpdatePassword,
   } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc,
   } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -3128,6 +3131,23 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     onChange: (cb) => onAuthStateChanged(auth, (u) => {
       cb(u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null);
     }),
+    reauthenticate: (currentPassword) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+      return reauthenticateWithCredential(auth.currentUser, cred);
+    },
+    // Sends a confirmation link to the NEW address rather than switching
+    // immediately - the safer, currently-recommended flow, since an
+    // immediate switch would let a stolen session lock the real owner out
+    // by pointing password resets at an attacker's inbox.
+    updateEmail: (newEmail) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      return verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+    },
+    updatePassword: (newPassword) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      return fbUpdatePassword(auth.currentUser, newPassword);
+    },
   };
 
   window.CloudDB = {
@@ -3146,13 +3166,6 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       const d = snap.data();
       const ts = d.updatedAt && typeof d.updatedAt.toMillis === 'function' ? d.updatedAt.toMillis() : null;
       return { data: d.data || {}, updatedAtMs: ts };
-    },
-    // Anyone can write here (rules must allow create, unauthenticated) but
-    // no client can read it back - only the admin, from the console. That
-    // asymmetry is what makes "invite only" actually mean no self-serve
-    // account creation, not just no self-serve sync.
-    requestAccess: async (email) => {
-      await addDoc(collection(db, 'access-requests'), { email, requestedAt: serverTimestamp() });
     },
   };
 
