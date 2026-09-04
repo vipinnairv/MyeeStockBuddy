@@ -3326,6 +3326,13 @@ group('auth gate');
      'password update does not re-auth first');
   ok('the account badge opens settings rather than signing out immediately',
      /onclick="pmOpenAccountSettings\(\)"/.test(SRC), 'badge still signs out directly');
+  // ── the modal must inherit #section-portfolio's scoped theme variables
+  //    (--white, --bd, --T1, ...) or it renders as an invisible card - the
+  //    exact bug the sign-in gate itself had before this was caught ────────
+  ok('the account modal is parented inside #section-portfolio, not document.body',
+     /getElementById\('section-portfolio'\) \|\| document\.body/.test(SRC) &&
+     /host\.appendChild\(modal\)/.test(SRC),
+     'modal falls back to document.body, which has none of the --white/--bd/--T1 theme variables');
 }
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');

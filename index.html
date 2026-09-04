@@ -10819,7 +10819,13 @@ function pmOpenAccountSettings() {
     modal.id = 'pm-account-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.addEventListener('click', function (e) { if (e.target === modal) pmCloseAccountSettings(); });
-    document.body.appendChild(modal);
+    // Appended inside #section-portfolio, not document.body: the card's
+    // colours (--white, --bd, --T1, ...) are CSS custom properties scoped
+    // to #section-portfolio, so a modal parented to <body> would render
+    // with every var() falling through to nothing - the same invisible-card
+    // bug the sign-in gate had before its CSS was moved to the right place.
+    const host = document.getElementById('section-portfolio') || document.body;
+    host.appendChild(modal);
   }
   modal.innerHTML = `<div class="pm-auth-card" style="max-width:360px;position:relative">
     <button onclick="pmCloseAccountSettings()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:18px;cursor:pointer;color:var(--T3)">&times;</button>
