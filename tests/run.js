@@ -3286,7 +3286,7 @@ group('cloud sync');
 // ── Auth gate: friendly errors and email shape ──────────────────────────────
 group('auth gate');
 {
-  const src = slice('// ══════════ SIGN-IN GATE', '\nasync function pmAuthRequestAccess', 'authgate');
+  const src = slice('// ══════════ SIGN-IN GATE', '\nasync function pmAuthSignIn', 'authgate');
   const { _csEmailLooksValid, _csFriendlyAuthError } =
     load(src, ['_csEmailLooksValid','_csFriendlyAuthError'], { String, RegExp });
   ok('a plausible email passes', _csEmailLooksValid('a@b.com'), 'rejected a@b.com');
@@ -3309,15 +3309,23 @@ group('auth gate');
      /await window\.CloudAuth\.reloadUser\(\)/.test(SRC), 'reloadUser not wired up');
 
   // ── account creation is not self-serve: Firebase Auth sign-up itself was
-  //    never invite-gated, only Firestore sync was, so an open "Create
-  //    account" button let anyone in - request-access replaces it entirely ──
+  //    never invite-gated, only Firestore sync was, so a form that could
+  //    create accounts client-side would let anyone in ──────────────────────
   ok('there is no self-serve account creation left in the gate',
-     !/Create account/.test(SRC) && !/createUserWithEmailAndPassword/.test(SRC),
-     'a sign-up path still exists');
-  ok('a Request access button asks an admin to create the account instead',
-     /onclick="pmAuthRequestAccess\(\)">Request access</.test(SRC), 'button missing');
-  ok('the request goes through CloudDB, not CloudAuth (no account exists yet to sign up)',
-     /await window\.CloudDB\.requestAccess\(/.test(SRC), 'requestAccess not wired up');
+     !/createUserWithEmailAndPassword/.test(SRC), 'a sign-up path still exists');
+  ok('the invite email points at the admin inbox, not a form Firebase would act on',
+     /mailto:miyee\.india@gmail\.com/.test(SRC), 'the request-access address changed or is missing');
+
+  // ── account settings: changing email/password re-authenticates first,
+  //    since Firebase rejects both without a recent sign-in ─────────────────
+  ok('updating the email re-authenticates before calling CloudAuth.updateEmail',
+     /await window\.CloudAuth\.reauthenticate\(pass\);\s*\n\s*await window\.CloudAuth\.updateEmail\(/.test(SRC),
+     'email update does not re-auth first');
+  ok('updating the password re-authenticates before calling CloudAuth.updatePassword',
+     /await window\.CloudAuth\.reauthenticate\(pass\);\s*\n\s*await window\.CloudAuth\.updatePassword\(/.test(SRC),
+     'password update does not re-auth first');
+  ok('the account badge opens settings rather than signing out immediately',
+     /onclick="pmOpenAccountSettings\(\)"/.test(SRC), 'badge still signs out directly');
 }
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');

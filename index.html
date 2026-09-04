@@ -806,6 +806,9 @@ main{max-width:1400px;margin:0 auto;padding:14px 16px}
 .pm-auth-card .btn{border:1px solid transparent}
 .pm-auth-card .btn-sec{border-color:var(--bd2)}
 .pm-auth-msg{font-size:12px;color:var(--T2);min-height:16px;margin-top:2px}
+.pm-auth-tile{margin-top:6px;padding-top:14px;border-top:1px solid var(--bd);text-align:left}
+.pm-auth-tile-title{font-size:12.5px;font-weight:700;color:var(--T1);margin-bottom:3px}
+.pm-auth-tile-sub{font-size:11.5px;color:var(--T3);line-height:1.55}
 
 .kpi{
   background:var(--white);border:1px solid var(--bd);
@@ -2130,8 +2133,8 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     <div class="hdr-sync-btn" id="sync-status-btn" onclick="showGDrivePanel()">
       <span id="sync-icon">☁</span> <span id="sync-label">Connect Drive</span>
     </div>
-    <div class="hdr-badge" id="pm-account-badge" style="display:none;cursor:pointer" onclick="pmAuthSignOut()" title="Sign out">
-      <span id="pm-account-email"></span> <strong>Sign out</strong>
+    <div class="hdr-badge" id="pm-account-badge" style="display:none;cursor:pointer" onclick="pmOpenAccountSettings()" title="Account settings">
+      <span id="pm-account-email"></span> <strong>⚙️ Account</strong>
     </div>
   </div>
 </div>
@@ -3087,11 +3090,11 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
   import {
     getAuth, signInWithEmailAndPassword,
     signOut as fbSignOut, sendPasswordResetEmail, sendEmailVerification,
-    onAuthStateChanged,
+    onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential,
+    verifyBeforeUpdateEmail, updatePassword as fbUpdatePassword,
   } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc,
   } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -3128,6 +3131,23 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
     onChange: (cb) => onAuthStateChanged(auth, (u) => {
       cb(u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null);
     }),
+    reauthenticate: (currentPassword) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+      return reauthenticateWithCredential(auth.currentUser, cred);
+    },
+    // Sends a confirmation link to the NEW address rather than switching
+    // immediately - the safer, currently-recommended flow, since an
+    // immediate switch would let a stolen session lock the real owner out
+    // by pointing password resets at an attacker's inbox.
+    updateEmail: (newEmail) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      return verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+    },
+    updatePassword: (newPassword) => {
+      if (!auth.currentUser) throw { code: 'auth/no-current-user' };
+      return fbUpdatePassword(auth.currentUser, newPassword);
+    },
   };
 
   window.CloudDB = {
@@ -3146,13 +3166,6 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       const d = snap.data();
       const ts = d.updatedAt && typeof d.updatedAt.toMillis === 'function' ? d.updatedAt.toMillis() : null;
       return { data: d.data || {}, updatedAtMs: ts };
-    },
-    // Anyone can write here (rules must allow create, unauthenticated) but
-    // no client can read it back - only the admin, from the console. That
-    // asymmetry is what makes "invite only" actually mean no self-serve
-    // account creation, not just no self-serve sync.
-    requestAccess: async (email) => {
-      await addDoc(collection(db, 'access-requests'), { email, requestedAt: serverTimestamp() });
     },
   };
 
@@ -10747,27 +10760,15 @@ function _csFriendlyAuthError(code) {
     'auth/user-not-found':       'No account with that email.',
     'auth/wrong-password':       'Incorrect password.',
     'auth/invalid-credential':   'Incorrect email or password.',
+    'auth/email-already-in-use': 'An account already exists for that email.',
+    'auth/weak-password':        'Password must be at least 6 characters.',
     'auth/too-many-requests':    'Too many attempts. Wait a few minutes and try again.',
     'auth/network-request-failed': 'Could not reach the sign-in server. Check your connection.',
+    'auth/requires-recent-login': 'Please sign out and back in, then try this again.',
   };
   return map[code] || 'Something went wrong. Please try again.';
 }
 
-// Account creation is not self-serve: Firebase Auth sign-up itself is not
-// invite-gated (the allowlist only controls Firestore sync access), so an
-// open self-signup button would let anyone in, not just anyone sync. This
-// instead writes a request to a write-only Firestore collection - the
-// admin reads it from the console and creates the account by hand.
-async function pmAuthRequestAccess() {
-  const email = document.getElementById('pm-auth-email').value;
-  const out   = document.getElementById('pm-auth-msg');
-  if (!_csEmailLooksValid(email)) { out.textContent = 'Enter a valid email address.'; return; }
-  out.textContent = 'Sending request…';
-  try {
-    await window.CloudDB.requestAccess(_csNormEmail(email));
-    out.textContent = "Request sent. You'll get an email once your account is set up.";
-  } catch (e) { out.textContent = 'Could not send the request. Please try again.'; }
-}
 async function pmAuthSignIn() {
   const email = document.getElementById('pm-auth-email').value;
   const pass  = document.getElementById('pm-auth-pass').value;
@@ -10803,6 +10804,67 @@ async function pmAuthCheckVerified() {
     csOnAuthChange(user);
     if (!(user && user.emailVerified) && out) out.textContent = 'Not verified yet - click the link in your email, then try again.';
   } catch (e) { if (out) out.textContent = _csFriendlyAuthError(e && e.code); }
+}
+
+// ── Account settings (change email / password) ──────────────────────────────
+// Firebase requires a recent sign-in before either of these, so both re-auth
+// with the current password first rather than relying on however long ago
+// the session started.
+function pmOpenAccountSettings() {
+  const user = csCurrentUser();
+  if (!user) return;
+  let modal = document.getElementById('pm-account-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'pm-account-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.addEventListener('click', function (e) { if (e.target === modal) pmCloseAccountSettings(); });
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `<div class="pm-auth-card" style="max-width:360px;position:relative">
+    <button onclick="pmCloseAccountSettings()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:18px;cursor:pointer;color:var(--T3)">&times;</button>
+    <div class="pm-auth-ico">⚙️</div>
+    <div class="pm-auth-title">Account Settings</div>
+    <div class="pm-auth-sub">Signed in as <b>${(user.email || '').replace(/</g,'&lt;')}</b></div>
+    <input id="pm-acct-curpass" class="form-input" type="password" placeholder="Current password" autocomplete="current-password" style="width:100%;margin-bottom:10px">
+    <input id="pm-acct-newemail" class="form-input" type="email" placeholder="New email" autocomplete="email" style="width:100%;margin-bottom:6px">
+    <button class="btn btn-sec" style="width:100%;margin-bottom:10px" onclick="pmAccountUpdateEmail()">Update email</button>
+    <input id="pm-acct-newpass" class="form-input" type="password" placeholder="New password" autocomplete="new-password" style="width:100%;margin-bottom:6px">
+    <button class="btn btn-sec" style="width:100%;margin-bottom:10px" onclick="pmAccountUpdatePassword()">Update password</button>
+    <div id="pm-acct-msg" class="pm-auth-msg"></div>
+    <button class="btn btn-pri" style="width:100%;margin-top:4px" onclick="pmCloseAccountSettings();pmAuthSignOut()">Sign out</button>
+  </div>`;
+  modal.style.display = 'flex';
+}
+function pmCloseAccountSettings() {
+  const modal = document.getElementById('pm-account-modal');
+  if (modal) modal.style.display = 'none';
+}
+async function pmAccountUpdateEmail() {
+  const pass = document.getElementById('pm-acct-curpass').value;
+  const newEmail = document.getElementById('pm-acct-newemail').value;
+  const out = document.getElementById('pm-acct-msg');
+  if (!pass) { out.textContent = 'Enter your current password first.'; return; }
+  if (!_csEmailLooksValid(newEmail)) { out.textContent = 'Enter a valid new email address.'; return; }
+  out.textContent = 'Updating…';
+  try {
+    await window.CloudAuth.reauthenticate(pass);
+    await window.CloudAuth.updateEmail(newEmail);
+    out.textContent = 'Check ' + newEmail + ' for a confirmation link to finish the change.';
+  } catch (e) { out.textContent = _csFriendlyAuthError(e && e.code); }
+}
+async function pmAccountUpdatePassword() {
+  const pass = document.getElementById('pm-acct-curpass').value;
+  const newPass = document.getElementById('pm-acct-newpass').value;
+  const out = document.getElementById('pm-acct-msg');
+  if (!pass) { out.textContent = 'Enter your current password first.'; return; }
+  if (!newPass || newPass.length < 6) { out.textContent = 'New password must be at least 6 characters.'; return; }
+  out.textContent = 'Updating…';
+  try {
+    await window.CloudAuth.reauthenticate(pass);
+    await window.CloudAuth.updatePassword(newPass);
+    out.textContent = 'Password updated.';
+  } catch (e) { out.textContent = _csFriendlyAuthError(e && e.code); }
 }
 
 // Three states: signed out, signed in but unverified, signed in and verified.
@@ -10857,11 +10919,16 @@ function renderPmAuthGate() {
     <input id="pm-auth-email" class="form-input" type="email" placeholder="Email" autocomplete="email" style="width:100%;margin-bottom:8px">
     <input id="pm-auth-pass" class="form-input" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;margin-bottom:10px">
     <button class="btn btn-pri" style="width:100%;margin-bottom:6px" onclick="pmAuthSignIn()">Sign in</button>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-sec" style="flex:1" onclick="pmAuthRequestAccess()">Request access</button>
-      <button class="btn btn-sec" style="flex:1" onclick="pmAuthReset()">Forgot password</button>
-    </div>
+    <button class="btn btn-sec" style="width:100%" onclick="pmAuthReset()">Forgot password</button>
     <div id="pm-auth-msg" class="pm-auth-msg"></div>
+    <div class="pm-auth-tile">
+      <div class="pm-auth-tile-title">No account yet?</div>
+      <div class="pm-auth-tile-sub">This is invite-only access. Email <b>miyee.india@gmail.com</b> with your
+        Full Name, Mobile No and Email ID. Once your account is created you'll get an email with your
+        password - you can change your email or password anytime from Account Settings after signing in.</div>
+      <a class="btn btn-sec" style="width:100%;margin-top:8px;display:block;text-align:center;text-decoration:none;box-sizing:border-box"
+         href="mailto:miyee.india@gmail.com?subject=Portfolio%20Manager%20Access%20Request&body=Full%20Name%3A%0AMobile%20No%3A%0AEmail%20ID%3A">✉️ Email to Request Access</a>
+    </div>
   </div>`;
 }
 
