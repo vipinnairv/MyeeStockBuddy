@@ -3204,9 +3204,11 @@ group('financials panel renders');
 group('cloud sync');
 {
   const src = slice('// ══════════ CLOUD SYNC', '\n// ══════════ SIGN-IN GATE', 'cloudsync');
-  const { _csNormEmail, _csBuildPayload, _csShouldPreferRemote, _csDebounce, CS_SYNC_KEYS } =
-    load(src, ['_csNormEmail','_csBuildPayload','_csShouldPreferRemote','_csDebounce','CS_SYNC_KEYS'],
-         { Math, Object, Array, isFinite, Number, String, setTimeout, clearTimeout });
+  const toastCalls = [];
+  const { _csNormEmail, _csBuildPayload, _csShouldPreferRemote, _csDebounce, CS_SYNC_KEYS, _csNotifyNotInvited } =
+    load(src, ['_csNormEmail','_csBuildPayload','_csShouldPreferRemote','_csDebounce','CS_SYNC_KEYS','_csNotifyNotInvited'],
+         { Math, Object, Array, isFinite, Number, String, setTimeout, clearTimeout,
+           toast: (msg, type) => toastCalls.push({ msg, type }) });
 
   // ── email normalisation: must match how the allowlist document ID is read ──
   eq('trims and lowercases', _csNormEmail('  Vipin@Example.COM  '), 'vipin@example.com');
@@ -3263,6 +3265,17 @@ group('cloud sync');
     }, 60);
   }));
 
+  // ── open sign-up + invite-only sync: the user is told, exactly once ────────
+  {
+    _csNotifyNotInvited();
+    _csNotifyNotInvited();
+    _csNotifyNotInvited();
+    eq('a blocked sync (permission-denied) surfaces exactly one toast, not one per attempt',
+       toastCalls.length, 1);
+    ok('the toast explains the account is not yet invited, not a generic error',
+       /invite list/.test(toastCalls[0].msg), toastCalls[0].msg);
+  }
+
   ok('the sync payload is built by an explicit allowlist, not by copying S',
      /for \(const k of CS_SYNC_KEYS\) out\[k\]/.test(SRC), 'looks like a blanket copy');
   ok('the allowlist is a short, named, auditable list',
@@ -3288,6 +3301,12 @@ group('auth gate');
      _csFriendlyAuthError('auth/some-future-code'), 'Something went wrong. Please try again.');
   ok('the raw Firebase code never reaches the user for a known case',
      !/auth\//.test(_csFriendlyAuthError('auth/wrong-password')), 'leaked the code');
+
+  // ── the unverified-user screen offers a way back in without a page reload ──
+  ok('a Sign In button re-checks verification instead of only telling the user to reload',
+     /onclick="pmAuthCheckVerified\(\)">Sign In</.test(SRC), 'button missing from the unverified gate');
+  ok('the check calls reloadUser, since Firebase caches emailVerified until reload() is called',
+     /await window\.CloudAuth\.reloadUser\(\)/.test(SRC), 'reloadUser not wired up');
 }
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');

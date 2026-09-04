@@ -3123,6 +3123,12 @@ body, .kpi-value, .kpi-sub, table, input, button, .mkt-card, .mkt-tape-item {
       if (!auth.currentUser) throw { code: 'auth/no-current-user' };
       return sendEmailVerification(auth.currentUser);
     },
+    reloadUser: async () => {
+      if (!auth.currentUser) return null;
+      await auth.currentUser.reload();
+      const u = auth.currentUser;
+      return u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null;
+    },
     onChange: (cb) => onAuthStateChanged(auth, (u) => {
       cb(u ? { uid: u.uid, email: u.email, emailVerified: u.emailVerified } : null);
     }),
