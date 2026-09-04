@@ -214,11 +214,24 @@ async function pmAuthResendVerification() {
 // Three states: signed out, signed in but unverified, signed in and verified.
 // Only the third shows the portfolio; the other two show why not, not just
 // that it is blocked.
+function _csRenderAccountBadge(user) {
+  const badge = document.getElementById('pm-account-badge');
+  const email = document.getElementById('pm-account-email');
+  if (!badge || !email) return;
+  if (user && user.emailVerified) {
+    email.textContent = user.email || '';
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 function renderPmAuthGate() {
   const gate = document.getElementById('pm-auth-gate');
   const body = document.getElementById('pm-content');
   if (!gate || !body) return;
   const user = csCurrentUser();
+  _csRenderAccountBadge(user);
 
   if (user && user.emailVerified) {
     gate.style.display = 'none';
