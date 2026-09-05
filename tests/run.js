@@ -3334,6 +3334,121 @@ group('auth gate');
      /host\.appendChild\(modal\)/.test(SRC),
      'modal falls back to document.body, which has none of the --white/--bd/--T1 theme variables');
 }
+// ── Signal scanner + backtest ──────────────────────────────────────────────
+group('signal scanner');
+{
+  const sgSrc = slice('// ══════════ SIGNAL SCANNER + BACKTEST', '\n// ── Rendering ──', 'signals');
+  // calcSMA lives in the template, not in signals.js; pull it in rather than
+  // duplicating a second implementation the tests could agree with wrongly.
+  const { calcSMA } = load(slice('function calcSMA', '\nfunction calcEMA', 'calcSMA'), ['calcSMA'], {});
+  const { _sgCrossovers, _sgLatestCrossover, _sgBacktest, _sgRankByRecency } =
+    load(sgSrc, ['_sgCrossovers','_sgLatestCrossover','_sgBacktest','_sgRankByRecency'],
+         { Array, Math, isFinite, Number, String, Date, calcSMA });
+
+  // Dates are consecutive days so "bars ago" and "days ago" agree, which keeps
+  // the assertions about recency readable.
+  const mkSeries = closes => closes.map((c, i) => ({
+    d: new Date(Date.UTC(2024, 0, 1 + i)).toISOString().slice(0, 10), c,
+  }));
+
+  // Flat, up, down, up, down - hand-checkable with SMA 2 vs SMA 4.
+  const CLOSES = [10,10,10,10, 20,20,20,20, 5,5,5,5, 30,30,30,30, 1,1,1,1];
+  const SERIES = mkSeries(CLOSES);
+
+  {
+    const xs = _sgCrossovers(CLOSES, 2, 4);
+    eq('finds every crossover and no more', xs.length, 3);
+    eq('the first is bearish where the step down happens', xs[0].type + '@' + xs[0].i, 'bearish@8');
+    eq('then bullish on the step up', xs[1].type + '@' + xs[1].i, 'bullish@12');
+    eq('then bearish again on the collapse', xs[2].type + '@' + xs[2].i, 'bearish@16');
+    // Bars 0-3 have no long SMA at all, and bar 4 is the first comparable bar:
+    // being above on the first bar you can see is not a crossing.
+    ok('the first comparable bar is never itself a crossover', xs.every(x => x.i > 4),
+       'a crossover was reported at or before the first comparable bar');
+  }
+  eq('too little history yields no signals, rather than a wrong one',
+     _sgCrossovers([1,2,3], 2, 4).length, 0);
+  eq('a series that never crosses yields nothing',
+     _sgCrossovers([1,1,1,1,1,1,1,1,1,1], 2, 4).length, 0);
+
+  {
+    const s = _sgLatestCrossover(SERIES, 2, 4);
+    eq('the latest crossover is the last one, not the first', s.date, SERIES[16].d);
+    eq('and carries its direction', s.type, 'bearish');
+    eq('recency is counted from the last bar of the series', s.barsAgo, 3);
+    eq('and in days for the same consecutive-day series', s.ageDays, 3);
+    eq('no crossover at all reads as null, not as a stale signal',
+       _sgLatestCrossover(mkSeries([1,1,1,1,1,1,1,1,1,1]), 2, 4), null);
+  }
+
+  {
+    const xs = _sgCrossovers(CLOSES, 2, 4);
+    const bull = xs.find(x => x.type === 'bullish');
+    const bear = xs.filter(x => x.type === 'bearish')[1];
+    const bt = _sgBacktest(SERIES, 2, 4);
+
+    // The lookahead guard: a crossover is confirmed BY a close, so it can only
+    // be traded on the next one. Entering at the crossing bar's own close is
+    // the bias that makes home-made backtests look better than the rule is.
+    eq('entry is the bar after the bullish crossover confirms',
+       bt.trades[0].entryDate, SERIES[bull.i + 1].d);
+    ok('and never the crossover bar itself', bt.trades[0].entryDate !== SERIES[bull.i].d,
+       'entered at the crossing close - lookahead bias');
+    eq('exit is likewise the bar after the bearish crossover',
+       bt.trades[0].exitDate, SERIES[bear.i + 1].d);
+
+    eq('one closed trade came out of this series', bt.nTrades, 1);
+    eq('the return is measured entry close to exit close',
+       Math.round(bt.trades[0].ret * 100) / 100,
+       Math.round((bt.trades[0].exitPrice - bt.trades[0].entryPrice) / bt.trades[0].entryPrice * 1e4) / 100);
+    eq('a losing trade is not counted as a win', bt.wins, 0);
+    eq('win rate reflects that', bt.winRate, 0);
+
+    // A bearish cross with no position open is not a short: it is ignored.
+    ok('a bearish signal before any entry opens nothing',
+       bt.trades[0].entryDate > SERIES[8].d, 'traded on the leading bearish cross');
+  }
+
+  {
+    // Ends mid-position: bullish at 12 (entry 13), nothing bearish afterwards.
+    const openSeries = mkSeries([10,10,10,10, 20,20,20,20, 5,5,5,5, 30,30,30,30]);
+    const bt = _sgBacktest(openSeries, 2, 4);
+    eq('an unresolved position is not counted as a closed trade', bt.nTrades, 0);
+    eq('and leaves the win rate undefined rather than 100%', bt.winRate, null);
+    ok('but it is still reported, so the row is not silently empty', !!bt.open,
+       'the open position vanished');
+    eq('the open position entered on the bar after the crossover', bt.open.entryDate, openSeries[13].d);
+  }
+
+  {
+    const bt = _sgBacktest(SERIES, 2, 4);
+    // Buy-and-hold runs from the first bar the rule could have traded, so the
+    // rule is not credited for sitting out the warm-up.
+    eq('buy-and-hold starts at the end of the SMA warm-up', bt.from, SERIES[4].d);
+    eq('and is measured to the last bar', bt.to, SERIES[SERIES.length - 1].d);
+    const expected = (CLOSES[CLOSES.length - 1] - CLOSES[4]) / CLOSES[4] * 100;
+    ok('buy-and-hold is the plain hold return over that window',
+       Math.abs(bt.buyHold - expected) < 1e-9, `${bt.buyHold} vs ${expected}`);
+    ok('drawdown is a percentage of the peak, never negative',
+       bt.maxDD >= 0 && bt.maxDD <= 100, String(bt.maxDD));
+  }
+  eq('too short a series backtests to null rather than to a fake record',
+     _sgBacktest(mkSeries([1,2,3]), 2, 4), null);
+
+  {
+    const rows = [
+      { key:'A', signal:{ barsAgo: 9 } },
+      { key:'B', signal:null },
+      { key:'C', signal:{ barsAgo: 1 } },
+      { key:'D', signal:{ barsAgo: 4 } },
+    ];
+    const ranked = _sgRankByRecency(rows);
+    eq('most recent signal ranks first', ranked.map(r => r.key).join(''), 'CDAB');
+    eq('holdings with no signal sink to the bottom but are not dropped', ranked.length, 4);
+    eq('the caller\'s array is left alone', rows.map(r => r.key).join(''), 'ABCD');
+  }
+}
+
 // ── Build integrity ────────────────────────────────────────────────────────
 group('build — index.html matches src/');
 {
